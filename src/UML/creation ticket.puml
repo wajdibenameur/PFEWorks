@@ -1,0 +1,21 @@
+@startuml
+left to right direction
+actor "Support (Technicien)" as support
+actor "Admin" as admin
+actor "SuperAdmin" as superadmin
+
+rectangle "Gestion des tickets" {
+  usecase "Créer un ticket" as UC_CreateTicket
+  usecase "Renseigner la description" as UC_Desc
+  usecase "Définir la priorité" as UC_Priority
+  usecase "Associer une ressource défaillante" as UC_Resource
+}
+
+support --> UC_CreateTicket
+admin --> UC_CreateTicket
+superadmin --> UC_CreateTicket
+
+UC_CreateTicket .> UC_Desc : inclut
+UC_CreateTicket .> UC_Priority : inclut
+UC_CreateTicket .> UC_Resource : inclut
+@enduml

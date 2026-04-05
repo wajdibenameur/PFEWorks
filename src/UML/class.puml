@@ -1,0 +1,128 @@
+@startuml
+' Diagramme de classes du domaine - Centralisation API MSB
+
+
+
+class ServiceStatus {
+  - source: String
+  - name: String
+  - ip: String
+  - port: Integer
+  - protocol: String
+  - status: String
+  - category: String
+  - lastCheck: LocalDateTime
+}
+
+class User {
+  - username: String
+  - password: String
+  - email: String
+  + authenticate()
+  + updateProfile()
+}
+
+class Role {
+  - name: RoleName
+  - permissions: List<Permission>
+}
+
+enum RoleName {
+  SUPERADMIN
+  ADMIN
+  SUPPORT
+  VIEWER
+}
+
+enum Permission {
+  VIEW_DASHBOARD
+  VIEW_METRICS
+  VIEW_HOSTS
+  VIEW_TICKETS
+  CREATE_TICKET
+  EDIT_TICKET
+  ASSIGN_TICKET
+  VALIDATE_TICKET
+  ADD_COMMENT
+  MANAGE_USERS
+  MANAGE_ROLES
+}
+
+class Ticket {
+  - title: String
+  - description: String
+  - creationDate: Date
+  - status: TicketStatus
+  - priority: Priority
+  - externalProblem: Boolean
+  - resolution: String
+  - archived: Boolean
+  - validatedBy: User
+  + assignTo(tech: User)
+  + updateStatus(status: TicketStatus)
+  + addIntervention(intervention: Intervention)
+  + validate(admin: User)
+  + reject(admin: User, reason: String)
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  VALIDATED
+  REJECTED
+}
+
+class Intervention {
+  - action: String
+  - comment: String
+  - timestamp: Date
+  - result: String
+}
+
+class Notification {
+  - message: String
+  - type: NotificationType
+  - sentAt: Date
+  - read: Boolean
+  + send()
+  + markAsRead()
+}
+
+class UnifiedLog {
+  - eventType: EventType
+  - source: String
+  - description: String
+  - timestamp: Date
+  - metadata: Map<String, Object>
+}
+
+class Statistics {
+  - periodStart: Date
+  - periodEnd: Date
+  - apiAvailability: Map<Long, Double>
+  - avgResponseTime: Map<Long, Double>
+  - incidentCount: Integer
+  + generateReport()
+}
+
+' Héritages
+
+' Statistics n'hérite pas forcément de BaseEntity (objet calculé)
+
+' Associations
+User "1" -- "1" Role : has
+User "1" -- "1..*" Ticket : creates
+User "1" -- "1..*" Intervention : performs
+Ticket "1" -- "1..*" Intervention : contains
+Ticket "1" -- "1..1" User : assignedTo
+Ticket "1" -- "1..1" User : validatedBy
+ServiceStatus "1" -- "1..*" UnifiedLog : generates
+ServiceStatus "1" -- "1..*" Ticket : impacts
+Ticket "1" -- "1..*" Notification : triggers
+User "1" -- "1..*" Notification : receives
+UnifiedLog "1" -- "1..*" Notification : canBeBasedOn
+Statistics "1" -- "1..*" ServiceStatus : aggregates
+
+@enduml

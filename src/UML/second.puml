@@ -1,0 +1,108 @@
+@startuml
+left to right direction
+skinparam packageStyle rectangle
+
+actor "Utilisateur" as User
+actor "Viewer" as Viewer
+actor "Support" as Support
+actor "Admin" as Admin
+actor "SuperAdmin" as SuperAdmin
+
+' Héritage des acteurs
+Viewer --|> User
+Support --|> User
+Admin --|> User
+SuperAdmin --|> Admin
+
+rectangle "Système de Supervision Unifié" {
+
+  usecase "S'authentifier" as UC_Login
+  usecase "Mettre à jour profil" as UC_Profile
+
+  usecase "Consulter tableau de bord" as UC_Dashboard
+  usecase "Consulter métriques" as UC_Metrics
+  usecase "Consulter ressources surveillées" as UC_Resources
+  usecase "Consulter état des services" as UC_ServiceStatus
+  usecase "Consulter logs unifiés" as UC_Logs
+  usecase "Consulter statistiques" as UC_Stats
+  usecase "Générer rapport" as UC_Report
+
+  usecase "Consulter tickets" as UC_ViewTickets
+  usecase "Créer ticket" as UC_CreateTicket
+  usecase "Modifier ticket" as UC_EditTicket
+  usecase "Assigner ticket" as UC_AssignTicket
+  usecase "Mettre à jour statut ticket" as UC_UpdateTicketStatus
+  usecase "Valider ticket" as UC_ValidateTicket
+  usecase "Rejeter ticket" as UC_RejectTicket
+  usecase "Archiver ticket" as UC_ArchiveTicket
+
+  usecase "Ajouter intervention" as UC_AddIntervention
+  usecase "Ajouter commentaire" as UC_AddComment
+
+  usecase "Consulter notifications" as UC_ViewNotif
+  usecase "Marquer notification comme lue" as UC_ReadNotif
+
+  usecase "Gérer utilisateurs" as UC_ManageUsers
+  usecase "Gérer rôles" as UC_ManageRoles
+
+  usecase "Consulter hiérarchie des ressources" as UC_Hierarchy
+  usecase "Consulter détails ressource" as UC_DetailResource
+  usecase "Consulter incidents liés" as UC_IncidentResource
+}
+
+' Cas d’utilisation communs
+User --> UC_Login
+User --> UC_Profile
+User --> UC_ViewNotif
+User --> UC_ReadNotif
+
+' Viewer
+Viewer --> UC_Dashboard
+Viewer --> UC_Metrics
+Viewer --> UC_Resources
+Viewer --> UC_ServiceStatus
+Viewer --> UC_Logs
+Viewer --> UC_Stats
+Viewer --> UC_Hierarchy
+Viewer --> UC_DetailResource
+Viewer --> UC_ViewTickets
+Viewer --> UC_IncidentResource
+
+' Support
+Support --> UC_CreateTicket
+Support --> UC_EditTicket
+Support --> UC_UpdateTicketStatus
+Support --> UC_AddIntervention
+Support --> UC_AddComment
+
+' Admin
+Admin --> UC_AssignTicket
+Admin --> UC_ValidateTicket
+Admin --> UC_RejectTicket
+Admin --> UC_ArchiveTicket
+Admin --> UC_Report
+
+' SuperAdmin
+SuperAdmin --> UC_ManageUsers
+SuperAdmin --> UC_ManageRoles
+
+' Relations include / extend
+UC_Resources .> UC_Hierarchy : <<include>>
+UC_Resources .> UC_DetailResource : <<include>>
+UC_DetailResource .> UC_IncidentResource : <<extend>>
+
+UC_CreateTicket .> UC_ViewTickets : <<extend>>
+UC_EditTicket .> UC_ViewTickets : <<extend>>
+UC_AssignTicket .> UC_ViewTickets : <<extend>>
+UC_UpdateTicketStatus .> UC_ViewTickets : <<extend>>
+UC_AddIntervention .> UC_ViewTickets : <<extend>>
+UC_AddComment .> UC_ViewTickets : <<extend>>
+UC_ValidateTicket .> UC_ViewTickets : <<extend>>
+UC_RejectTicket .> UC_ViewTickets : <<extend>>
+UC_ArchiveTicket .> UC_ViewTickets : <<extend>>
+
+UC_Report .> UC_Stats : <<include>>
+UC_Dashboard .> UC_ServiceStatus : <<include>>
+UC_Dashboard .> UC_Metrics : <<include>>
+
+@enduml
