@@ -1,10 +1,53 @@
-HELP.md
+# =========================
+# Build
+# =========================
 target/
-.mvn/wrapper/maven-wrapper.jar
+build/
 !**/src/main/**/target/
 !**/src/test/**/target/
+!**/src/main/**/build/
+!**/src/test/**/build/
 
-### STS ###
+# =========================
+# Config (Spring Boot)
+# =========================
+application.properties
+application.yml
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+*.gz
+
+# =========================
+# Archives
+# =========================
+*.rar
+*.zip
+
+# =========================
+# Data
+# =========================
+src/main/data/
+
+# =========================
+# Template config (versionné)
+# =========================
+!application-example.properties
+
+# =========================
+# IntelliJ IDEA
+# =========================
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# =========================
+# STS / Eclipse
+# =========================
 .apt_generated
 .classpath
 .factorypath
@@ -13,22 +56,28 @@ target/
 .springBeans
 .sts4-cache
 
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-
-### NetBeans ###
+# =========================
+# NetBeans
+# =========================
 /nbproject/private/
 /nbbuild/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
+# =========================
+# VS Code
+# =========================
 .vscode/
+
+# =========================
+# OS / system files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Misc
+# =========================
+HELP.md
 comparaison_pfecoding.docx
