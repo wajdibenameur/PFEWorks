@@ -17,6 +17,7 @@ public class ZabbixProblemMapper {
                 .source(dto.getSource() != null ? dto.getSource() : "Zabbix")
                 .eventId(dto.getEventId())
                 .ip(dto.getIp())
+                .port(dto.getPort())
                 .build();
     }
 
@@ -29,6 +30,8 @@ public class ZabbixProblemMapper {
                 .active(entity.getActive())
                 .source(entity.getSource())
                 .eventId(entity.getEventId())
+                .ip(entity.getIp())
+                .port(entity.getPort()) //  AJOUTÉ
                 .build();
     }
 

@@ -10,6 +10,8 @@ public class ZabbixProblemDTO {
 
     private String problemId;
     private String host;
+    private Integer port;
+    private String hostId;
     private String description;
     private String severity;
     private Boolean active;

@@ -18,6 +18,6 @@ public class ZabbixProblemStartupListener {
     @EventListener(ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("Déclenchement de la collecte des problèmes Zabbix au démarrage");
-        zabbixProblemService.collectProblems();
+        zabbixProblemService.fetchActiveProblems();
     }
 }
