@@ -7,7 +7,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tn.iteam.adapter.zabbix.ZabbixClient;
 import tn.iteam.domain.MonitoredHost;
-import tn.iteam.repository.MonitoredHostRepository;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -19,7 +18,6 @@ public class ZabbixSyncService {
     private static final Logger log = LoggerFactory.getLogger(ZabbixSyncService.class);
 
     private final ZabbixClient client;
-    private final MonitoredHostRepository repo;
 
     private Map<String, MonitoredHost> cache;
     private long lastLoad = 0;
@@ -58,7 +56,6 @@ public class ZabbixSyncService {
             }
         }
 
-        repo.saveAll(map.values());
         cache = map;
         lastLoad = System.currentTimeMillis();
 

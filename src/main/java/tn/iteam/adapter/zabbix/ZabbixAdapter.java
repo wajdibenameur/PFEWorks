@@ -8,44 +8,40 @@ import org.springframework.stereotype.Component;
 import tn.iteam.domain.MonitoredHost;
 import tn.iteam.domain.ZabbixMetric;
 import tn.iteam.dto.ServiceStatusDTO;
+import tn.iteam.dto.ZabbixMetricDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.service.ZabbixSyncService;
 
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Component
 @RequiredArgsConstructor
 public class ZabbixAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(ZabbixAdapter.class);
+
     private final ZabbixSyncService syncService;
     private final ZabbixClient zabbixClient;
 
     // ================== HOSTS ==================
     public List<ServiceStatusDTO> fetchAll() {
-        log.info(" Fetching hosts from Zabbix");
 
         Map<String, MonitoredHost> hostMap = syncService.loadHostMap();
-        log.info("Hosts Map loaded: {}", hostMap); //  AJOUT
 
         JsonNode hosts = zabbixClient.getHosts();
         List<ServiceStatusDTO> dtos = new ArrayList<>();
 
-        if (hosts == null || !hosts.isArray() || hosts.isEmpty()) {
-            log.warn("No hosts received from Zabbix");
-            return dtos;
-        }
+        if (hosts == null || !hosts.isArray()) return dtos;
 
         for (JsonNode hostNode : hosts) {
+
             ServiceStatusDTO dto = new ServiceStatusDTO();
+
             dto.setSource("ZABBIX");
             dto.setName(hostNode.path("host").asText("UNKNOWN"));
             dto.setIp(extractMainIp(hostNode));
-            dto.setPort(80);
+            dto.setPort(extractMainPort(hostNode)); //  FIX
             dto.setProtocol("HTTP");
             dto.setStatus(hostNode.path("status").asInt(1) == 0 ? "UP" : "DOWN");
             dto.setCategory("SERVER");
@@ -53,7 +49,6 @@ public class ZabbixAdapter {
             dtos.add(dto);
         }
 
-        log.info(" {} hosts fetched from Zabbix", dtos.size());
         return dtos;
     }
 
@@ -66,80 +61,76 @@ public class ZabbixAdapter {
         return "IP_UNKNOWN";
     }
 
-    // ================== PROBLEMS ==================
-    public List<ZabbixProblemDTO> fetchProblems() {
-        log.info(" Fetching problems from Zabbix");
-
-        Map<String, MonitoredHost> hostMap = syncService.loadHostMap();
-        log.info("Hosts Map loaded: {}", hostMap); //  AJOUT
-
-        JsonNode problemsJson = zabbixClient.getAllActiveProblems();
-        List<ZabbixProblemDTO> dtos = new ArrayList<>();
-
-        if (problemsJson == null || !problemsJson.isArray() || problemsJson.isEmpty()) {
-            log.warn("No problems received or invalid response");
-            return dtos;
-        }
-
-        for (JsonNode node : problemsJson) {
-            log.debug("Processing problem node: {}", node.toPrettyString()); //  AJOUT
-            try {
-                ZabbixProblemDTO dto = mapToDTO(node, hostMap);
-                if (dto != null) {
-                    dtos.add(dto);
-                    log.debug("Mapped DTO: {}", dto); //  AJOUT
-                } else {
-                    log.warn("Skipped problem node (no host found): {}", node.toPrettyString());
-                }
-            } catch (Exception e) {
-                log.error("Error mapping problem node to DTO: {}", node.toPrettyString(), e);
+    private Integer extractMainPort(JsonNode hostNode) {
+        for (JsonNode iface : hostNode.path("interfaces")) {
+            if (iface.path("main").asInt(0) == 1) {
+                return iface.path("port").asInt(10050);
             }
         }
+        return 10050;
+    }
 
-        log.info(" {} problems fetched from Zabbix", dtos.size());
+    // ================== PROBLEMS ==================
+    public List<ZabbixProblemDTO> fetchProblems() {
+
+        JsonNode hosts = zabbixClient.getHosts();
+        Map<String, JsonNode> hostMapById = buildHostMap(hosts);
+
+        JsonNode problemsJson = zabbixClient.getAllActiveProblems();
+
+        List<ZabbixProblemDTO> dtos = new ArrayList<>();
+
+        if (problemsJson == null || !problemsJson.isArray()) return dtos;
+
+        for (JsonNode node : problemsJson) {
+
+            JsonNode hostRefs = node.path("hosts");
+            if (!hostRefs.isArray() || hostRefs.isEmpty()) continue;
+
+            String hostId = hostRefs.get(0).path("hostid").asText();
+
+            JsonNode fullHost = hostMapById.get(hostId);
+
+            if (fullHost == null) continue;
+
+            dtos.add(
+                    ZabbixProblemDTO.builder()
+                            .problemId(node.path("eventid").asText())
+                            .host(fullHost.path("host").asText())
+                            .description(node.path("name").asText())
+                            .severity(node.path("severity").asText())
+                            .active(true)
+                            .source("Zabbix")
+                            .eventId(node.path("eventid").asLong())
+                            .ip(extractMainIp(fullHost))
+                            .port(extractMainPort(fullHost)) //  FIX
+                            .build()
+            );
+        }
+
         return dtos;
     }
 
-    private ZabbixProblemDTO mapToDTO(JsonNode node, Map<String, MonitoredHost> hostMap) {
-        JsonNode hosts = node.path("hosts");
-        if (hosts.isEmpty()) {
-            log.warn("Problem node has no hosts: {}", node.toPrettyString());
-            return null;
+    private Map<String, JsonNode> buildHostMap(JsonNode hosts) {
+        Map<String, JsonNode> map = new HashMap<>();
+
+        if (hosts != null && hosts.isArray()) {
+            for (JsonNode h : hosts) {
+                map.put(h.path("hostid").asText(), h);
+            }
         }
 
-        JsonNode hostNode = hosts.get(0);
-        String hostId = hostNode.path("hostid").asText(null);
-        String hostName = hostNode.path("host").asText("UNKNOWN");
-        String ip = null;
-
-        if (hostId != null && hostMap.containsKey(hostId)) {
-            ip = hostMap.get(hostId).getIp();
-        } else {
-            log.warn("HostId {} not found in hostMap", hostId);
-        }
-
-        return ZabbixProblemDTO.builder()
-                .problemId(node.path("eventid").asText("UNKNOWN"))
-                .host(hostName)
-                .description(node.path("name").asText("No description"))
-                .severity(node.path("severity").asText("UNKNOWN"))
-                .active(true)
-                .source("Zabbix")
-                .eventId(node.path("eventid").asLong(0))
-                .ip(ip)
-                .build();
+        return map;
     }
 
     // ================== METRICS ==================
-    public List<ZabbixMetric> fetchMetricsAndMap() {
-
-        log.info("===== ZABBIX METRICS COLLECTION START =====");
+    public List<ZabbixMetricDTO> fetchMetricsAndMap() {
 
         Map<String, MonitoredHost> hostMap = syncService.loadHostMap();
-        log.info("Hosts Map loaded: {}", hostMap); //  AJOUT
 
-        List<ZabbixMetric> metrics = new ArrayList<>();
+        List<ZabbixMetricDTO> metrics = new ArrayList<>();
         JsonNode hosts = zabbixClient.getHosts();
+
         if (hosts == null || !hosts.isArray()) return metrics;
 
         List<String> hostIds = new ArrayList<>();
@@ -151,12 +142,12 @@ public class ZabbixAdapter {
             hostNames.put(id, host.path("host").asText());
         }
 
-        // UN SEUL item.get pour tous les hosts
         JsonNode items = zabbixClient.getItemsByHosts(hostIds);
         if (items == null || !items.isArray()) return metrics;
 
         List<String> floatItems = new ArrayList<>();
         List<String> intItems = new ArrayList<>();
+
         Map<String, String> itemKeyMap = new HashMap<>();
         Map<String, String> itemHostMap = new HashMap<>();
 
@@ -165,8 +156,6 @@ public class ZabbixAdapter {
             String itemId = item.path("itemid").asText();
             int valueType = item.path("value_type").asInt();
             String hostId = item.path("hostid").asText();
-
-            if (!key.contains("cpu") && !key.contains("memory") && !key.contains("net")) continue;
 
             itemKeyMap.put(itemId, key);
             itemHostMap.put(itemId, hostId);
@@ -188,12 +177,11 @@ public class ZabbixAdapter {
             mapHistory(metrics, history, itemKeyMap, itemHostMap, hostNames, hostMap);
         }
 
-        log.info("Collected {} metrics", metrics.size());
         return metrics;
     }
 
     private void mapHistory(
-            List<ZabbixMetric> metrics,
+            List<ZabbixMetricDTO> metrics,
             JsonNode history,
             Map<String, String> itemKeyMap,
             Map<String, String> itemHostMap,
@@ -203,18 +191,20 @@ public class ZabbixAdapter {
         if (history == null || !history.isArray()) return;
 
         for (JsonNode point : history) {
+
             String itemId = point.path("itemid").asText();
             String hostId = itemHostMap.get(itemId);
+            if (hostId == null) continue;
             MonitoredHost mh = hostMap.get(hostId);
 
             metrics.add(
-                    ZabbixMetric.builder()
+                    ZabbixMetricDTO.builder()
                             .hostId(hostId)
-                            .hostName(hostNames.get(hostId))
+                            .hostName(hostNames.getOrDefault(hostId, "UNKNOWN"))
                             .ip(mh != null ? mh.getIp() : null)
                             .itemId(itemId)
                             .metricKey(itemKeyMap.get(itemId))
-                            .value(point.path("value").asDouble())
+                            .value(point.path("value").asText().isEmpty() ? 0.0 : point.path("value").asDouble())
                             .timestamp(point.path("clock").asLong())
                             .build()
             );

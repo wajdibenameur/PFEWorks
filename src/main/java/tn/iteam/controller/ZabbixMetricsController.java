@@ -1,11 +1,15 @@
 package tn.iteam.controller;
 
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tn.iteam.domain.ZabbixMetric;
+import tn.iteam.dto.ZabbixMetricDTO;
+import tn.iteam.mapper.ZabbixMetricMapper;
 import tn.iteam.service.ZabbixMetricsService;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/zabbix/metrics")
@@ -13,10 +17,12 @@ import tn.iteam.service.ZabbixMetricsService;
 public class ZabbixMetricsController {
 
     private final ZabbixMetricsService service;
+    private final ZabbixMetricMapper metricMapper;
 
-    @PostMapping("/collect")
-    public ResponseEntity<String> collect() {
-        service.collectMetrics();
-        return ResponseEntity.ok("ZABBIX METRICS COLLECTED");
+    @GetMapping
+    public List<ZabbixMetricDTO> getMetrics() {
+        return service.getAllMetrics().stream()
+                .map(metricMapper::toDTO)
+                .toList();
     }
 }

@@ -1,83 +1,58 @@
-# =========================
-# Build
-# =========================
-target/
-build/
-!**/src/main/**/target/
-!**/src/test/**/target/
-!**/src/main/**/build/
-!**/src/test/**/build/
+# =====================
+# CONFIG (DO NOT COMMIT SECRETS)
+# =====================
+src/main/resources/application.properties
+src/main/resources/application.yml
 
-# =========================
-# Config (Spring Boot)
-# =========================
-application.properties
-application.yml
-
-# =========================
-# Logs
-# =========================
-logs/
+# =====================
+# LOGS
+# =====================
+/logs/
 *.log
 *.gz
 
-# =========================
-# Archives
-# =========================
-*.rar
-*.zip
+# =====================
+# BUILD OUTPUT
+# =====================
+target/
+build/
+dist/
+nbdist/
+nbbuild/
 
-# =========================
-# Data
-# =========================
-src/main/data/
+# =====================
+# MAVEN
+# =====================
+.mvn/wrapper/maven-wrapper.jar
 
-# =========================
-# Template config (versionné)
-# =========================
-!application-example.properties
-
-# =========================
-# IntelliJ IDEA
-# =========================
+# =====================
+# IDE - IntelliJ / Eclipse / STS
+# =====================
 .idea/
-*.iws
 *.iml
+*.iws
 *.ipr
-
-# =========================
-# STS / Eclipse
-# =========================
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-# =========================
-# NetBeans
-# =========================
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-
-# =========================
-# VS Code
-# =========================
 .vscode/
 
-# =========================
-# OS / system files
-# =========================
-.DS_Store
-Thumbs.db
+.classpath
+.project
+.settings/
+.springBeans
+.apt_generated
 
-# =========================
-# Misc
-# =========================
-HELP.md
-comparaison_pfecoding.docx
+# =====================
+# NETBEANS
+# =====================
+/nbproject/
+
+# =====================
+# DOCS
+# =====================
+*.docx
+
+
+
+frontend/node_modules
+frontend/.env
+frontend/dist
+frontend/build

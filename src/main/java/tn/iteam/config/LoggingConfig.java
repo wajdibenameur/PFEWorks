@@ -13,6 +13,6 @@ public class LoggingConfig {
 
     @PostConstruct
     public void init() {
-        log.info(" Logging system initialized");
+        log.info("📝 Logging system initialized");
     }
 }

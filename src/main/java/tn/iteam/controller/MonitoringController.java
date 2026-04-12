@@ -3,11 +3,8 @@ package tn.iteam.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import tn.iteam.domain.ServiceStatus;
-import tn.iteam.repository.ServiceStatusRepository;
+import tn.iteam.domain.ApiResponse;
 import tn.iteam.service.MonitoringService;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/monitoring")
@@ -15,39 +12,60 @@ import java.util.List;
 public class MonitoringController {
 
     private final MonitoringService monitoringService;
-    private final ServiceStatusRepository repository;
 
-    // Endpoint global si besoin
     @PostMapping("/collect")
-    public ResponseEntity<String> collectAll() {
+    public ResponseEntity<ApiResponse<Void>> collectAll() {
+
         monitoringService.collectAll();
-        return ResponseEntity.ok("ALL SERVICES COLLECTED");
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("ALL SERVICES COLLECTED")
+                        .source("SYSTEM")
+                        .build()
+        );
     }
 
-    // Endpoint spécifique Zabbix
     @PostMapping("/collect/zabbix")
-    public ResponseEntity<String> collectZabbix() {
+    public ResponseEntity<ApiResponse<Void>> collectZabbix() {
+
         monitoringService.collectZabbix();
-        return ResponseEntity.ok("ZABBIX COLLECTED");
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("ZABBIX COLLECTED")
+                        .source("SYSTEM")
+                        .build()
+        );
     }
 
-    // Endpoint spécifique Observium
     @PostMapping("/collect/observium")
-    public ResponseEntity<String> collectObservium() {
+    public ResponseEntity<ApiResponse<Void>> collectObservium() {
+
         monitoringService.collectObservium();
-        return ResponseEntity.ok("OBSERVIUM COLLECTED");
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("OBSERVIUM COLLECTED")
+                        .source("SYSTEM")
+                        .build()
+        );
     }
 
-    // Endpoint spécifique Camera
     @PostMapping("/collect/camera")
-    public ResponseEntity<String> collectCamera() {
-        monitoringService.collectCamera();
-        return ResponseEntity.ok("CAMERA COLLECTED");
-    }
+    public ResponseEntity<ApiResponse<Void>> collectCamera() {
 
-    // Pour voir tous les services en base
-    @GetMapping
-    public List<ServiceStatus> all() {
-        return repository.findAll();
+        monitoringService.collectCamera();
+
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .success(true)
+                        .message("CAMERA COLLECTED")
+                        .source("SYSTEM")
+                        .build()
+        );
     }
 }
