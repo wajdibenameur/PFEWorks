@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tn.iteam.adapter.zabbix.ZabbixClient;
 import tn.iteam.domain.MonitoredHost;
+import tn.iteam.repository.MonitoredHostRepository;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -18,6 +19,7 @@ public class ZabbixSyncService {
     private static final Logger log = LoggerFactory.getLogger(ZabbixSyncService.class);
 
     private final ZabbixClient client;
+    private final MonitoredHostRepository monitoredHostRepository;
 
     private Map<String, MonitoredHost> cache;
     private long lastLoad = 0;
@@ -36,11 +38,13 @@ public class ZabbixSyncService {
                 String hostId = h.path("hostid").asText();
                 String name = h.path("host").asText();
                 String ip = "IP_UNKNOWN";
+                Integer port = null;
 
                 if (h.has("interfaces") && h.get("interfaces").size() > 0) {
                     for (JsonNode iface : h.get("interfaces")) {
                         if (iface.path("main").asInt(0) == 1) {
                             ip = iface.path("ip").asText("IP_UNKNOWN");
+                            port = iface.path("port").isMissingNode() ? null : iface.path("port").asInt();
                         }
                     }
                 }
@@ -49,8 +53,22 @@ public class ZabbixSyncService {
                         .hostId(hostId)
                         .name(name)
                         .ip(ip)
+                        .port(port)
                         .source("ZABBIX")
                         .build();
+
+                final String finalName = name;
+                final String finalIp = ip;
+                final Integer finalPort = port;
+
+                monitoredHostRepository.findFirstByHostIdAndSourceOrderByIdDesc(hostId, "ZABBIX")
+                        .map(existing -> {
+                            existing.setName(finalName);
+                            existing.setIp(finalIp);
+                            existing.setPort(finalPort);
+                            return monitoredHostRepository.save(existing);
+                        })
+                        .orElseGet(() -> monitoredHostRepository.save(host));
 
                 map.put(hostId, host);
             }
