@@ -1,9 +1,6 @@
 package tn.iteam.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.*;
 
 @Data
@@ -25,4 +22,11 @@ public class ZabbixProblem {
     private Integer port;
     private String source = "Zabbix";
     private Long eventId;
+
+    @Column(name = "started_at")
+    private Long startedAt;
+
+    @Column(name = "resolved_at")
+    private Long resolvedAt;
+    private String status;
 }

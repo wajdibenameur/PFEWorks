@@ -1,9 +1,6 @@
 package tn.iteam.domain;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
+import jakarta.persistence.*;
 import lombok.*;
 
 @Data
@@ -11,6 +8,12 @@ import lombok.*;
 @AllArgsConstructor
 @Builder
 @Entity
+@Table(
+        name = "zabbix_metric",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_zabbix_metric_host_item", columnNames = {"hostId", "itemId"})
+        }
+)
 public class ZabbixMetric {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
