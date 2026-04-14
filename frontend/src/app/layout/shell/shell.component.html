@@ -1,0 +1,21 @@
+<div
+  class="shell"
+  [class.drawer-open]="drawerOpen()"
+  [class.sidebar-collapsed]="sidebarCollapsed()"
+  [class.overlay-mode]="overlayMode()"
+>
+  <app-navbar (toggleSidebar)="toggleSidebar()"></app-navbar>
+  <div class="body">
+    <app-sidebar
+      [collapsed]="sidebarCollapsed()"
+      [drawerOpen]="drawerOpen()"
+      [overlayMode]="overlayMode()"
+      (closeRequested)="closeDrawer()"
+    ></app-sidebar>
+    <main class="content">
+      <router-outlet></router-outlet>
+    </main>
+    <app-user-panel></app-user-panel>
+  </div>
+  <div class="backdrop" (click)="closeDrawer()"></div>
+</div>

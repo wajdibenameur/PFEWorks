@@ -1,0 +1,109 @@
+.user-panel {
+  background: rgba(8, 16, 28, 0.95);
+  border-left: 1px solid #1c2a40;
+  min-height: 100%;
+  padding: 1.2rem 1rem;
+  width: 240px;
+}
+
+.user-card {
+  background: rgba(14, 24, 40, 0.85);
+  border: 1px solid #23344f;
+  border-radius: 12px;
+  padding: 0.8rem;
+}
+
+.user-card h3 {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.username {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.role,
+.status {
+  color: #9fb3d4;
+  font-size: 0.78rem;
+  margin: 0.15rem 0 0;
+}
+
+.connection,
+.quick-info {
+  margin-top: 1rem;
+}
+
+.connection h4,
+.quick-info h4 {
+  font-size: 0.8rem;
+  margin: 0 0 0.4rem;
+}
+
+.pill {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+}
+
+.status-connected {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.status-connecting {
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+}
+
+.status-disconnected,
+.status-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.quick-cards {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.quick-card {
+  background: rgba(10, 18, 32, 0.9);
+  border: 1px solid #21324c;
+  border-radius: 10px;
+  padding: 0.5rem;
+}
+
+.quick-card p {
+  color: #9eb0cf;
+  font-size: 0.72rem;
+  margin: 0;
+}
+
+.quick-card strong {
+  font-size: 0.84rem;
+}
+
+.logout {
+  border: 1px solid #2b3d5c;
+  border-radius: 999px;
+  background: transparent;
+  color: #dbe5f6;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  margin-top: 1.2rem;
+  padding: 0.4rem 0.85rem;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .user-panel {
+    border-left: none;
+    border-top: 1px solid #1c2a40;
+    width: 100%;
+  }
+}

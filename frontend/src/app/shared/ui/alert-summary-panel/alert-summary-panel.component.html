@@ -1,0 +1,29 @@
+<article class="panel">
+  <header class="panel-header">
+    <h2>Problem and Alert Summary</h2>
+    <small>Built from active Zabbix problems</small>
+  </header>
+
+  <div class="severity-grid">
+    <div class="severity-card critical">Critical: {{ summary().critical }}</div>
+    <div class="severity-card high">High: {{ summary().high }}</div>
+    <div class="severity-card medium">Medium: {{ summary().medium }}</div>
+    <div class="severity-card warning">Warning: {{ summary().warning }}</div>
+    <div class="severity-card info">Info: {{ summary().info }}</div>
+    <div class="severity-card total">Total: {{ summary().totalAlerts }}</div>
+  </div>
+
+  <h3 class="sub-title">Most affected hosts</h3>
+  @if (!topAlertHosts().length) {
+    <p class="empty">No active alert host currently returned.</p>
+  } @else {
+    <ul class="host-list">
+      @for (host of topAlertHosts(); track host.id) {
+        <li>
+          <span>{{ host.hostname }}</span>
+          <strong>{{ host.problemCount }} alerts</strong>
+        </li>
+      }
+    </ul>
+  }
+</article>

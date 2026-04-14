@@ -1,0 +1,28 @@
+<article class="panel">
+  <header class="panel-header">
+    <h2>Source Health</h2>
+    <small>Per-source availability snapshot</small>
+  </header>
+
+  <div class="source-list">
+    @for (item of items(); track item.source) {
+      <div class="source-card">
+        <div class="title-row">
+          <h3>{{ item.source }}</h3>
+          <span class="coverage coverage-{{ item.coverage }}">
+            {{ item.coverage === 'REAL' ? 'Real' : 'Coverage Missing' }}
+          </span>
+        </div>
+
+        <p class="kpi">
+          Total:
+          <strong>{{ item.total ?? '-' }}</strong>
+          |
+          Down:
+          <strong>{{ item.down ?? '-' }}</strong>
+        </p>
+        <p class="note">{{ item.note }}</p>
+      </div>
+    }
+  </div>
+</article>
