@@ -3,26 +3,30 @@ package tn.iteam.domain;
 import jakarta.persistence.*;
 import lombok.*;
 
-@Entity
-@Table(name = "zabbix_problem")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Entity
 public class ZabbixProblem {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    @Column(nullable = false)
-    private String problemId; // identifiant unique Zabbix
+    private Long id;          // clé technique (DB)
+    private String problemId;
+    private Long hostId;
     private String host;
     private String description;
     private String severity;
     private Boolean active;
     private String ip;
     private Integer port;
-    private String source = "Zabbix"; // pour référence
+    private String source = "Zabbix";
+    private Long eventId;
 
-    private Long eventId; // optionnel selon besoin
+    @Column(name = "started_at")
+    private Long startedAt;
+
+    @Column(name = "resolved_at")
+    private Long resolvedAt;
+    private String status;
 }

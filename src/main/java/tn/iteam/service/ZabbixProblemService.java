@@ -4,16 +4,15 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import tn.iteam.adapter.zabbix.ZabbixAdapter;
 import tn.iteam.domain.ZabbixProblem;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.mapper.ZabbixProblemMapper;
 import tn.iteam.repository.ZabbixProblemRepository;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-
+import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
@@ -21,51 +20,56 @@ public class ZabbixProblemService {
 
     private static final Logger log = LoggerFactory.getLogger(ZabbixProblemService.class);
 
-    private final ZabbixAdapter zabbixAdapter;        // ← injection de l'adaptateur
+    private final ZabbixAdapter zabbixAdapter;
+    private final ZabbixProblemMapper mapper;
     private final ZabbixProblemRepository repository;
-    private final ZabbixProblemMapper mapper;         // ← pour convertir DTO → entité
 
-    @Transactional
-    public void collectProblems() {
-        log.info("===== Collecte des problèmes via l'adaptateur Zabbix =====");
+    public List<ZabbixProblemDTO> fetchActiveProblems() {
+        log.info("Fetching active Zabbix problems");
 
         try {
-            // 1. Récupérer les DTO depuis l'adaptateur
             List<ZabbixProblemDTO> dtos = zabbixAdapter.fetchProblems();
-            log.info("DTOs reçus : {}", dtos.size());
+            List<ZabbixProblem> entitiesToSave = new ArrayList<>();
 
-            // 2. Convertir en entités (via mapper)
-            List<ZabbixProblem> problems = dtos.stream()
-                    .map(mapper::toEntity)
-                    .toList();
+            for (ZabbixProblemDTO dto : dtos) {
+                if (dto.getProblemId() == null || dto.getProblemId().isBlank()) {
+                    log.warn("Skipping problem with empty problemId: {}", dto);
+                    continue;
+                }
 
-            // 3. Synchronisation en base avec AtomicInteger
-            AtomicInteger inserted = new AtomicInteger(0);
-            AtomicInteger updated = new AtomicInteger(0);
+                ZabbixProblem entity = mapper.toEntity(dto);
+                List<ZabbixProblem> existingList = repository.findAllByProblemId(entity.getProblemId());
 
-            for (ZabbixProblem p : problems) {
-                repository.findByProblemId(p.getProblemId())
-                        .ifPresentOrElse(existing -> {
-                            existing.setActive(p.getActive());
-                            existing.setHost(p.getHost());
-                            existing.setDescription(p.getDescription());
-                            existing.setSeverity(p.getSeverity());
-                            repository.save(existing);
-                            updated.incrementAndGet();
-                        }, () -> {
-                            repository.save(p);
-                            inserted.incrementAndGet();
-                        });
+                if (!existingList.isEmpty()) {
+                    ZabbixProblem existing = existingList.get(0);
+
+                    existing.setHostId(entity.getHostId());
+                    existing.setHost(entity.getHost());
+                    existing.setDescription(entity.getDescription());
+                    existing.setSeverity(entity.getSeverity());
+                    existing.setActive(entity.getActive());
+                    existing.setSource(entity.getSource());
+                    existing.setEventId(entity.getEventId());
+                    existing.setIp(entity.getIp());
+                    existing.setPort(entity.getPort());
+
+                    entitiesToSave.add(existing);
+
+                    if (existingList.size() > 1) {
+                        log.warn("Duplicate problemId={} found in DB: {} rows", entity.getProblemId(), existingList.size());
+                    }
+                } else {
+                    entitiesToSave.add(entity);
+                }
             }
 
-            log.info("Synchronisation terminée : {} insérés, {} mis à jour",
-                    inserted.get(), updated.get());
+            repository.saveAll(entitiesToSave);
+            log.info("Saved {} Zabbix problems", entitiesToSave.size());
 
+            return dtos;
         } catch (Exception e) {
-            log.error("Erreur lors de la collecte des problèmes", e);
+            log.error("Error fetching Zabbix problems", e);
+            return List.of();
         }
-    }
-    public List<ZabbixProblem> allActiveProblems() {
-        return repository.findByActiveTrue();
     }
 }

@@ -5,8 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-
-import tn.iteam.client.ZkBioClient;
+import tn.iteam.client.ZkBioClientX;
 import tn.iteam.domain.ZkBioProblem;
 import tn.iteam.dto.ZkBioProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
@@ -22,7 +21,7 @@ public class ZkBioAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(ZkBioAdapter.class);
 
-    private final ZkBioClient zkBioClient;
+    private final ZkBioClientX zkBioClient;
     private final ZkBioMapper zkBioMapper;
     private final ZkBioProblemRepository problemRepository;
 

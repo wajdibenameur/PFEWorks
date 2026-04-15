@@ -1,0 +1,39 @@
+:host {
+  display: block;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 16% 12%, rgba(56, 189, 248, 0.18), transparent 32%),
+    radial-gradient(circle at 84% 24%, rgba(16, 185, 129, 0.12), transparent 30%),
+    #0b1220;
+  color: #e7eef9;
+}
+
+.dashboard {
+  display: grid;
+  gap: 0.95rem;
+  margin: 0;
+  max-width: 100%;
+  width: 100%;
+  padding: 1.6rem 1.1rem 2.4rem;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 0.95rem;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+.error-banner {
+  background: rgba(220, 38, 38, 0.18);
+  border: 1px solid rgba(248, 113, 113, 0.5);
+  border-radius: 12px;
+  color: #fecaca;
+  font-size: 0.84rem;
+  padding: 0.7rem 0.85rem;
+}
+
+@media (max-width: 1050px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}

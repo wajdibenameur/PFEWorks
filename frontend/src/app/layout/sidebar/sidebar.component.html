@@ -1,0 +1,45 @@
+<aside
+  class="sidebar"
+  [class.collapsed]="collapsed()"
+  [class.drawer]="overlayMode()"
+  [class.drawer-open]="drawerOpen()"
+>
+  @if (overlayMode()) {
+    <button type="button" class="close-btn" (click)="closeRequested.emit()">Close</button>
+  }
+  <nav>
+    <ul>
+      @for (item of items(); track item.label) {
+        <li class="nav-item">
+          @if (item.route) {
+            <a
+              [routerLink]="item.route"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: true }"
+            >
+              {{ displayLabel(item.label) }}
+            </a>
+          } @else {
+            <span class="section-title">{{ displayLabel(item.label) }}</span>
+          }
+
+          @if (item.children?.length) {
+            <ul class="sub-nav">
+              @for (child of item.children; track child.label) {
+                <li>
+                  <a
+                    [routerLink]="child.route"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                  >
+                    {{ displayLabel(child.label) }}
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </li>
+      }
+    </ul>
+  </nav>
+</aside>

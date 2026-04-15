@@ -50,6 +50,7 @@ enum Permission {
 
 class Ticket {
   - title: String
+  - hostId: Long
   - description: String
   - creationDate: Date
   - status: TicketStatus

@@ -19,6 +19,6 @@ public class ZabbixMetricsStartupListener {
     @EventListener(ApplicationReadyEvent.class)
     public void onReady() {
         log.info("Triggering Zabbix metrics collection at startup");
-        service.collectMetrics();
+        service.fetchAndSaveMetrics();
     }
 }
