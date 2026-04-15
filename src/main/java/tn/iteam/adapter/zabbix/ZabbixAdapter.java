@@ -82,8 +82,10 @@ public class ZabbixAdapter {
 
     // ================== PROBLEMS ==================
     public List<ZabbixProblemDTO> fetchProblems() {
+        return fetchProblems(zabbixClient.getHosts());
+    }
 
-        JsonNode hosts = zabbixClient.getHosts();
+    public List<ZabbixProblemDTO> fetchProblems(JsonNode hosts) {
         Map<String, JsonNode> hostMapById = buildHostMap(hosts);
 
         JsonNode problemsJson = zabbixClient.getAllActiveProblems();
@@ -184,11 +186,12 @@ public class ZabbixAdapter {
 
     // ================== METRICS ==================
     public List<ZabbixMetricDTO> fetchMetricsAndMap() {
+        return fetchMetricsAndMap(zabbixClient.getHosts());
+    }
 
-        Map<String, MonitoredHost> hostMap = syncService.loadHostMap();
-
+    public List<ZabbixMetricDTO> fetchMetricsAndMap(JsonNode hosts) {
+        Map<String, MonitoredHost> hostMap = syncService.loadHostMap(hosts);
         List<ZabbixMetricDTO> metrics = new ArrayList<>();
-        JsonNode hosts = zabbixClient.getHosts();
 
         if (hosts == null || !hosts.isArray()) return metrics;
 
