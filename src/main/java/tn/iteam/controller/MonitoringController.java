@@ -4,7 +4,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tn.iteam.domain.ApiResponse;
+import tn.iteam.dto.SourceAvailabilityDTO;
 import tn.iteam.service.MonitoringService;
+import tn.iteam.service.SourceAvailabilityService;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/monitoring")
@@ -12,6 +16,12 @@ import tn.iteam.service.MonitoringService;
 public class MonitoringController {
 
     private final MonitoringService monitoringService;
+    private final SourceAvailabilityService sourceAvailabilityService;
+
+    @GetMapping("/sources/health")
+    public List<SourceAvailabilityDTO> getSourceHealth() {
+        return sourceAvailabilityService.getAll();
+    }
 
     @PostMapping("/collect")
     public ResponseEntity<ApiResponse<Void>> collectAll() {

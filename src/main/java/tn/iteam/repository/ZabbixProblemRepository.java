@@ -11,4 +11,5 @@ public interface ZabbixProblemRepository extends JpaRepository<ZabbixProblem, Lo
 
     List<ZabbixProblem> findAllByProblemId(String problemId);
     List<ZabbixProblem> findByActiveTrue();
+    List<ZabbixProblem> findByActiveTrueAndSeverityIn(List<String> severities);
 }
