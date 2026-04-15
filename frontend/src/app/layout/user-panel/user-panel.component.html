@@ -1,0 +1,33 @@
+<aside class="user-panel">
+  <div class="user-card">
+    <h3>User</h3>
+    <p class="username">{{ fallbackUser.username }}</p>
+    <p class="role">{{ fallbackUser.role }}</p>
+    <p class="status">{{ fallbackUser.status }}</p>
+  </div>
+
+  <div class="connection">
+    <h4>Connection</h4>
+    <span class="pill" [class]="statusClass()">{{ connectionStatus() }}</span>
+  </div>
+
+  <div class="quick-info">
+    <h4>Quick Info</h4>
+    <div class="quick-cards">
+      <div class="quick-card">
+        <p>Session</p>
+        <strong>Placeholder</strong>
+      </div>
+      <div class="quick-card">
+        <p>Last login</p>
+        <strong>--</strong>
+      </div>
+      <div class="quick-card">
+        <p>Notifications</p>
+        <strong>0</strong>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" class="logout">Logout</button>
+</aside>

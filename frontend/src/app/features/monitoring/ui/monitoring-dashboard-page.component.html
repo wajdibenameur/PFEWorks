@@ -1,0 +1,28 @@
+<main class="dashboard">
+  <app-collection-control-bar
+    [actions]="collectionActions"
+    [isLoading]="facade.isLoading()"
+    [lastRefresh]="facade.lastRefresh()"
+    (refreshClicked)="facade.loadSnapshot()"
+    (collectClicked)="triggerCollection($event)"
+  ></app-collection-control-bar>
+
+  @if (facade.errorMessage(); as message) {
+    <section class="error-banner">
+      {{ message }}
+    </section>
+  }
+
+  <app-global-kpi-strip [kpi]="facade.kpi()"></app-global-kpi-strip>
+
+  <section class="overview-grid">
+    <app-source-health-panel [items]="facade.sourceHealth()"></app-source-health-panel>
+    <app-alert-summary-panel
+      [summary]="facade.problemSummary()"
+      [topAlertHosts]="facade.topAlertHosts()"
+    ></app-alert-summary-panel>
+  </section>
+
+  <app-asset-inventory-table [assets]="facade.assets()"></app-asset-inventory-table>
+  <app-data-coverage-notice [items]="facade.dataCoverage()"></app-data-coverage-notice>
+</main>

@@ -12,5 +12,8 @@ public interface ServiceStatusRepository
 
     Optional<ServiceStatus> findBySourceAndIpAndPort(
             String source, String ip, Integer port);
+
+    Optional<ServiceStatus> findBySourceAndNameAndIp(
+            String source, String name, String ip);
 }
 

@@ -40,7 +40,7 @@ public class MonitoringService {
     public void collectAll() {
         collectZabbix();
         collectObservium();
-          collectZkBio();
+        collectZkBio();
         collectCamera();
     }
 
@@ -49,9 +49,9 @@ public class MonitoringService {
         try {
             List<ServiceStatusDTO> dtos = zabbixAdapter.fetchAll();
             saveOrUpdateStatus(dtos);
-            log.info("📡 Collected {} Zabbix items", dtos.size());
+            log.info("Collected {} Zabbix items", dtos.size());
         } catch (Exception e) {
-            log.error("❌ Error collecting Zabbix data", e);
+            log.error("Error collecting Zabbix data", e);
         }
     }
 
@@ -62,9 +62,9 @@ public class MonitoringService {
             saveOrUpdateStatus(dtos);
 
             List<ObserviumProblemDTO> problems = observiumAdapter.fetchProblemsAndSave();
-            log.info("💻 Collected {} Observium items, {} problems", dtos.size(), problems.size());
+            log.info("Collected {} Observium items, {} problems", dtos.size(), problems.size());
         } catch (Exception e) {
-            log.error("❌ Error collecting Observium data", e);
+            log.error("Error collecting Observium data", e);
         }
     }
 
@@ -75,9 +75,9 @@ public class MonitoringService {
             saveOrUpdateStatus(dtos);
 
             List<ZkBioProblemDTO> problems = zkbioAdapter.fetchProblemsAndSave();
-            log.info("🔐 Collected {} ZKBio items, {} problems", dtos.size(), problems.size());
+            log.info("Collected {} ZKBio items, {} problems", dtos.size(), problems.size());
         } catch (Exception e) {
-            log.error("❌ Error collecting ZKBio data", e);
+            log.error("Error collecting ZKBio data", e);
         }
     }
 
@@ -86,23 +86,32 @@ public class MonitoringService {
         try {
             List<ServiceStatusDTO> dtos = cameraAdapter.fetchAll("192.168.11");
             saveOrUpdateStatus(dtos);
-            log.info("📷 Collected {} Camera items", dtos.size());
+            log.info("Collected {} Camera items", dtos.size());
         } catch (Exception e) {
-            log.error("❌ Error collecting Camera data", e);
+            log.error("Error collecting Camera data", e);
         }
     }
 
     private void saveOrUpdateStatus(List<ServiceStatusDTO> dtos) {
         for (ServiceStatusDTO dto : dtos) {
             try {
-                statusRepository.findBySourceAndIpAndPort(dto.getSource(), dto.getIp(), dto.getPort())
-                        .map(existing -> {
-                            statusMapper.updateEntity(existing, dto);
-                            return statusRepository.save(existing);
+                var existing = java.util.Optional.<tn.iteam.domain.ServiceStatus>empty();
+                if (dto.getSource() != null && dto.getName() != null && dto.getIp() != null) {
+                    existing = statusRepository.findBySourceAndNameAndIp(
+                            dto.getSource(), dto.getName(), dto.getIp());
+                } else if (dto.getSource() != null && dto.getIp() != null && dto.getPort() != null) {
+                    existing = statusRepository.findBySourceAndIpAndPort(
+                            dto.getSource(), dto.getIp(), dto.getPort());
+                }
+
+                existing
+                        .map(entity -> {
+                            statusMapper.updateEntity(entity, dto);
+                            return statusRepository.save(entity);
                         })
                         .orElseGet(() -> statusRepository.save(statusMapper.toEntity(dto)));
             } catch (Exception e) {
-                log.error("❌ Error saving status for {}:{} - {}", dto.getIp(), dto.getPort(), e.getMessage());
+                log.error("Error saving status for {}:{} - {}", dto.getIp(), dto.getPort(), e.getMessage());
             }
         }
     }

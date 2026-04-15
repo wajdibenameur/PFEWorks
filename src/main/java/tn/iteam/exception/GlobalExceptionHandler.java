@@ -1,47 +1,54 @@
 package tn.iteam.exception;
 
-import org.springframework.http.HttpStatus;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import tn.iteam.domain.ApiResponse;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+import tn.iteam.dto.ApiErrorResponse;
 
-@ControllerAdvice
+import java.time.Instant;
+
+@RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(ZabbixConnectionException.class)
-    public ResponseEntity<ApiResponse<Void>> handleZabbixException(ZabbixConnectionException ex) {
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
+    @ExceptionHandler(IntegrationException.class)
+    public ResponseEntity<ApiErrorResponse> handleIntegrationException(
+            IntegrationException ex,
+            HttpServletRequest request
+    ) {
+        if (ex instanceof IntegrationTimeoutException || ex instanceof IntegrationUnavailableException) {
+            log.warn("Integration error from {}: {}", ex.getSource(), ex.getMessage());
+        } else {
+            log.error("Integration error from {}: {}", ex.getSource(), ex.getMessage(), ex);
+        }
+
+        return ResponseEntity.status(ex.getHttpStatus())
+                .body(ApiErrorResponse.builder()
+                        .timestamp(Instant.now())
+                        .status(ex.getHttpStatus().value())
+                        .errorCode(ex.getErrorCode())
                         .message(ex.getMessage())
-                        .errorCode("ZABBIX_DOWN")
-                        .source("ZABBIX")
-                        .build());
-    }
-
-    @ExceptionHandler(ObserviumConnectionException.class)
-    public ResponseEntity<ApiResponse<Void>> handleObserviumException(ObserviumConnectionException ex) {
-
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .message(ex.getMessage())
-                        .errorCode("OBSERVIUM_DOWN")
-                        .source("OBSERVIUM")
+                        .source(ex.getSource())
+                        .path(request.getRequestURI())
                         .build());
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleAllExceptions(Exception ex) {
+    public ResponseEntity<ApiErrorResponse> handleAllExceptions(Exception ex, HttpServletRequest request) {
+        log.error("Unhandled exception", ex);
 
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.<Void>builder()
-                        .success(false)
-                        .message("Internal server error")
+        return ResponseEntity.internalServerError()
+                .body(ApiErrorResponse.builder()
+                        .timestamp(Instant.now())
+                        .status(500)
                         .errorCode("INTERNAL_ERROR")
+                        .message("Internal server error")
                         .source("SYSTEM")
+                        .path(request.getRequestURI())
                         .build());
     }
 }

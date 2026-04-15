@@ -18,4 +18,12 @@ public class ZabbixProblemDTO {
     private String source;
     private Long eventId;
     private String ip;
+
+    private Long startedAt;
+    private String startedAtFormatted;
+
+    private Long resolvedAt;
+    private String resolvedAtFormatted;
+
+    private String status; // ACTIVE / RESOLVED
 }

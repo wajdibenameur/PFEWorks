@@ -1,12 +1,12 @@
 package tn.iteam.exception;
 
-public class ObserviumConnectionException extends RuntimeException {
+public class ObserviumConnectionException extends IntegrationUnavailableException {
 
     public ObserviumConnectionException(String message) {
-        super(message);
+        super("OBSERVIUM", message);
     }
 
     public ObserviumConnectionException(String message, Throwable cause) {
-        super(message, cause);
+        super("OBSERVIUM", message, cause);
     }
 }

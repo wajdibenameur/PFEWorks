@@ -1,0 +1,65 @@
+<article class="panel">
+  <header class="panel-header">
+    <h2>Monitored Assets Inventory</h2>
+    <small>Hostnames, addresses, IPs, status, source, category</small>
+  </header>
+
+  <div class="filters">
+    <input
+      type="text"
+      placeholder="Search hostname, address, IP, source..."
+      (input)="updateFilterText($event)"
+    />
+
+    <select (change)="updateStatusFilter($event)">
+      <option value="ALL">Status: All</option>
+      <option value="UP">Status: Up</option>
+      <option value="DOWN">Status: Down</option>
+      <option value="UNKNOWN">Status: Unknown</option>
+    </select>
+
+    <select (change)="updateCategoryFilter($event)">
+      <option value="ALL">Category: All</option>
+      <option value="SERVER">Server</option>
+      <option value="PRINTER">Printer</option>
+      <option value="CAMERA">Camera</option>
+      <option value="ACCESS_CONTROL">Access Control</option>
+      <option value="UNKNOWN">Unknown</option>
+    </select>
+  </div>
+
+  @if (!filteredAssets().length) {
+    <p class="empty">No asset matches current filters.</p>
+  } @else {
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>Address</th>
+            <th>IP</th>
+            <th>Source</th>
+            <th>Category</th>
+            <th>Status</th>
+            <th>Alerts</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (asset of filteredAssets(); track asset.id) {
+            <tr>
+              <td>{{ asset.hostname }}</td>
+              <td>{{ asset.address }}</td>
+              <td>{{ asset.ip }}</td>
+              <td>{{ asset.source }}</td>
+              <td>{{ asset.category }}</td>
+              <td>
+                <span class="status status-{{ asset.status }}">{{ asset.status }}</span>
+              </td>
+              <td>{{ asset.problemCount }}</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  }
+</article>
