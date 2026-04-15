@@ -18,6 +18,6 @@ public class ZabbixProblemController {
 
     @GetMapping("/active")
     public List<ZabbixProblemDTO> allActive() {
-        return service.fetchActiveProblems();
+        return service.getPersistedFilteredActiveProblems();
     }
 }
