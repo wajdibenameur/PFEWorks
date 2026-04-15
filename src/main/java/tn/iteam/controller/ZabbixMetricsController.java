@@ -21,7 +21,7 @@ public class ZabbixMetricsController {
 
     @GetMapping
     public List<ZabbixMetricDTO> getMetrics() {
-        return service.getAllMetrics().stream()
+        return service.getPersistedMetricsSnapshot().stream()
                 .map(metricMapper::toDTO)
                 .toList();
     }

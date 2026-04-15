@@ -3,6 +3,8 @@ package tn.iteam.service;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import tn.iteam.adapter.camera.CameraAdapter;
@@ -12,6 +14,7 @@ import tn.iteam.adapter.zkbio.ZkBioAdapter;
 import tn.iteam.dto.ObserviumProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
+import tn.iteam.exception.IntegrationException;
 import tn.iteam.mapper.ServiceStatusMapper;
 import tn.iteam.repository.ObserviumProblemRepository;
 import tn.iteam.repository.ServiceStatusRepository;
@@ -32,16 +35,19 @@ public class MonitoringService {
 
     private final ServiceStatusRepository statusRepository;
     private final ServiceStatusMapper statusMapper;
+    @Qualifier("taskExecutor")
+    private final TaskExecutor taskExecutor;
+    private final SourceAvailabilityService availabilityService;
 
     private final ZkBioProblemRepository zkRepo;
     private final ObserviumProblemRepository obsRepo;
 
     @Async
     public void collectAll() {
-        collectZabbix();
-        collectObservium();
-        collectZkBio();
-        collectCamera();
+        taskExecutor.execute(this::collectZabbix);
+        taskExecutor.execute(this::collectObservium);
+        taskExecutor.execute(this::collectZkBio);
+        taskExecutor.execute(this::collectCamera);
     }
 
     @Async
@@ -50,8 +56,13 @@ public class MonitoringService {
             List<ServiceStatusDTO> dtos = zabbixAdapter.fetchAll();
             saveOrUpdateStatus(dtos);
             log.info("Collected {} Zabbix items", dtos.size());
+            availabilityService.markAvailable("ZABBIX");
+        } catch (IntegrationException e) {
+            availabilityService.markUnavailable("ZABBIX", e.getMessage());
+            log.warn("Zabbix collection failed: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Error collecting Zabbix data", e);
+            availabilityService.markUnavailable("ZABBIX", e.getMessage());
+            log.error("Unexpected error collecting Zabbix data", e);
         }
     }
 
@@ -63,8 +74,13 @@ public class MonitoringService {
 
             List<ObserviumProblemDTO> problems = observiumAdapter.fetchProblemsAndSave();
             log.info("Collected {} Observium items, {} problems", dtos.size(), problems.size());
+            availabilityService.markAvailable("OBSERVIUM");
+        } catch (IntegrationException e) {
+            availabilityService.markUnavailable("OBSERVIUM", e.getMessage());
+            log.warn("Observium collection failed: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Error collecting Observium data", e);
+            availabilityService.markUnavailable("OBSERVIUM", e.getMessage());
+            log.error("Unexpected error collecting Observium data", e);
         }
     }
 
@@ -76,8 +92,13 @@ public class MonitoringService {
 
             List<ZkBioProblemDTO> problems = zkbioAdapter.fetchProblemsAndSave();
             log.info("Collected {} ZKBio items, {} problems", dtos.size(), problems.size());
+            availabilityService.markAvailable("ZKBIO");
+        } catch (IntegrationException e) {
+            availabilityService.markUnavailable("ZKBIO", e.getMessage());
+            log.warn("ZKBio collection failed: {}", e.getMessage());
         } catch (Exception e) {
-            log.error("Error collecting ZKBio data", e);
+            availabilityService.markUnavailable("ZKBIO", e.getMessage());
+            log.error("Unexpected error collecting ZKBio data", e);
         }
     }
 
@@ -87,8 +108,10 @@ public class MonitoringService {
             List<ServiceStatusDTO> dtos = cameraAdapter.fetchAll("192.168.11");
             saveOrUpdateStatus(dtos);
             log.info("Collected {} Camera items", dtos.size());
+            availabilityService.markAvailable("CAMERA");
         } catch (Exception e) {
-            log.error("Error collecting Camera data", e);
+            availabilityService.markUnavailable("CAMERA", e.getMessage());
+            log.error("Unexpected error collecting Camera data", e);
         }
     }
 

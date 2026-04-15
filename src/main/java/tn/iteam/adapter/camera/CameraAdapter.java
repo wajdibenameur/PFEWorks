@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tn.iteam.dto.ServiceStatusDTO;
+import tn.iteam.service.SourceAvailabilityService;
 
 import java.net.Socket;
 import java.util.ArrayList;
@@ -14,35 +15,45 @@ public class CameraAdapter {
 
     private static final Logger log = LoggerFactory.getLogger(CameraAdapter.class);
 
-    // fetchAll() pour uniformité avec Zabbix/Observium/ZkBio
-    public List<ServiceStatusDTO> fetchAll(String subnet) {
+    private final SourceAvailabilityService availabilityService;
 
-        log.info("📷 Scanning cameras in subnet {}", subnet);
+    public CameraAdapter(SourceAvailabilityService availabilityService) {
+        this.availabilityService = availabilityService;
+    }
+
+    public List<ServiceStatusDTO> fetchAll(String subnet) {
+        log.info("Scanning cameras in subnet {}", subnet);
         List<ServiceStatusDTO> list = new ArrayList<>();
 
-        for (int i = 1; i <= 254; i++) {  // scan complet du subnet
-            String ip = subnet + "." + i;
+        try {
+            for (int i = 1; i <= 254; i++) {
+                String ip = subnet + "." + i;
 
-            if (isPortOpen(ip, 554)) {
-                ServiceStatusDTO dto = new ServiceStatusDTO();
-                dto.setSource("CAMERA");
-                dto.setName("Camera-" + ip); // plus tard ONVIF/Dahua SDK pour vrai nom
-                dto.setIp(ip);
-                dto.setPort(554);
-                dto.setProtocol("RTSP");
-                dto.setStatus("UP");
-                dto.setCategory("CAMERA");
-                list.add(dto);
+                if (isPortOpen(ip, 554)) {
+                    ServiceStatusDTO dto = new ServiceStatusDTO();
+                    dto.setSource("CAMERA");
+                    dto.setName("Camera-" + ip);
+                    dto.setIp(ip);
+                    dto.setPort(554);
+                    dto.setProtocol("RTSP");
+                    dto.setStatus("UP");
+                    dto.setCategory("CAMERA");
+                    list.add(dto);
 
-                log.info("📸 Camera detected at {}", ip);
+                    log.info("Camera detected at {}", ip);
+                }
             }
-        }
 
-        if (list.isEmpty()) {
-            log.warn("⚠️ No cameras detected in subnet {}", subnet);
+            availabilityService.markAvailable("CAMERA");
+            if (list.isEmpty()) {
+                log.warn("No cameras detected in subnet {}", subnet);
+            }
+            return list;
+        } catch (Exception e) {
+            availabilityService.markUnavailable("CAMERA", e.getMessage());
+            log.error("Unexpected error while scanning cameras in subnet {}", subnet, e);
+            return list;
         }
-
-        return list;
     }
 
     private boolean isPortOpen(String ip, int port) {

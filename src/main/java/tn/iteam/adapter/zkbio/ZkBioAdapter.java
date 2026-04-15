@@ -7,8 +7,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import tn.iteam.client.ZkBioClientX;
 import tn.iteam.domain.ZkBioProblem;
-import tn.iteam.dto.ZkBioProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
+import tn.iteam.dto.ZkBioProblemDTO;
+import tn.iteam.exception.IntegrationException;
 import tn.iteam.mapper.ZkBioMapper;
 import tn.iteam.repository.ZkBioProblemRepository;
 
@@ -25,11 +26,8 @@ public class ZkBioAdapter {
     private final ZkBioMapper zkBioMapper;
     private final ZkBioProblemRepository problemRepository;
 
-    /**
-     * Vérifie l'état du serveur ZKBio
-     */
     public List<ServiceStatusDTO> fetchAll() {
-        log.info(" Checking ZKBio server");
+        log.info("Checking ZKBio server");
 
         List<ServiceStatusDTO> dtos = new ArrayList<>();
         ServiceStatusDTO dto = new ServiceStatusDTO();
@@ -40,29 +38,35 @@ public class ZkBioAdapter {
         dto.setProtocol("HTTPS");
         dto.setCategory("ACCESS");
         dto.setStatus("DOWN");
+
         try {
             if (zkBioClient.getDevices() != null) {
                 dto.setStatus("UP");
-                log.info(" ZKBio Server is UP");
+                log.info("ZKBio Server is UP");
             } else {
-                log.warn(" ZKBio Server devices API returned null");
+                log.warn("ZKBio Server devices API returned null");
             }
+        } catch (IntegrationException e) {
+            log.warn("ZKBio unavailable: {}", e.getMessage());
         } catch (Exception e) {
-            log.error(" Error connecting to ZKBio Server", e);
+            log.error("Unexpected error connecting to ZKBio Server", e);
         }
 
         dtos.add(dto);
         return dtos;
     }
 
-    /**
-     * Récupère les alertes/problèmes depuis ZKBio et les transforme en DTO
-     */
     public List<ZkBioProblemDTO> fetchProblems() {
-        log.info(" Fetching problems from ZKBio");
+        log.info("Fetching problems from ZKBio");
 
-        JsonNode alerts = zkBioClient.getAlerts();
         List<ZkBioProblemDTO> dtos = new ArrayList<>();
+        JsonNode alerts;
+        try {
+            alerts = zkBioClient.getAlerts();
+        } catch (IntegrationException e) {
+            log.warn("ZKBio problems unavailable: {}", e.getMessage());
+            return dtos;
+        }
 
         if (alerts == null || !alerts.isArray()) {
             log.warn("No alerts received from ZKBio");
@@ -73,19 +77,22 @@ public class ZkBioAdapter {
             dtos.add(zkBioMapper.mapAlertToDTO(alertNode));
         }
 
-        log.info(" {} problems fetched from ZKBio", dtos.size());
+        log.info("{} problems fetched from ZKBio", dtos.size());
         return dtos;
     }
 
-    /**
-     * Récupère les alertes et les enregistre dans la base (uniquement les actifs)
-     */
     public List<ZkBioProblemDTO> fetchProblemsAndSave() {
-        log.info(" Fetching problems from ZKBio and saving to DB");
+        log.info("Fetching problems from ZKBio and saving to DB");
 
-        JsonNode alerts = zkBioClient.getAlerts();
         List<ZkBioProblemDTO> dtos = new ArrayList<>();
         List<ZkBioProblem> entities = new ArrayList<>();
+        JsonNode alerts;
+        try {
+            alerts = zkBioClient.getAlerts();
+        } catch (IntegrationException e) {
+            log.warn("ZKBio problems unavailable during persistence: {}", e.getMessage());
+            return dtos;
+        }
 
         if (alerts == null || !alerts.isArray()) {
             log.warn("No alerts received from ZKBio");
@@ -96,8 +103,7 @@ public class ZkBioAdapter {
             ZkBioProblemDTO dto = zkBioMapper.mapAlertToDTO(alertNode);
             dtos.add(dto);
 
-            // On ne garde que les problèmes actifs
-            if(dto.isActive()) {
+            if (dto.isActive()) {
                 ZkBioProblem entity = ZkBioProblem.builder()
                         .problemId(dto.getProblemId())
                         .device(dto.getHost())
@@ -106,14 +112,13 @@ public class ZkBioAdapter {
                         .source(dto.getSource())
                         .eventId(dto.getEventId())
                         .build();
-
                 entities.add(entity);
             }
         }
 
-        if(!entities.isEmpty()) {
+        if (!entities.isEmpty()) {
             problemRepository.saveAll(entities);
-            log.info(" {} problems saved to ZKBio database", entities.size());
+            log.info("{} problems saved to ZKBio database", entities.size());
         }
 
         return dtos;
