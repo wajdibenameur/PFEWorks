@@ -5,6 +5,11 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.SourceAvailabilityDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
+import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.service.MonitoringService;
 import tn.iteam.service.SourceAvailabilityService;
 
@@ -16,7 +21,23 @@ import java.util.List;
 public class MonitoringController {
 
     private final MonitoringService monitoringService;
+    private final MonitoringAggregationService aggregationService;
     private final SourceAvailabilityService sourceAvailabilityService;
+
+    @GetMapping("/problems")
+    public UnifiedMonitoringResponse<List<UnifiedMonitoringProblemDTO>> getProblems() {
+        return aggregationService.getProblems((String) null);
+    }
+
+    @GetMapping("/metrics")
+    public UnifiedMonitoringResponse<List<UnifiedMonitoringMetricDTO>> getMetrics() {
+        return aggregationService.getMetrics((String) null);
+    }
+
+    @GetMapping("/hosts")
+    public UnifiedMonitoringResponse<List<UnifiedMonitoringHostDTO>> getHosts() {
+        return aggregationService.getHosts((String) null);
+    }
 
     @GetMapping("/sources/health")
     public List<SourceAvailabilityDTO> getSourceHealth() {
@@ -78,4 +99,5 @@ public class MonitoringController {
                         .build()
         );
     }
+
 }

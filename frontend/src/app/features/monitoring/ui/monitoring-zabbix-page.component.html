@@ -1,0 +1,437 @@
+<main class="workspace">
+  <app-collection-control-bar
+    [actions]="collectionActions"
+    [isLoading]="facade.isLoading()"
+    [lastRefresh]="facade.lastRefresh()"
+    (refreshClicked)="facade.loadSnapshot()"
+    (collectClicked)="triggerCollection($event)"
+  ></app-collection-control-bar>
+
+  @if (facade.errorMessage(); as message) {
+    <section class="error-banner">
+      {{ message }}
+    </section>
+  }
+
+  <section class="hero-panel">
+    <div class="hero-copy">
+      <p class="eyebrow">Dedicated Zabbix Workspace</p>
+      <h1>Zabbix Host Intelligence</h1>
+      <p>
+        Drill into hosts, review active incidents, inspect key performance indicators, and compare ML risk with
+        anomaly signals without leaving the current monitoring shell.
+      </p>
+    </div>
+
+    <div class="status-pill" [class.unavailable]="facade.overview().availability === 'UNAVAILABLE'">
+      <strong>{{ facade.overview().availability }}</strong>
+      <span>{{ facade.overview().availabilityNote }}</span>
+    </div>
+  </section>
+
+  <section class="overview-grid">
+    <article class="kpi-card">
+      <span>Total Hosts</span>
+      <strong>{{ facade.overview().totalHosts }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Total Metrics</span>
+      <strong>{{ facade.overview().totalMetrics }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Total Problems</span>
+      <strong>{{ facade.overview().totalProblems }}</strong>
+    </article>
+    <article class="kpi-card alert">
+      <span>Active Problems</span>
+      <strong>{{ facade.overview().activeProblems }}</strong>
+    </article>
+  </section>
+
+  @if (facade.isLoading() && !facade.hostRows().length) {
+    <section class="panel loading-panel">
+      <p>Loading Zabbix workspace...</p>
+    </section>
+  } @else {
+    <section class="main-grid">
+      <section class="primary-column">
+        <article class="panel hosts-panel">
+          <header class="panel-header sticky-head">
+            <div>
+              <h2>Hosts</h2>
+              <small>Choose a host to inspect performance, incidents, and AI-based signals</small>
+            </div>
+            <span class="subtext">{{ facade.hostRows().length }} visible</span>
+          </header>
+
+          <div class="filters filters-single">
+            <input
+              type="text"
+              placeholder="Search host, hostId, IP..."
+              [value]="facade.hostSearch()"
+              (input)="updateHostSearch($event)"
+            />
+          </div>
+
+          @if (!facade.hostRows().length) {
+            <p class="empty">No Zabbix host is currently available.</p>
+          } @else {
+            <div class="host-table-wrap">
+              <table class="host-table">
+                <thead>
+                  <tr>
+                    <th>Host Name</th>
+                    <th>IP Address</th>
+                    <th>Last Data Timestamp</th>
+                    <th>Active Incidents</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (host of facade.hostRows(); track host.key) {
+                    <tr
+                      class="host-row"
+                      [class.selected]="facade.selectedHost()?.key === host.key"
+                      (click)="selectHost(host.key)"
+                    >
+                      <td>
+                        <div class="host-name-cell">
+                          <strong>{{ host.hostName }}</strong>
+                          <span class="badge risk-{{ host.statusTone }}">
+                            {{ host.riskStatus }}
+                          </span>
+                        </div>
+                        @if (host.hostId) {
+                          <div class="subtext">Host ID: {{ host.hostId }}</div>
+                        }
+                      </td>
+                      <td>{{ host.ip || 'IP_UNKNOWN' }}</td>
+                      <td>
+                        @if (hasValidTimestamp(host.latestTimestamp)) {
+                          {{ host.latestTimestamp * 1000 | date: 'short' }}
+                        } @else {
+                          <span class="subtext">No recent timestamp</span>
+                        }
+                      </td>
+                      <td>
+                        <strong>{{ host.activeProblems }}</strong>
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        </article>
+
+        <article class="panel detail-panel">
+          <header class="panel-header">
+            <div>
+              <h2>Host Details</h2>
+              <small>Main investigation area for the selected host</small>
+            </div>
+          </header>
+
+          @if (facade.selectedHost(); as host) {
+            <div class="health-banner">
+              <div>
+                <p class="health-title">Overall Health</p>
+                <small>
+                  Combines active incidents, anomaly detection, and risk prediction into one quick status.
+                </small>
+              </div>
+              <span
+                class="badge health-{{ healthTone(hostHealthStatus(host.activeProblems, host.anomalyCount, facade.selectedHostPrediction()?.displayStatus ?? host.riskStatus)) }}"
+              >
+                {{ hostHealthStatus(host.activeProblems, host.anomalyCount, facade.selectedHostPrediction()?.displayStatus ?? host.riskStatus) }}
+              </span>
+            </div>
+
+            <section class="detail-summary">
+              <article class="detail-stat summary-card">
+                <span>Host Name</span>
+                <strong>{{ host.hostName }}</strong>
+                <small>{{ host.hostId ? 'Host ID: ' + host.hostId : 'Identifier unavailable' }}</small>
+              </article>
+              <article class="detail-stat summary-card">
+                <span>IP Address</span>
+                <strong>{{ host.ip || 'IP_UNKNOWN' }}</strong>
+                <small>
+                  @if (hasValidTimestamp(host.latestTimestamp)) {
+                    Last data received {{ host.latestTimestamp * 1000 | date: 'short' }}
+                  } @else {
+                    No recent data timestamp
+                  }
+                </small>
+              </article>
+              <article class="detail-stat summary-card">
+                <span>Active Incidents</span>
+                <strong>{{ host.activeProblems }}</strong>
+                <small>{{ host.totalProblems }} incidents tracked</small>
+              </article>
+              <article class="detail-stat summary-card">
+                <span>Risk Prediction</span>
+                @if (facade.selectedHostPrediction(); as prediction) {
+                  <strong>{{ prediction.displayStatus }}</strong>
+                  <small>
+                    Level {{ prediction.riskLevel }} / 3 • {{ prediction.probability | percent: '1.0-2' }}
+                  </small>
+                } @else {
+                  <strong>Unavailable</strong>
+                  <small>No risk prediction for this host</small>
+                }
+              </article>
+            </section>
+
+            <section class="detail-grid">
+              <article class="sub-panel metrics-panel">
+                <header class="sub-panel-header">
+                  <h3>Key Performance Indicators</h3>
+                  <small>CPU, memory, network, disk, and system health</small>
+                </header>
+                <p class="section-copy">
+                  Showing the most useful operational indicators first so an evaluator can understand system behavior quickly.
+                </p>
+
+                @if (!facade.selectedHostMetricGroups().length) {
+                  <p class="empty">No key indicator is available for the selected host.</p>
+                } @else {
+                  <div class="metric-groups">
+                    @for (group of facade.selectedHostMetricGroups(); track group.category) {
+                      <section class="metric-group">
+                        <div class="metric-group-head">
+                          <h4>{{ group.category }}</h4>
+                          <small>{{ group.metrics.length }} metrics</small>
+                        </div>
+                        <div class="metric-grid">
+                          @for (metric of visibleMetricsFor(group.category, group.metrics); track metric.metricKey) {
+                            <article class="metric-card">
+                              <div class="metric-title-row">
+                                <strong>{{ metric.label }}</strong>
+                                <span class="trend trend-{{ metric.trend }}">
+                                  {{ metric.trend === 'up' ? '↑' : metric.trend === 'down' ? '↓' : '→' }}
+                                </span>
+                              </div>
+                              <div class="metric-value">{{ metric.currentValue }}</div>
+                              <div class="metric-meta">
+                                <small>Previous value: {{ metric.previousValue ?? 'Only one point available' }}</small>
+                                <small>
+                                  @if (hasValidTimestamp(metric.timestamp)) {
+                                    {{ metric.timestamp * 1000 | date: 'short' }}
+                                  } @else {
+                                    No metric timestamp
+                                  }
+                                </small>
+                              </div>
+                            </article>
+                          }
+                        </div>
+                        @if (canExpandMetrics(group.category, group.metrics.length)) {
+                          <button type="button" class="ghost-button metrics-toggle" (click)="toggleMetrics(group.category)">
+                            Show {{ hiddenMetricsCount(group.category, group.metrics.length) }} more
+                          </button>
+                        } @else if (canCollapseMetrics(group.category, group.metrics.length)) {
+                          <button type="button" class="ghost-button metrics-toggle" (click)="toggleMetrics(group.category)">
+                            Show less
+                          </button>
+                        }
+                      </section>
+                    }
+                  </div>
+                }
+              </article>
+
+              <article class="sub-panel">
+                <header class="sub-panel-header">
+                  <h3>Recent Incidents</h3>
+                  <small>Operational incident tracking for this host</small>
+                </header>
+
+                @if (!facade.selectedHostProblems().length) {
+                  <p class="empty">No recent incident for the selected host.</p>
+                } @else {
+                  <ul class="stack-list problem-list">
+                    @for (problem of facade.selectedHostProblems().slice(0, 8); track problem.problemId) {
+                      <li [class.incident-active]="problem.statusLabel === 'ACTIVE'">
+                        <div class="problem-copy">
+                          <div class="problem-title-row">
+                            <span class="badge severity-{{ problem.severityTone }}">{{ problem.severityLabel }}</span>
+                            <strong>{{ problem.description }}</strong>
+                          </div>
+                          <div class="subtext problem-meta">
+                            Incident Title: {{ problem.description }}
+                          </div>
+                          <div class="subtext problem-meta">
+                            Host IP: {{ problem.ip || 'IP_UNKNOWN' }}
+                          </div>
+                          <div class="subtext problem-meta">
+                            Start Time:
+                            @if (hasValidTimestamp(problem.startedAt)) {
+                              {{ problem.startedAt * 1000 | date: 'short' }}
+                            } @else {
+                              Unknown start time
+                            }
+                          </div>
+                          <div class="subtext problem-meta">
+                            Resolution Time:
+                            @if (problem.statusLabel === 'ACTIVE') {
+                              Still active
+                            } @else if (hasValidTimestamp(problem.resolvedAt)) {
+                              {{ problem.resolvedAt * 1000 | date: 'short' }}
+                            } @else {
+                              No resolution time
+                            }
+                          </div>
+                          <div class="subtext problem-meta">
+                            Duration:
+                            <span class="duration-chip">{{ formatDuration(problem.startedAt, problem.resolvedAt, problem.statusLabel === 'ACTIVE') }}</span>
+                          </div>
+                        </div>
+                        <div class="right-meta status-only">
+                          <span class="badge status-{{ problem.statusLabel }}">{{ problem.statusLabel }}</span>
+                        </div>
+                      </li>
+                    }
+                  </ul>
+                }
+              </article>
+
+              <article class="sub-panel">
+                <header class="sub-panel-header">
+                  <h3>Risk Prediction</h3>
+                  <small>Severity 1-3 risk level for this host</small>
+                </header>
+                <p class="section-copy">
+                  This prediction estimates how likely the host is to degrade soon based on its recent monitoring history.
+                </p>
+
+                @if (facade.selectedHostPrediction(); as prediction) {
+                  <div class="insight-card">
+                    <span class="badge risk-{{ prediction.riskTone }}">{{ prediction.displayStatus }}</span>
+                    <strong>Risk {{ prediction.riskLevel }} / 3</strong>
+                    <p>
+                      Predicted class {{ prediction.prediction }} with
+                      {{ prediction.probability | percent: '1.0-2' }} confidence.
+                    </p>
+                    <small class="insight-copy">{{ prediction.explanation }}</small>
+                  </div>
+                } @else {
+                  <p class="empty">No risk prediction is available for this host.</p>
+                }
+              </article>
+
+              <article class="sub-panel">
+                <header class="sub-panel-header">
+                  <h3>Detected Anomalies</h3>
+                  <small>Highest Z-score anomalies on this host</small>
+                </header>
+
+                @if (!facade.selectedHostAnomalies().length) {
+                  <p class="empty">No anomaly is currently flagged for this host.</p>
+                } @else {
+                  <ul class="stack-list">
+                    @for (anomaly of facade.selectedHostAnomalies(); track anomaly.metricName) {
+                      <li>
+                        <div>
+                          <strong>{{ anomaly.metricName }}</strong>
+                          <div class="subtext">Host {{ anomaly.hostName }}</div>
+                        </div>
+                        <div class="right-meta">
+                          <span class="badge risk-risk">{{ anomaly.status }}</span>
+                          <strong>{{ anomaly.scorePercent }}%</strong>
+                        </div>
+                      </li>
+                    }
+                  </ul>
+                }
+              </article>
+            </section>
+          } @else {
+            <p class="empty">Select a host to inspect its metrics, incidents, and ML signals.</p>
+          }
+        </article>
+      </section>
+
+      <aside class="sidebar-column">
+        <article class="panel insights-panel sticky-sidebar">
+          <header class="panel-header">
+            <div>
+              <h2>Predictions & Anomalies</h2>
+              <small>Cross-host risk and anomaly ranking</small>
+            </div>
+          </header>
+
+          <section class="sub-panel compact-panel">
+            <header class="sub-panel-header">
+              <h3>Risk Predictions</h3>
+            </header>
+            @if (!facade.predictionRows().length) {
+              <p class="empty">No prediction data available.</p>
+            } @else {
+              <ul class="stack-list">
+                @for (prediction of facade.predictionRows().slice(0, 8); track prediction.hostid) {
+                  <li>
+                    <div>
+                      <strong>{{ prediction.hostName }}</strong>
+                      <div class="subtext">Host {{ prediction.hostid }}</div>
+                      <div class="subtext">{{ prediction.explanation }}</div>
+                    </div>
+                    <div class="right-meta">
+                      <span class="badge risk-{{ prediction.riskTone }}">{{ prediction.displayStatus }}</span>
+                      <strong>{{ prediction.probability | percent: '1.0-2' }}</strong>
+                    </div>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+
+          <section class="sub-panel compact-panel">
+            <header class="sub-panel-header">
+              <h3>Detected Anomalies</h3>
+            </header>
+            @if (!facade.anomalyRows().length) {
+              <p class="empty">No anomaly exceeds the detection threshold.</p>
+            } @else {
+              <ul class="stack-list">
+                @for (anomaly of facade.anomalyRows().slice(0, 8); track anomaly.hostid + ':' + anomaly.metricName) {
+                  <li>
+                    <div>
+                      <strong>{{ anomaly.hostName }}</strong>
+                      <div class="subtext">{{ anomaly.metricName }}</div>
+                    </div>
+                    <div class="right-meta">
+                      <span class="badge risk-risk">{{ anomaly.status }}</span>
+                      <strong>{{ anomaly.scorePercent }}%</strong>
+                    </div>
+                  </li>
+                }
+              </ul>
+            }
+          </section>
+
+          <section class="sub-panel compact-panel">
+            <header class="sub-panel-header">
+              <h3>Source Health</h3>
+            </header>
+            <div class="health-card">
+              <div>
+                <span class="label">Availability</span>
+                <strong>{{ facade.overview().availability }}</strong>
+              </div>
+              <p>{{ facade.overview().availabilityNote }}</p>
+            </div>
+
+            @if (facade.quality().warnings.length) {
+              <h3 class="sub-title">Data Quality</h3>
+              <ul class="stack-list compact">
+                @for (warning of facade.quality().warnings; track $index) {
+                  <li>{{ warning }}</li>
+                }
+              </ul>
+            }
+          </section>
+        </article>
+      </aside>
+    </section>
+  }
+</main>

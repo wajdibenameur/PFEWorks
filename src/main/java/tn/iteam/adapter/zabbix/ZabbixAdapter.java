@@ -11,12 +11,16 @@ import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.dto.ZabbixMetricDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.service.ZabbixSyncService;
+import tn.iteam.util.MonitoringConstants;
 
-import java.time.Instant;
-import java.util.*;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 @Component
 @RequiredArgsConstructor
 public class ZabbixAdapter {
@@ -24,38 +28,57 @@ public class ZabbixAdapter {
     private static final Logger log = LoggerFactory.getLogger(ZabbixAdapter.class);
     private static final int HISTORY_BATCH_SIZE = 50;
     private static final long HISTORY_WINDOW_SECONDS = 60;
+    private static final int DEFAULT_MAIN_INTERFACE_FLAG = 1;
+    private static final int DEFAULT_HOST_STATUS = 1;
+    private static final int DEFAULT_ZABBIX_PORT = 10050;
+    private static final int RESOLVED_AT_ZERO = 0;
+    private static final String INTERFACES_FIELD = "interfaces";
+    private static final String HOSTS_FIELD = "hosts";
+    private static final String OBJECT_ID_FIELD = "objectid";
+    private static final String RESOLVED_CLOCK_FIELD = "r_clock";
+    private static final String SEVERITY_FIELD = "severity";
+    private static final String VALUE_FIELD = "value";
+    private static final String KEY_FIELD = "key_";
+    private static final String ITEM_ID_FIELD = "itemid";
+    private static final String VALUE_TYPE_FIELD = "value_type";
+    private static final String LOG_PREFIX = "[ZABBIX] ";
+    private static final String FLOAT_BATCH_ERROR_TEMPLATE = LOG_PREFIX + "Failed float history batch size={}, skipping batch";
+    private static final String INT_BATCH_ERROR_TEMPLATE = LOG_PREFIX + "Failed int history batch size={}, skipping batch";
+    private static final String METRIC_COUNT_LOG_TEMPLATE = LOG_PREFIX + "Final mapped metrics count={}";
+    private static final String FETCHED_ITEMS_LOG_TEMPLATE = LOG_PREFIX + "Useful items fetched: float={}, int={}";
+    private static final String MISSING_CLOCK_LOG_TEMPLATE = "Problem event {} missing clock from Zabbix payload";
+    private static final String UNKNOWN_SOURCE_LABEL = MonitoringConstants.SOURCE_LABEL_ZABBIX;
+    private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ZabbixSyncService syncService;
     private final ZabbixClient zabbixClient;
 
-
     private String formatDate(long epoch) {
         return Instant.ofEpochSecond(epoch)
                 .atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+                .format(DATE_TIME_FORMATTER);
     }
+
     // ================== HOSTS ==================
     public List<ServiceStatusDTO> fetchAll() {
-
-        Map<String, MonitoredHost> hostMap = syncService.loadHostMap();
-
         JsonNode hosts = zabbixClient.getHosts();
         List<ServiceStatusDTO> dtos = new ArrayList<>();
 
-        if (hosts == null || !hosts.isArray()) return dtos;
+        if (hosts == null || !hosts.isArray()) {
+            return dtos;
+        }
 
         for (JsonNode hostNode : hosts) {
-
             ServiceStatusDTO dto = new ServiceStatusDTO();
-
-            dto.setSource("ZABBIX");
-            dto.setName(hostNode.path("host").asText("UNKNOWN"));
+            dto.setSource(MonitoringConstants.SOURCE_ZABBIX);
+            dto.setName(hostNode.path(MonitoringConstants.HOST_FIELD).asText(MonitoringConstants.UNKNOWN));
             dto.setIp(extractMainIp(hostNode));
-            dto.setPort(extractMainPort(hostNode)); //  FIX
-            dto.setProtocol("HTTP");
-            dto.setStatus(hostNode.path("status").asInt(1) == 0 ? "UP" : "DOWN");
-            dto.setCategory("SERVER");
-
+            dto.setPort(extractMainPort(hostNode));
+            dto.setProtocol(MonitoringConstants.PROTOCOL_HTTP);
+            dto.setStatus(hostNode.path(MonitoringConstants.STATUS_FIELD).asInt(DEFAULT_HOST_STATUS) == 0
+                    ? MonitoringConstants.STATUS_UP
+                    : MonitoringConstants.STATUS_DOWN);
+            dto.setCategory(MonitoringConstants.CATEGORY_SERVER);
             dtos.add(dto);
         }
 
@@ -63,21 +86,21 @@ public class ZabbixAdapter {
     }
 
     private String extractMainIp(JsonNode hostNode) {
-        for (JsonNode iface : hostNode.path("interfaces")) {
-            if (iface.path("main").asInt(0) == 1) {
-                return iface.path("ip").asText("IP_UNKNOWN");
+        for (JsonNode iface : hostNode.path(INTERFACES_FIELD)) {
+            if (iface.path(MonitoringConstants.MAIN_FIELD).asInt(0) == DEFAULT_MAIN_INTERFACE_FLAG) {
+                return iface.path(MonitoringConstants.IP_FIELD).asText(MonitoringConstants.IP_UNKNOWN);
             }
         }
-        return "IP_UNKNOWN";
+        return MonitoringConstants.IP_UNKNOWN;
     }
 
     private Integer extractMainPort(JsonNode hostNode) {
-        for (JsonNode iface : hostNode.path("interfaces")) {
-            if (iface.path("main").asInt(0) == 1) {
-                return iface.path("port").asInt(10050);
+        for (JsonNode iface : hostNode.path(INTERFACES_FIELD)) {
+            if (iface.path(MonitoringConstants.MAIN_FIELD).asInt(0) == DEFAULT_MAIN_INTERFACE_FLAG) {
+                return iface.path(MonitoringConstants.PORT_FIELD).asInt(DEFAULT_ZABBIX_PORT);
             }
         }
-        return 10050;
+        return DEFAULT_ZABBIX_PORT;
     }
 
     // ================== PROBLEMS ==================
@@ -88,24 +111,25 @@ public class ZabbixAdapter {
     public List<ZabbixProblemDTO> fetchProblems(JsonNode hosts) {
         Map<String, JsonNode> hostMapById = buildHostMap(hosts);
 
-        JsonNode problemsJson = zabbixClient.getAllActiveProblems();
+        JsonNode problemsJson = zabbixClient.getRecentProblems();
 
         List<ZabbixProblemDTO> dtos = new ArrayList<>();
 
-        if (problemsJson == null || !problemsJson.isArray()) return dtos;
+        if (problemsJson == null || !problemsJson.isArray()) {
+            return dtos;
+        }
 
         for (JsonNode node : problemsJson) {
-
             String hostId = null;
-            JsonNode hostRefs = node.path("hosts");
+            JsonNode hostRefs = node.path(HOSTS_FIELD);
             if (hostRefs.isArray() && !hostRefs.isEmpty()) {
-                hostId = hostRefs.get(0).path("hostid").asText(null);
+                hostId = hostRefs.get(0).path(MonitoringConstants.HOST_ID_FIELD).asText(null);
             }
             if (hostId == null || hostId.isBlank()) {
-                hostId = node.path("hostid").asText(null);
+                hostId = node.path(MonitoringConstants.HOST_ID_FIELD).asText(null);
             }
             if (hostId == null || hostId.isBlank()) {
-                JsonNode trigger = fetchTriggerById(node.path("objectid").asText(null));
+                JsonNode trigger = fetchTriggerById(node.path(OBJECT_ID_FIELD).asText(null));
                 hostId = extractHostIdFromTrigger(trigger);
             }
 
@@ -118,35 +142,32 @@ public class ZabbixAdapter {
                 }
             }
 
-            long startedAt = node.path("clock").asLong();
-            long resolvedAt = node.path("r_clock").asLong();
+            long startedAt = node.path(MonitoringConstants.CLOCK_FIELD).asLong(0L);
+            long resolvedAt = node.path(RESOLVED_CLOCK_FIELD).asLong(0L);
 
             boolean isResolved = resolvedAt > 0;
 
+            if (startedAt <= 0) {
+                log.warn(MISSING_CLOCK_LOG_TEMPLATE, node.path(MonitoringConstants.EVENT_ID_FIELD).asText());
+            }
+
             dtos.add(
                     ZabbixProblemDTO.builder()
-                            .problemId(node.path("eventid").asText())
-                            .host(fullHost != null ? fullHost.path("host").asText() : "UNKNOWN")
+                            .problemId(node.path(MonitoringConstants.EVENT_ID_FIELD).asText())
+                            .host(fullHost != null ? fullHost.path(MonitoringConstants.HOST_FIELD).asText() : MonitoringConstants.UNKNOWN)
                             .hostId(hostId)
-                            .description(node.path("name").asText())
-                            .severity(node.path("severity").asText())
+                            .description(node.path(MonitoringConstants.NAME_FIELD).asText())
+                            .severity(node.path(SEVERITY_FIELD).asText())
                             .active(!isResolved)
-                            .source("Zabbix")
-                            .eventId(node.path("eventid").asLong())
+                            .source(UNKNOWN_SOURCE_LABEL)
+                            .eventId(node.path(MonitoringConstants.EVENT_ID_FIELD).asLong())
                             .ip(fullHost != null ? extractMainIp(fullHost) : null)
                             .port(fullHost != null ? extractMainPort(fullHost) : null)
-
-                            //  DATE DEBUT
                             .startedAt(startedAt)
                             .startedAtFormatted(formatDate(startedAt))
-
-                            //  DATE FIN
-                            .resolvedAt(resolvedAt == 0 ? null : resolvedAt)
-                            .resolvedAtFormatted(resolvedAt == 0 ? null : formatDate(resolvedAt))
-
-                            //  STATUS
-                            .status(isResolved ? "RESOLVED" : "ACTIVE")
-
+                            .resolvedAt(resolvedAt == RESOLVED_AT_ZERO ? null : resolvedAt)
+                            .resolvedAtFormatted(resolvedAt == RESOLVED_AT_ZERO ? null : formatDate(resolvedAt))
+                            .status(isResolved ? MonitoringConstants.STATUS_RESOLVED : MonitoringConstants.STATUS_ACTIVE)
                             .build()
             );
         }
@@ -165,11 +186,11 @@ public class ZabbixAdapter {
         if (trigger == null || !trigger.isArray() || trigger.isEmpty()) {
             return null;
         }
-        JsonNode hosts = trigger.get(0).path("hosts");
+        JsonNode hosts = trigger.get(0).path(HOSTS_FIELD);
         if (!hosts.isArray() || hosts.isEmpty()) {
             return null;
         }
-        return hosts.get(0).path("hostid").asText(null);
+        return hosts.get(0).path(MonitoringConstants.HOST_ID_FIELD).asText(null);
     }
 
     private Map<String, JsonNode> buildHostMap(JsonNode hosts) {
@@ -177,7 +198,7 @@ public class ZabbixAdapter {
 
         if (hosts != null && hosts.isArray()) {
             for (JsonNode h : hosts) {
-                map.put(h.path("hostid").asText(), h);
+                map.put(h.path(MonitoringConstants.HOST_ID_FIELD).asText(), h);
             }
         }
 
@@ -193,19 +214,23 @@ public class ZabbixAdapter {
         Map<String, MonitoredHost> hostMap = syncService.loadHostMap(hosts);
         List<ZabbixMetricDTO> metrics = new ArrayList<>();
 
-        if (hosts == null || !hosts.isArray()) return metrics;
+        if (hosts == null || !hosts.isArray()) {
+            return metrics;
+        }
 
         List<String> hostIds = new ArrayList<>();
         Map<String, String> hostNames = new HashMap<>();
 
         for (JsonNode host : hosts) {
-            String id = host.path("hostid").asText();
+            String id = host.path(MonitoringConstants.HOST_ID_FIELD).asText();
             hostIds.add(id);
-            hostNames.put(id, host.path("host").asText());
+            hostNames.put(id, host.path(MonitoringConstants.HOST_FIELD).asText());
         }
 
         JsonNode items = zabbixClient.getItemsByHosts(hostIds);
-        if (items == null || !items.isArray()) return metrics;
+        if (items == null || !items.isArray()) {
+            return metrics;
+        }
 
         List<String> floatItems = new ArrayList<>();
         List<String> intItems = new ArrayList<>();
@@ -214,15 +239,15 @@ public class ZabbixAdapter {
         Map<String, String> itemHostMap = new HashMap<>();
 
         for (JsonNode item : items) {
-            String key = item.path("key_").asText();
+            String key = item.path(KEY_FIELD).asText();
 
             if (!isUsefulMetric(key)) {
                 continue;
             }
 
-            String itemId = item.path("itemid").asText();
-            int valueType = item.path("value_type").asInt();
-            String hostId = item.path("hostid").asText();
+            String itemId = item.path(ITEM_ID_FIELD).asText();
+            int valueType = item.path(VALUE_TYPE_FIELD).asInt();
+            String hostId = item.path(MonitoringConstants.HOST_ID_FIELD).asText();
 
             itemKeyMap.put(itemId, key);
             itemHostMap.put(itemId, hostId);
@@ -234,15 +259,15 @@ public class ZabbixAdapter {
         long now = Instant.now().getEpochSecond();
         long windowStart = now - HISTORY_WINDOW_SECONDS;
 
-        log.info("[ZABBIX] Useful items fetched: float={}, int={}", floatItems.size(), intItems.size());
+        log.info(FETCHED_ITEMS_LOG_TEMPLATE, floatItems.size(), intItems.size());
 
         if (!floatItems.isEmpty()) {
             for (List<String> batch : chunkList(floatItems, HISTORY_BATCH_SIZE)) {
                 try {
                     JsonNode history = zabbixClient.getHistoryBatch(batch, 0, windowStart, now);
                     mapHistory(metrics, history, itemKeyMap, itemHostMap, hostNames, hostMap);
-                } catch (Exception e) {
-                    log.error("[ZABBIX] Failed float history batch size={}, skipping batch", batch.size(), e);
+                } catch (RuntimeException e) {
+                    log.error(FLOAT_BATCH_ERROR_TEMPLATE, batch.size(), e);
                 }
             }
         }
@@ -252,13 +277,13 @@ public class ZabbixAdapter {
                 try {
                     JsonNode history = zabbixClient.getHistoryBatch(batch, 3, windowStart, now);
                     mapHistory(metrics, history, itemKeyMap, itemHostMap, hostNames, hostMap);
-                } catch (Exception e) {
-                    log.error("[ZABBIX] Failed int history batch size={}, skipping batch", batch.size(), e);
+                } catch (RuntimeException e) {
+                    log.error(INT_BATCH_ERROR_TEMPLATE, batch.size(), e);
                 }
             }
         }
 
-        log.info("[ZABBIX] Final mapped metrics count={}", metrics.size());
+        log.info(METRIC_COUNT_LOG_TEMPLATE, metrics.size());
         return metrics;
     }
 
@@ -279,25 +304,28 @@ public class ZabbixAdapter {
             Map<String, String> hostNames,
             Map<String, MonitoredHost> hostMap
     ) {
-        if (history == null || !history.isArray()) return;
+        if (history == null || !history.isArray()) {
+            return;
+        }
 
         for (JsonNode point : history) {
-
-            String itemId = point.path("itemid").asText();
+            String itemId = point.path(ITEM_ID_FIELD).asText();
             String hostId = itemHostMap.get(itemId);
-            if (hostId == null) continue;
+            if (hostId == null) {
+                continue;
+            }
             MonitoredHost mh = hostMap.get(hostId);
 
             metrics.add(
                     ZabbixMetricDTO.builder()
                             .hostId(hostId)
-                            .hostName(hostNames.getOrDefault(hostId, "UNKNOWN"))
+                            .hostName(hostNames.getOrDefault(hostId, MonitoringConstants.UNKNOWN))
                             .ip(mh != null ? mh.getIp() : null)
                             .port(mh != null ? mh.getPort() : null)
                             .itemId(itemId)
                             .metricKey(itemKeyMap.get(itemId))
-                            .value(point.path("value").asText().isEmpty() ? 0.0 : point.path("value").asDouble())
-                            .timestamp(point.path("clock").asLong())
+                            .value(point.path(VALUE_FIELD).asText().isEmpty() ? 0.0 : point.path(VALUE_FIELD).asDouble())
+                            .timestamp(point.path(MonitoringConstants.CLOCK_FIELD).asLong())
                             .build()
             );
         }

@@ -44,7 +44,7 @@ export class StompClientService {
   }
 
   private ensureConnected(): void {
-    if (this.client && this.client.active) {
+    if (this.client) {
       return;
     }
 
@@ -64,6 +64,12 @@ export class StompClientService {
     client.onStompError = (frame) => {
       const message = frame.headers['message'] ?? 'STOMP error';
       this.connectionStore.setError(message);
+      this.connected$.next(false);
+    };
+
+    client.onWebSocketError = () => {
+      this.connectionStore.setError('WebSocket transport error');
+      this.connected$.next(false);
     };
 
     client.onWebSocketClose = () => {

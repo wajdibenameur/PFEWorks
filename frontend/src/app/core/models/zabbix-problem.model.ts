@@ -9,4 +9,9 @@ export interface ZabbixProblem {
   source: string;
   eventId: number;
   ip: string;
+  startedAt?: number | null;
+  startedAtFormatted?: string | null;
+  resolvedAt?: number | null;
+  resolvedAtFormatted?: string | null;
+  status?: string | null;
 }
