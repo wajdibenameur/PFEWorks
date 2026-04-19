@@ -6,7 +6,7 @@ import tn.iteam.Enums.TicketStatus;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import tn.iteam.Enums.NotificationType;
+
 import tn.iteam.Enums.Priority;
 @Entity
 @Table(name = "tickets")
@@ -36,6 +36,7 @@ public class Ticket {
     private Boolean externalProblem; // Zabbix ou manuel
 
     private String resolution;
+    @Builder.Default
     private Boolean archived = false;
 
     @ManyToOne

@@ -1,6 +1,9 @@
-import { Injectable, computed, signal } from '@angular/core';
-import { forkJoin } from 'rxjs';
+import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { catchError, forkJoin, of } from 'rxjs';
+import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
+import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { ZabbixMetric } from '../../../core/models/zabbix-metric.model';
 import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
 import { MonitoringApiService } from '../data/monitoring-api.service';
@@ -27,12 +30,17 @@ interface HostAccumulator {
 
 @Injectable()
 export class MonitoringStore {
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly refreshTimeoutIds: number[] = [];
+  private realtimeBound = false;
+
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly lastRefresh = signal<Date | null>(null);
 
   readonly problems = signal<ZabbixProblem[]>([]);
   readonly metrics = signal<ZabbixMetric[]>([]);
+  readonly sourceAvailability = signal<SourceAvailability[]>([]);
 
   readonly assets = computed<GlobalAssetVm[]>(() =>
     this.buildAssets(this.problems(), this.metrics())
@@ -68,34 +76,54 @@ export class MonitoringStore {
 
   readonly sourceHealth = computed<SourceHealthVm[]>(() => {
     const zabbixAssets = this.assets().filter((asset) => asset.source === 'ZABBIX');
+    const availabilityMap = new Map(
+      this.sourceAvailability().map((entry) => [entry.source.toUpperCase(), entry])
+    );
+    const zabbixAvailability = availabilityMap.get('ZABBIX');
+    const observiumAvailability = availabilityMap.get('OBSERVIUM');
+    const cameraAvailability = availabilityMap.get('CAMERA');
+    const zkbioAvailability = availabilityMap.get('ZKBIO');
+
     return [
       {
         source: 'ZABBIX',
         total: zabbixAssets.length,
         down: zabbixAssets.filter((asset) => asset.status === 'DOWN').length,
         coverage: 'REAL',
-        note: 'Computed from /api/zabbix/active + /api/zabbix/metrics'
+        availability: this.mapAvailability(zabbixAvailability),
+        note: zabbixAvailability?.available === false
+          ? `Zabbix unavailable: ${zabbixAvailability.lastError ?? 'last persisted snapshot in use'}`
+          : 'Computed from /api/zabbix/active + /api/zabbix/metrics'
       },
       {
         source: 'OBSERVIUM',
         total: null,
         down: null,
         coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        note: 'Collection endpoint exists but no read endpoint is currently exposed'
+        availability: this.mapAvailability(observiumAvailability),
+        note: observiumAvailability?.available === false
+          ? `Observium unavailable: ${observiumAvailability.lastError ?? 'integration error'}`
+          : 'Collection endpoint exists but no read endpoint is currently exposed'
       },
       {
         source: 'CAMERA',
         total: null,
         down: null,
         coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        note: 'Collection endpoint exists but no read endpoint is currently exposed'
+        availability: this.mapAvailability(cameraAvailability),
+        note: cameraAvailability?.available === false
+          ? `Camera scan unavailable: ${cameraAvailability.lastError ?? 'scan error'}`
+          : 'Collection endpoint exists but no read endpoint is currently exposed'
       },
       {
         source: 'ZKBIO',
         total: null,
         down: null,
         coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        note: 'No read endpoint currently connected in frontend'
+        availability: this.mapAvailability(zkbioAvailability),
+        note: zkbioAvailability?.available === false
+          ? `ZKBio unavailable: ${zkbioAvailability.lastError ?? 'integration error'}`
+          : 'No read endpoint currently connected in frontend'
       }
     ];
   });
@@ -135,41 +163,88 @@ export class MonitoringStore {
   constructor(
     private readonly api: MonitoringApiService,
     private readonly realtime: MonitoringRealtimeService
-  ) {}
+  ) {
+    this.destroyRef.onDestroy(() => this.clearScheduledRefreshes());
+  }
 
   loadSnapshot(): void {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
     forkJoin({
-      problems: this.api.getActiveProblems(),
-      metrics: this.api.getMetrics()
+      problems: this.api.getActiveProblems().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load active Zabbix problems.')
+          );
+          return of([]);
+        })
+      ),
+      metrics: this.api.getMetrics().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load Zabbix metrics snapshot.')
+          );
+          return of([]);
+        })
+      ),
+      sourceHealth: this.api.getSourceHealth().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load source health status.')
+          );
+          return of([]);
+        })
+      )
     }).subscribe({
-      next: ({ problems, metrics }) => {
+      next: ({ problems, metrics, sourceHealth }) => {
         this.problems.set(this.mergeProblems([], problems));
         this.metrics.set(this.mergeMetrics([], metrics));
+        this.sourceAvailability.set(sourceHealth);
         this.lastRefresh.set(new Date());
-        this.isLoading.set(false);
-      },
-      error: () => {
-        this.errorMessage.set(
-          'Unable to load monitoring data. Check backend availability and CORS settings.'
-        );
         this.isLoading.set(false);
       }
     });
   }
 
   bindRealtime(): void {
-    this.realtime.problems$().subscribe({
+    if (this.realtimeBound) {
+      return;
+    }
+    this.realtimeBound = true;
+
+    this.realtime.problems$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.problems.set(this.mergeProblems(this.problems(), incoming));
+      },
+      error: (error) => {
+        this.errorMessage.set(
+          extractApiErrorMessage(error, 'Realtime problem stream is currently unavailable.')
+        );
       }
     });
 
-    this.realtime.metrics$().subscribe({
+    this.realtime.metrics$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.metrics.set(this.mergeMetrics(this.metrics(), incoming));
+      },
+      error: (error) => {
+        this.errorMessage.set(
+          extractApiErrorMessage(error, 'Realtime metrics stream is currently unavailable.')
+        );
+      }
+    });
+
+    this.realtime.sourceAvailability$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (incoming) => {
+        this.sourceAvailability.set(
+          this.mergeSourceAvailability(this.sourceAvailability(), incoming)
+        );
+      },
+      error: (error) => {
+        this.errorMessage.set(
+          extractApiErrorMessage(error, 'Realtime source availability stream is currently unavailable.')
+        );
       }
     });
   }
@@ -178,13 +253,44 @@ export class MonitoringStore {
     this.errorMessage.set(null);
 
     this.api.triggerCollection(target).subscribe({
-      next: () => this.loadSnapshot(),
-      error: () => {
+      next: () => this.scheduleSnapshotRefresh(),
+      error: (error) => {
         this.errorMessage.set(
-          `Collection request failed for "${target}". Verify backend endpoint status.`
+          extractApiErrorMessage(
+            error,
+            `Collection request failed for "${target}". Verify backend endpoint status.`
+          )
         );
       }
     });
+  }
+
+  private mapAvailability(entry: SourceAvailability | undefined): 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN' {
+    if (!entry) {
+      return 'UNKNOWN';
+    }
+    if (
+      entry.status === 'AVAILABLE' ||
+      entry.status === 'DEGRADED' ||
+      entry.status === 'UNAVAILABLE'
+    ) {
+      return entry.status;
+    }
+    return entry.available ? 'AVAILABLE' : 'UNAVAILABLE';
+  }
+
+  private mergeSourceAvailability(
+    existing: SourceAvailability[],
+    incoming: SourceAvailability
+  ): SourceAvailability[] {
+    const normalizedIncoming = {
+      ...incoming,
+      source: incoming.source.toUpperCase()
+    };
+
+    const map = new Map(existing.map((entry) => [entry.source.toUpperCase(), entry]));
+    map.set(normalizedIncoming.source, normalizedIncoming);
+    return Array.from(map.values());
   }
 
   private mergeProblems(existing: ZabbixProblem[], incoming: ZabbixProblem[]): ZabbixProblem[] {
@@ -326,5 +432,25 @@ export class MonitoringStore {
       return 'UNKNOWN';
     }
     return 'SERVER';
+  }
+
+  private scheduleSnapshotRefresh(): void {
+    // Backend collection endpoints answer immediately, while the actual work runs asynchronously.
+    // We delay the snapshot reload slightly so the frontend reads the updated state more reliably.
+    this.clearScheduledRefreshes();
+
+    for (const delay of [1500, 5000]) {
+      const timeoutId = window.setTimeout(() => this.loadSnapshot(), delay);
+      this.refreshTimeoutIds.push(timeoutId);
+    }
+  }
+
+  private clearScheduledRefreshes(): void {
+    while (this.refreshTimeoutIds.length > 0) {
+      const timeoutId = this.refreshTimeoutIds.pop();
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+      }
+    }
   }
 }

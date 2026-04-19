@@ -14,6 +14,10 @@ import java.time.Instant;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final String INTERNAL_ERROR_CODE = "INTERNAL_ERROR";
+    private static final String INTERNAL_ERROR_MESSAGE = "Internal server error";
+    private static final String SYSTEM_SOURCE = "SYSTEM";
+    private static final int INTERNAL_SERVER_ERROR_STATUS = 500;
 
     @ExceptionHandler(IntegrationException.class)
     public ResponseEntity<ApiErrorResponse> handleIntegrationException(
@@ -44,10 +48,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.internalServerError()
                 .body(ApiErrorResponse.builder()
                         .timestamp(Instant.now())
-                        .status(500)
-                        .errorCode("INTERNAL_ERROR")
-                        .message("Internal server error")
-                        .source("SYSTEM")
+                        .status(INTERNAL_SERVER_ERROR_STATUS)
+                        .errorCode(INTERNAL_ERROR_CODE)
+                        .message(INTERNAL_ERROR_MESSAGE)
+                        .source(SYSTEM_SOURCE)
                         .path(request.getRequestURI())
                         .build());
     }

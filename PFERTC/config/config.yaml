@@ -1,0 +1,45 @@
+project:
+  name: PFERTC
+  random_seed: 42
+
+paths:
+  sql_dump_path: ../mmmonitoringgg_db.sql
+  artifacts_dir: artifacts
+  model_checkpoint: artifacts/models/final_model.pth
+  torchscript_model: artifacts/models/model.pt
+  feature_metadata: artifacts/models/feature_metadata.json
+  training_metrics: artifacts/metrics/training_metrics.json
+  logs_dir: artifacts/logs
+
+data:
+  source: sql_dump
+  min_timestamped_events: 5
+  severity_buckets:
+    1: 1
+    2: 1
+    3: 2
+    4: 3
+    5: 3
+
+features:
+  metric_window_1h_seconds: 3600
+  metric_window_24h_seconds: 86400
+  problem_window_1h_seconds: 3600
+  problem_window_24h_seconds: 86400
+  feature_order:
+    - problem_count_last_1h
+    - problem_count_last_24h
+    - avg_metric_last_1h
+    - max_metric_last_1h
+    - trend_metric
+
+training:
+  test_ratio: 0.2
+  batch_size: 16
+  epochs: 150
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  hidden_sizes:
+    - 32
+    - 16
+  dropout: 0.1

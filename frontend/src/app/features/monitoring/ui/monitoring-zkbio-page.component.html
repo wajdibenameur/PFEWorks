@@ -1,0 +1,257 @@
+<main class="workspace">
+  <app-collection-control-bar
+    [actions]="collectionActions"
+    [isLoading]="isLoading()"
+    [lastRefresh]="lastRefresh()"
+    (refreshClicked)="loadData()"
+    (collectClicked)="triggerCollection($event)"
+  ></app-collection-control-bar>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">
+      {{ message }}
+    </section>
+  }
+
+  <section class="hero-panel">
+    <div class="hero-copy">
+      <p class="eyebrow">ZKBio Time Integration</p>
+      <h1>Access Control Monitoring</h1>
+      <p>
+        Monitor attendance logs, device status, and access control events from ZKBio Time biometric system.
+        Track user check-ins, check-outs, and security alerts in real-time.
+      </p>
+    </div>
+
+    <div class="status-pill" [class.unavailable]="serverStatus()?.status === 'DOWN'">
+      <strong>{{ serverStatus()?.status ?? 'UNKNOWN' }}</strong>
+      <span>ZKBio Server</span>
+    </div>
+  </section>
+
+  <section class="overview-grid">
+    <article class="kpi-card">
+      <span>Devices</span>
+      <strong>{{ devices().length }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Active Problems</span>
+      <strong>{{ problems().length }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Attendance Today</span>
+      <strong>{{ attendanceLogs().length }}</strong>
+    </article>
+    <article class="kpi-card alert">
+      <span>Active Alerts</span>
+     <strong>{{ activeProblemsCount }}</strong>
+    </article>
+  </section>
+
+  <!-- Tabs -->
+  <section class="tabs-section">
+    <div class="tabs">
+      <button 
+        [class.active]="activeTab() === 'problems'"
+        (click)="setActiveTab('problems')">
+        Problems & Alerts
+      </button>
+      <button 
+        [class.active]="activeTab() === 'attendance'"
+        (click)="setActiveTab('attendance')">
+        Attendance Logs
+      </button>
+      <button 
+        [class.active]="activeTab() === 'devices'"
+        (click)="setActiveTab('devices')">
+        Devices
+      </button>
+    </div>
+  </section>
+
+  @if (isLoading() && !problems().length) {
+    <section class="panel loading-panel">
+      <p>Loading ZKBio workspace...</p>
+    </section>
+  } @else {
+    <!-- PROBLEMS TAB -->
+    @if (activeTab() === 'problems') {
+      <section class="main-grid">
+        <section class="primary-column">
+          <article class="panel problems-panel">
+            <header class="panel-header sticky-head">
+              <div>
+                <h2>Problems & Alerts</h2>
+                <small>Active issues from ZKBio access control system</small>
+              </div>
+              <span class="subtext">{{ filteredProblems.length }} visible</span>
+            </header>
+
+            <div class="filters filters-single">
+              <input
+                type="text"
+                placeholder="Search problems..."
+                [value]="problemSearch()"
+                (input)="updateProblemSearch($event)"
+              />
+            </div>
+
+            @if (!filteredProblems.length) {
+              <p class="empty">No ZKBio problems currently available.</p>
+            } @else {
+              <div class="problems-table-wrap">
+                <table class="problems-table">
+                  <thead>
+                    <tr>
+                      <th>Device</th>
+                      <th>Description</th>
+                      <th>Severity</th>
+                      <th>Status</th>
+                      <th>Event ID</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (problem of filteredProblems; track problem.problemId) {
+                      <tr>
+                        <td class="device-cell">
+                          <strong>{{ problem.host }}</strong>
+                        </td>
+                        <td class="description-cell">
+                          {{ problem.description }}
+                        </td>
+                        <td class="severity-cell">
+                          <span class="severity-badge" [class]="'severity-' + problem.severity">
+                            {{ problem.severity }}
+                          </span>
+                        </td>
+                        <td class="status-cell">
+                          <span class="status-indicator" [class]="problem.active ? 'active' : 'resolved'">
+                            {{ problem.active ? 'Active' : 'Resolved' }}
+                          </span>
+                        </td>
+                        <td class="event-id-cell">
+                          {{ problem.eventId }}
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </article>
+        </section>
+      </section>
+    }
+
+    <!-- ATTENDANCE TAB -->
+    @if (activeTab() === 'attendance') {
+      <section class="main-grid">
+        <section class="primary-column">
+          <article class="panel attendance-panel">
+            <header class="panel-header sticky-head">
+              <div>
+                <h2>Attendance Logs</h2>
+                <small>Check-in and check-out records from biometric devices</small>
+              </div>
+              <span class="subtext">{{ filteredAttendance.length }} records</span>
+            </header>
+
+            <div class="filters filters-single">
+              <input
+                type="text"
+                placeholder="Search by user, device, or type..."
+                [value]="attendanceSearch()"
+                (input)="updateAttendanceSearch($event)"
+              />
+            </div>
+
+            @if (!filteredAttendance.length) {
+              <p class="empty">No attendance logs currently available.</p>
+            } @else {
+              <div class="attendance-table-wrap">
+                <table class="attendance-table">
+                  <thead>
+                    <tr>
+                      <th>User</th>
+                      <th>Device</th>
+                      <th>Time</th>
+                      <th>Type</th>
+                      <th>Mode</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (log of filteredAttendance; track log.timestamp + log.userId) {
+                      <tr>
+                        <td class="user-cell">
+                          <strong>{{ log.userName }}</strong>
+                          <small>{{ log.userId }}</small>
+                        </td>
+                        <td class="device-cell">
+                          {{ log.deviceName }}
+                        </td>
+                        <td class="time-cell">
+                          {{ formatTimestamp(log.timestamp) }}
+                        </td>
+                        <td class="type-cell">
+                          <span class="verify-type">{{ log.verifyType }}</span>
+                        </td>
+                        <td class="mode-cell">
+                          <span class="in-out-mode" [class]="log.inOutMode === 'CheckIn' ? 'check-in' : 'check-out'">
+                            {{ log.inOutMode }}
+                          </span>
+                        </td>
+                        <td class="status-cell">
+                          <span class="status-badge" [class]="getStatusClass(log.status)">
+                            {{ log.status }}
+                          </span>
+                        </td>
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              </div>
+            }
+          </article>
+        </section>
+      </section>
+    }
+
+    <!-- DEVICES TAB -->
+    @if (activeTab() === 'devices') {
+      <section class="main-grid">
+        <section class="primary-column">
+          <article class="panel devices-panel">
+            <header class="panel-header sticky-head">
+              <div>
+                <h2>Devices</h2>
+                <small>ZKBio biometric access control devices</small>
+              </div>
+              <span class="subtext">{{ devices().length }} devices</span>
+            </header>
+
+            @if (!devices().length) {
+              <p class="empty">No ZKBio devices currently available.</p>
+            } @else {
+              <div class="devices-grid">
+                @for (device of devices(); track device.name) {
+                  <div class="device-card" [class]="getStatusClass(device.status)">
+                    <div class="device-header">
+                      <h3>{{ device.name }}</h3>
+                      <span class="device-status">{{ device.status }}</span>
+                    </div>
+                    <div class="device-details">
+                      <p><strong>IP:</strong> {{ device.ip }}</p>
+                      <p><strong>Port:</strong> {{ device.port }}</p>
+                      <p><strong>Protocol:</strong> {{ device.protocol }}</p>
+                    </div>
+                  </div>
+                }
+              </div>
+            }
+          </article>
+        </section>
+      </section>
+    }
+  }
+</main>

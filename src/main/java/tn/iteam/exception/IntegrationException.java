@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus;
 
 public abstract class IntegrationException extends RuntimeException {
 
+    private static final String ERROR_CODE_SEPARATOR = "_";
+
     private final String source;
     private final String errorCode;
     private final HttpStatus httpStatus;
@@ -19,6 +21,10 @@ public abstract class IntegrationException extends RuntimeException {
         this.source = source;
         this.errorCode = errorCode;
         this.httpStatus = httpStatus;
+    }
+
+    protected static String buildErrorCode(String source, String suffix) {
+        return source + ERROR_CODE_SEPARATOR + suffix;
     }
 
     public String getSource() {

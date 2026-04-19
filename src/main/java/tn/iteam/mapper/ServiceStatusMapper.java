@@ -50,6 +50,7 @@ public class ServiceStatusMapper {
         dto.setProtocol(entity.getProtocol());
         dto.setStatus(entity.getStatus());
         dto.setCategory(entity.getCategory());
+        dto.setLastCheck(entity.getLastCheck());
         return dto;
     }
 }

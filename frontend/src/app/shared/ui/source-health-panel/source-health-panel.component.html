@@ -12,6 +12,9 @@
           <span class="coverage coverage-{{ item.coverage }}">
             {{ item.coverage === 'REAL' ? 'Real' : 'Coverage Missing' }}
           </span>
+          <span class="coverage coverage-REAL">
+            {{ item.availability === 'AVAILABLE' ? 'Available' : item.availability === 'DEGRADED' ? 'Degraded' : item.availability === 'UNAVAILABLE' ? 'Unavailable' : 'Unknown' }}
+          </span>
         </div>
 
         <p class="kpi">

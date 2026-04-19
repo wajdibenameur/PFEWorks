@@ -8,7 +8,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tn.iteam.Enums.Priority;
 import tn.iteam.Enums.TicketStatus;
-import tn.iteam.Enums.NotificationType;
 import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
 import tn.iteam.dto.ZabbixProblemDTO;
@@ -36,7 +35,7 @@ public class TicketServiceImpl implements TicketService {
         Ticket ticket = Ticket.builder()
                 .title(problem.getDescription())
                 .description(problem.getDescription())
-                .hostId(problem.getEventId()) // ⚠️ à corriger plus tard
+                .hostId(parseHostId(problem))
                 .priority(mapSeverity(problem.getSeverity()))
                 .status(TicketStatus.OPEN)
                 .externalProblem(true)
@@ -176,6 +175,18 @@ public class TicketServiceImpl implements TicketService {
                 "type", type,
                 "data", ticket
         ));
+    }
+
+    private Long parseHostId(ZabbixProblemDTO problem) {
+        if (problem == null || problem.getHostId() == null || problem.getHostId().isBlank()) {
+            return null;
+        }
+
+        try {
+            return Long.parseLong(problem.getHostId());
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private Priority mapSeverity(String severity) {

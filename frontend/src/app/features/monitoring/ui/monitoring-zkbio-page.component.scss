@@ -1,0 +1,497 @@
+// ZKBio Page Styles
+// Follows the same structure as monitoring-zabbix-page.component.scss
+
+.workspace {
+  padding: 1.5rem;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+// Error Banner
+.error-banner {
+  background: #fee2e2;
+  border: 1px solid #fecaca;
+  color: #dc2626;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+// Hero Panel
+.hero-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 1.5rem;
+  padding: 1.5rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 12px;
+  color: white;
+}
+
+.hero-copy {
+  max-width: 600px;
+  
+  .eyebrow {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.8;
+    margin-bottom: 0.5rem;
+  }
+  
+  h1 {
+    font-size: 1.75rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+  }
+  
+  p {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    line-height: 1.5;
+  }
+}
+
+.status-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+  
+  strong {
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+  
+  span {
+    font-size: 0.75rem;
+    opacity: 0.8;
+  }
+  
+  &.unavailable {
+    background: rgba(239, 68, 68, 0.3);
+  }
+}
+
+// Overview Grid
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.kpi-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  
+  span {
+    display: block;
+    font-size: 0.75rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+  }
+  
+  strong {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #111827;
+  }
+  
+  &.alert {
+    border-color: #f59e0b;
+    background: #fffbeb;
+    
+    strong {
+      color: #d97706;
+    }
+  }
+}
+
+// Tabs Section
+.tabs-section {
+  margin-bottom: 1.5rem;
+  
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    background: #f3f4f6;
+    padding: 0.25rem;
+    border-radius: 8px;
+    width: fit-content;
+    
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      background: transparent;
+      color: #6b7280;
+      font-size: 0.875rem;
+      font-weight: 500;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      
+      &:hover {
+        color: #374151;
+      }
+      
+      &.active {
+        background: white;
+        color: #111827;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+    }
+  }
+}
+
+// Main Grid
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+
+.primary-column {
+  width: 100%;
+}
+
+// Panel Styles
+.panel {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background: #f9fafb;
+  
+  &.sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  
+  div {
+    h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #111827;
+      margin: 0;
+    }
+    
+    small {
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+  }
+  
+  .subtext {
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+}
+
+// Filters
+.filters {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  
+  input {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    
+    &:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+    }
+  }
+}
+
+// Empty State
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.875rem;
+}
+
+// Loading Panel
+.loading-panel {
+  padding: 3rem;
+  text-align: center;
+  color: #6b7280;
+}
+
+// Table Styles
+.problems-table-wrap,
+.attendance-table-wrap {
+  overflow-x: auto;
+}
+
+.problems-table,
+.attendance-table {
+  width: 100%;
+  border-collapse: collapse;
+  
+  th, td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  th {
+    background: #f9fafb;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  
+  tbody tr:hover {
+    background: #f9fafb;
+  }
+}
+
+// Problem Table Specific
+.device-cell strong {
+  color: #111827;
+}
+
+.description-cell {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.severity-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  
+  &.severity-high {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+  
+  &.severity-medium {
+    background: #fef3c7;
+    color: #d97706;
+  }
+  
+  &.severity-low {
+    background: #d1fae5;
+    color: #059669;
+  }
+  
+  &.severity-unknown {
+    background: #f3f4f6;
+    color: #6b7280;
+  }
+}
+
+.status-indicator {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  
+  &.active {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+  
+  &.resolved {
+    background: #d1fae5;
+    color: #059669;
+  }
+}
+
+.event-id-cell {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+// Attendance Table Specific
+.user-cell {
+  strong {
+    display: block;
+    color: #111827;
+  }
+  
+  small {
+    font-size: 0.75rem;
+    color: #9ca3af;
+  }
+}
+
+.time-cell {
+  font-size: 0.875rem;
+  color: #374151;
+}
+
+.verify-type {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  background: #e0e7ff;
+  color: #4338ca;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.in-out-mode {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  
+  &.check-in {
+    background: #d1fae5;
+    color: #059669;
+  }
+  
+  &.check-out {
+    background: #dbeafe;
+    color: #2563eb;
+  }
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  
+  &.status-up, &.status-normal {
+    background: #d1fae5;
+    color: #059669;
+  }
+  
+  &.status-down, &.status-error {
+    background: #fee2e2;
+    color: #dc2626;
+  }
+  
+  &.status-unknown {
+    background: #f3f4f6;
+    color: #6b7280;
+  }
+}
+
+// Devices Grid
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  padding: 1rem;
+}
+
+.device-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.2s;
+  
+  &:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
+  
+  &.status-up {
+    border-left: 4px solid #10b981;
+  }
+  
+  &.status-down {
+    border-left: 4px solid #ef4444;
+  }
+  
+  &.status-unknown {
+    border-left: 4px solid #6b7280;
+  }
+  
+  .device-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #111827;
+      margin: 0;
+    }
+    
+    .device-status {
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+    }
+  }
+  
+  .device-details {
+    p {
+      font-size: 0.875rem;
+      color: #6b7280;
+      margin: 0.25rem 0;
+      
+      strong {
+        color: #374151;
+      }
+    }
+  }
+}
+
+// Responsive
+@media (max-width: 1024px) {
+  .overview-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .hero-panel {
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .tabs-section .tabs {
+    width: 100%;
+    
+    button {
+      flex: 1;
+      text-align: center;
+    }
+  }
+}
