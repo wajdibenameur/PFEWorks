@@ -27,7 +27,7 @@ public class TicketController {
             @RequestParam Long userId
     ) {
         User creator = new User();
-        creator.setId(userId); // ⚠️ simplification sans UserRepository
+        creator.setId(userId); //  simplification sans UserRepository
 
         return ResponseEntity.ok(ticketService.createFromProblem(problem, creator));
     }
