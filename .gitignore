@@ -57,6 +57,15 @@ frontend/.env
 frontend/dist
 frontend/build
 
+
 PFERTC/artifacts/logs/
 PFERTC/artifacts/metrics/
 PFERTC/artifacts/models/
+
+docs/
+src/main/java/depl
+src/main/java/depl/mintty.exe.stackdump
+main/resources/
+
+mintty.exe.stackdump
+*.stackdump
