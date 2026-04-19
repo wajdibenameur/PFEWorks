@@ -9,7 +9,7 @@ public class ObserviumProblemDTO {
 
     private String problemId;
     private String host;
-    private Long hostId;
+    private String hostId;
     private String description;
     private String severity;
     private boolean active;
