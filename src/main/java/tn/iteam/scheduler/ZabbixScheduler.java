@@ -3,16 +3,22 @@ package tn.iteam.scheduler;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import tn.iteam.domain.ZabbixMetric;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
+import tn.iteam.monitoring.MonitoringSourceType;
+import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
+import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZabbixLiveSynchronizationService;
 import tn.iteam.service.ZabbixMetricsService;
 import tn.iteam.service.ZabbixProblemService;
+import tn.iteam.websocket.MonitoringWebSocketPublisher;
 import tn.iteam.websocket.ZabbixWebSocketPublisher;
 
 import java.util.List;
@@ -39,7 +45,12 @@ public class ZabbixScheduler {
     private final ZabbixMetricsService metricsService;
     private final ZabbixLiveSynchronizationService liveSynchronizationService;
     private final ZabbixWebSocketPublisher publisher;
+    private final MonitoringWebSocketPublisher monitoringPublisher;
+    private final MonitoringAggregationService monitoringAggregationService;
     private final SourceAvailabilityService availabilityService;
+
+    @Value("${zabbix.retry-backoff-ms:120000}")
+    private long retryBackoffMs;
 
     @Scheduled(
             fixedRateString = "${zabbix.scheduler.problems.rate:30000}",
@@ -62,17 +73,35 @@ public class ZabbixScheduler {
 
             if (!availabilityService.isAvailable(SOURCE_ZABBIX)) {
                 String lastError = availabilityService.getLastError(SOURCE_ZABBIX);
-                log.warn(LOG_PROBLEMS_UNAVAILABLE, lastError);
+                if (availabilityService.isRetryCooldownActive(SOURCE_ZABBIX, retryBackoffMs)) {
+                    log.debug("Zabbix remains unavailable during retry backoff while refreshing problems: {}", lastError);
+                } else {
+                    log.warn(LOG_PROBLEMS_UNAVAILABLE, lastError);
+                }
 
                 if (problems.isEmpty()) {
                     log.warn(LOG_SKIP_PROBLEMS);
                     return;
                 }
 
-                log.warn("Publishing last persisted Zabbix problems snapshot ({} problems)", problems.size());
+                availabilityService.markDegraded(
+                        SOURCE_ZABBIX,
+                        lastError != null && !lastError.isBlank()
+                                ? lastError
+                                : "Live Zabbix problems unavailable, publishing last persisted snapshot"
+                );
+
+                if (availabilityService.isRetryCooldownActive(SOURCE_ZABBIX, retryBackoffMs)) {
+                    log.debug("Publishing last persisted Zabbix problems snapshot ({} problems)", problems.size());
+                } else {
+                    log.warn("Publishing last persisted Zabbix problems snapshot ({} problems)", problems.size());
+                }
             }
 
             publisher.publishProblems(problems);
+            List<UnifiedMonitoringProblemDTO> monitoringProblems =
+                    monitoringAggregationService.getProblems(MonitoringSourceType.ZABBIX).getData();
+            monitoringPublisher.publishProblems(monitoringProblems);
             log.info("Published {} Zabbix problems to WebSocket", problems.size());
         } catch (Exception e) {
             log.error("Unexpected error while publishing Zabbix problems", e);
@@ -100,17 +129,35 @@ public class ZabbixScheduler {
 
             if (!availabilityService.isAvailable(SOURCE_ZABBIX)) {
                 String lastError = availabilityService.getLastError(SOURCE_ZABBIX);
-                log.warn(LOG_METRICS_UNAVAILABLE, lastError);
+                if (availabilityService.isRetryCooldownActive(SOURCE_ZABBIX, retryBackoffMs)) {
+                    log.debug("Zabbix remains unavailable during retry backoff while refreshing metrics: {}", lastError);
+                } else {
+                    log.warn(LOG_METRICS_UNAVAILABLE, lastError);
+                }
 
                 if (metrics.isEmpty()) {
                     log.warn(LOG_SKIP_METRICS);
                     return;
                 }
 
-                log.warn("Publishing last persisted Zabbix metrics snapshot ({} metrics)", metrics.size());
+                availabilityService.markDegraded(
+                        SOURCE_ZABBIX,
+                        lastError != null && !lastError.isBlank()
+                                ? lastError
+                                : "Live Zabbix metrics unavailable, publishing last persisted snapshot"
+                );
+
+                if (availabilityService.isRetryCooldownActive(SOURCE_ZABBIX, retryBackoffMs)) {
+                    log.debug("Publishing last persisted Zabbix metrics snapshot ({} metrics)", metrics.size());
+                } else {
+                    log.warn("Publishing last persisted Zabbix metrics snapshot ({} metrics)", metrics.size());
+                }
             }
 
             publisher.publishMetrics(metrics);
+            List<UnifiedMonitoringMetricDTO> monitoringMetrics =
+                    monitoringAggregationService.getMetrics(MonitoringSourceType.ZABBIX).getData();
+            monitoringPublisher.publishMetrics(monitoringMetrics);
             log.info("Published {} Zabbix metrics to WebSocket", metrics.size());
         } catch (Exception e) {
             log.error("Unexpected error while publishing Zabbix metrics", e);
