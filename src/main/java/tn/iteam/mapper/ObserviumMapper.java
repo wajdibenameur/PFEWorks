@@ -6,6 +6,15 @@ import tn.iteam.dto.ObserviumProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.util.MonitoringConstants;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.List;
+
 @Component
 public class ObserviumMapper {
 
@@ -18,6 +27,8 @@ public class ObserviumMapper {
     private static final String SEVERITY_FIELD = "severity";
     private static final String OPEN_STATUS = "open";
     private static final int DEFAULT_HTTP_PORT = 80;
+    private static final DateTimeFormatter OUTPUT_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter OBSERVIUM_DATE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
      * Transforme un device JSON Observium en ServiceStatusDTO
@@ -47,6 +58,9 @@ public class ObserviumMapper {
      * Transforme une alerte Observium en ObserviumProblemDTO
      */
     public ObserviumProblemDTO mapAlertToDTO(JsonNode alertNode) {
+        Long startedAt = extractStartedAt(alertNode);
+        Long resolvedAt = extractResolvedAt(alertNode);
+
         return ObserviumProblemDTO.builder()
                 .problemId(alertNode.has(ALERT_ID_FIELD) ? alertNode.get(ALERT_ID_FIELD).asText() : MonitoringConstants.UNKNOWN)
                 .host(alertNode.has(HOSTNAME_FIELD) ? alertNode.get(HOSTNAME_FIELD).asText() : MonitoringConstants.UNKNOWN)
@@ -57,7 +71,128 @@ public class ObserviumMapper {
                         && alertNode.get(MonitoringConstants.STATUS_FIELD).asText().equalsIgnoreCase(OPEN_STATUS))
                 .source(MonitoringConstants.SOURCE_OBSERVIUM)
                 .eventId(alertNode.has(ALERT_ID_FIELD) ? alertNode.get(ALERT_ID_FIELD).asLong() : 0L)
+                .startedAt(startedAt)
+                .startedAtFormatted(formatTimestamp(startedAt))
+                .resolvedAt(resolvedAt)
+                .resolvedAtFormatted(formatTimestamp(resolvedAt))
                 .build();
+    }
+
+    private Long extractStartedAt(JsonNode node) {
+        return firstEpoch(node,
+                "alert_unixtime",
+                "alert_timestamp_unixtime",
+                "unixtime",
+                "timestamp",
+                "last_changed",
+                "last_change",
+                "changed",
+                "opened",
+                "opened_at",
+                "start",
+                "start_at",
+                "started_at",
+                "alert_timestamp");
+    }
+
+    private Long extractResolvedAt(JsonNode node) {
+        return firstEpoch(node,
+                "resolved_unixtime",
+                "resolved_timestamp_unixtime",
+                "resolved",
+                "resolved_at",
+                "recovered",
+                "recovered_at",
+                "recovery_timestamp",
+                "closed",
+                "closed_at",
+                "ended",
+                "ended_at");
+    }
+
+    private Long firstEpoch(JsonNode node, String... fields) {
+        for (String field : fields) {
+            Long value = parseEpoch(node.get(field));
+            if (value != null) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private Long parseEpoch(JsonNode valueNode) {
+        if (valueNode == null || valueNode.isNull()) {
+            return null;
+        }
+
+        if (valueNode.isIntegralNumber()) {
+            long raw = valueNode.asLong();
+            return normalizeEpoch(raw);
+        }
+
+        String text = valueNode.asText(null);
+        if (text == null) {
+            return null;
+        }
+
+        String normalized = text.trim();
+        if (normalized.isEmpty()
+                || "null".equalsIgnoreCase(normalized)
+                || "0".equals(normalized)
+                || "0000-00-00 00:00:00".equals(normalized)) {
+            return null;
+        }
+
+        try {
+            return normalizeEpoch(Long.parseLong(normalized));
+        } catch (NumberFormatException ignored) {
+            // Try known date formats below.
+        }
+
+        for (DateTimeFormatter formatter : candidateFormatters()) {
+            try {
+                if (formatter == DateTimeFormatter.ISO_OFFSET_DATE_TIME) {
+                    return OffsetDateTime.parse(normalized, formatter).toEpochSecond();
+                }
+                if (formatter == DateTimeFormatter.ISO_INSTANT) {
+                    return Instant.parse(normalized).getEpochSecond();
+                }
+                return LocalDateTime.parse(normalized, formatter)
+                        .atZone(ZoneId.systemDefault())
+                        .toEpochSecond();
+            } catch (DateTimeParseException ignored) {
+                // Try next formatter.
+            }
+        }
+
+        return null;
+    }
+
+    private List<DateTimeFormatter> candidateFormatters() {
+        return List.of(
+                DateTimeFormatter.ISO_OFFSET_DATE_TIME,
+                DateTimeFormatter.ISO_INSTANT,
+                OBSERVIUM_DATE_TIME
+        );
+    }
+
+    private Long normalizeEpoch(long raw) {
+        if (raw <= 0) {
+            return null;
+        }
+        if (raw >= 1_000_000_000_000L) {
+            return raw / 1000L;
+        }
+        return raw;
+    }
+
+    private String formatTimestamp(Long epoch) {
+        if (epoch == null) {
+            return null;
+        }
+        return Instant.ofEpochSecond(epoch)
+                .atZone(ZoneId.systemDefault())
+                .format(OUTPUT_FORMATTER);
     }
 
     private String resolveCategory(JsonNode deviceNode) {

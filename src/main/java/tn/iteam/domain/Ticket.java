@@ -15,11 +15,7 @@ import tn.iteam.Enums.Priority;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Ticket {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class Ticket extends BaseEntity {
 
     private String title;
     private Long hostId;
@@ -39,13 +35,16 @@ public class Ticket {
     @Builder.Default
     private Boolean archived = false;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id", nullable = false)
     private User createdBy;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to_id")
     private User assignedTo;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "validated_by_id")
     private User validatedBy;
 
     @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)

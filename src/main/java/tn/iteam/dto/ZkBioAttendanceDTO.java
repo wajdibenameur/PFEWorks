@@ -17,7 +17,7 @@ public class ZkBioAttendanceDTO {
     private Long timestamp;
     private String verifyType;      // FP, Password, Card, Face, etc.
     private String inOutMode;       // CheckIn, CheckOut
-    private String status;          // Normal,异常
+    private String status;          // Normal,
     private String eventType;       // Attendance, Access, etc.
     private String source;          // "ZKBIO"
 }

@@ -15,4 +15,8 @@ public class ObserviumProblemDTO {
     private boolean active;
     private String source;
     private Long eventId;
+    private Long startedAt;
+    private String startedAtFormatted;
+    private Long resolvedAt;
+    private String resolvedAtFormatted;
 }

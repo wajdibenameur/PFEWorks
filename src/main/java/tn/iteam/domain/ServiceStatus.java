@@ -15,11 +15,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 @Table(name = "service_status",
         uniqueConstraints = @UniqueConstraint(columnNames = {"source", "name", "ip"}))
-public class ServiceStatus {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class ServiceStatus extends BaseEntity {
 
     private String source;       // ZABBIX | OBSERVIUM | ZKBIO | CAMERA
     private String name;         // Hostname / Camera name
@@ -31,4 +27,3 @@ public class ServiceStatus {
 
     private LocalDateTime lastCheck;
 }
-

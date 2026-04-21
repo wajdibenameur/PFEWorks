@@ -9,11 +9,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ObserviumProblem {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+public class ObserviumProblem extends BaseEntity {
 
     @Column(nullable = false)
     private String problemId;
@@ -25,4 +21,8 @@ public class ObserviumProblem {
     private Boolean active;
     private String source = "Observium";
     private Long eventId;
+    @Column(name = "started_at")
+    private Long startedAt;
+    @Column(name = "resolved_at")
+    private Long resolvedAt;
 }
