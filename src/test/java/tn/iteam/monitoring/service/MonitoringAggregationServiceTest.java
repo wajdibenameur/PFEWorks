@@ -56,9 +56,10 @@ class MonitoringAggregationServiceTest {
         assertThat(response.isDegraded()).isFalse();
         assertThat(response.getFreshness()).containsEntry("ZABBIX", "persisted");
         assertThat(response.getCoverage())
-                .containsEntry("ZABBIX", "supported")
-                .containsEntry("OBSERVIUM", "not_supported")
-                .containsEntry("ZKBIO", "not_supported");
+                .containsEntry("ZABBIX", "native")
+                .containsEntry("OBSERVIUM", "synthetic")
+                .containsEntry("ZKBIO", "synthetic")
+                .containsEntry("CAMERA", "not_applicable");
         verify(cacheService).getMetrics(null);
     }
 }

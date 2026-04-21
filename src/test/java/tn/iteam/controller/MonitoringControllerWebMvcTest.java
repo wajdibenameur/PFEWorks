@@ -1,17 +1,24 @@
 package tn.iteam.controller;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import tn.iteam.integration.CameraIntegrationService;
+import tn.iteam.integration.ObserviumIntegrationService;
+import tn.iteam.integration.ZabbixIntegrationService;
+import tn.iteam.integration.ZkBioIntegrationService;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
-import tn.iteam.service.MonitoringService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.websocket.MonitoringWebSocketPublisher;
+import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
 import java.util.List;
 import java.util.Map;
@@ -22,20 +29,50 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(MonitoringController.class)
+@ExtendWith(MockitoExtension.class)
 class MonitoringControllerWebMvcTest {
 
-    @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
-    private MonitoringService monitoringService;
+    @Mock
+    private CameraIntegrationService cameraIntegrationService;
 
-    @MockBean
+    @Mock
     private MonitoringAggregationService aggregationService;
 
-    @MockBean
+    @Mock
     private SourceAvailabilityService sourceAvailabilityService;
+
+    @Mock
+    private ZabbixIntegrationService zabbixIntegrationService;
+
+    @Mock
+    private ObserviumIntegrationService observiumIntegrationService;
+
+    @Mock
+    private ZkBioIntegrationService zkBioIntegrationService;
+
+    @Mock
+    private MonitoringWebSocketPublisher monitoringWebSocketPublisher;
+
+    @Mock
+    private ZkBioWebSocketPublisher zkBioWebSocketPublisher;
+
+    @BeforeEach
+    void setUp() {
+        MonitoringController controller = new MonitoringController(
+                cameraIntegrationService,
+                aggregationService,
+                sourceAvailabilityService,
+                zabbixIntegrationService,
+                observiumIntegrationService,
+                zkBioIntegrationService,
+                monitoringWebSocketPublisher,
+                zkBioWebSocketPublisher
+        );
+
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
 
     @Test
     void problemsEndpointReturnsUnifiedMonitoringResponseWithDegradedAndFreshness() throws Exception {
@@ -78,9 +115,10 @@ class MonitoringControllerWebMvcTest {
                         false,
                         Map.of("ZABBIX", "persisted"),
                         Map.of(
-                                "ZABBIX", "supported",
-                                "OBSERVIUM", "not_supported",
-                                "ZKBIO", "not_supported"
+                                "ZABBIX", "native",
+                                "OBSERVIUM", "synthetic",
+                                "ZKBIO", "synthetic",
+                                "CAMERA", "not_applicable"
                         )
                 )
         );
@@ -90,9 +128,10 @@ class MonitoringControllerWebMvcTest {
                 .andExpect(jsonPath("$.degraded").value(false))
                 .andExpect(jsonPath("$.data[0].metricKey").value("system.cpu.util"))
                 .andExpect(jsonPath("$.freshness.ZABBIX").value("persisted"))
-                .andExpect(jsonPath("$.coverage.ZABBIX").value("supported"))
-                .andExpect(jsonPath("$.coverage.OBSERVIUM").value("not_supported"))
-                .andExpect(jsonPath("$.coverage.ZKBIO").value("not_supported"));
+                .andExpect(jsonPath("$.coverage.ZABBIX").value("native"))
+                .andExpect(jsonPath("$.coverage.OBSERVIUM").value("synthetic"))
+                .andExpect(jsonPath("$.coverage.ZKBIO").value("synthetic"))
+                .andExpect(jsonPath("$.coverage.CAMERA").value("not_applicable"));
 
         verify(aggregationService).getMetrics((String) null);
     }
