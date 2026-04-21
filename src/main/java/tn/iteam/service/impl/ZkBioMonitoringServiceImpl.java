@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import tn.iteam.adapter.zkbio.ZkBioAdapter;
 import tn.iteam.mapper.ZkBioMonitoringMapper;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.service.ZkBioMonitoringService;
 
@@ -38,6 +39,14 @@ public class ZkBioMonitoringServiceImpl implements ZkBioMonitoringService {
         log.debug("Fetching monitoring problems from ZKBio");
         return zkBioAdapter.fetchProblems().stream()
                 .map(monitoringMapper::toProblem)
+                .toList();
+    }
+
+    @Override
+    public List<UnifiedMonitoringMetricDTO> fetchMonitoringMetrics() {
+        log.debug("Fetching monitoring metrics from ZKBio");
+        return zkBioAdapter.fetchMetrics().stream()
+                .map(monitoringMapper::toMetric)
                 .toList();
     }
 }

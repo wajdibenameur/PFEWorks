@@ -24,4 +24,10 @@ public interface ObserviumMonitoringService {
      * @return list of unified monitoring problem DTOs
      */
     List<UnifiedMonitoringProblemDTO> fetchMonitoringProblems();
+
+    /**
+     * Fetches all metrics from Observium in unified monitoring format.
+     * @return list of unified monitoring metric DTOs
+     */
+    List<UnifiedMonitoringMetricDTO> fetchMonitoringMetrics();
 }

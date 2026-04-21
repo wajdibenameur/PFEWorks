@@ -1,6 +1,7 @@
 package tn.iteam.service;
 
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
+import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 
 import java.util.List;
@@ -23,4 +24,10 @@ public interface ZkBioMonitoringService {
      * @return list of unified monitoring problem DTOs
      */
     List<UnifiedMonitoringProblemDTO> fetchMonitoringProblems();
+
+    /**
+     * Fetches all metrics from ZKBio in unified monitoring format.
+     * @return list of unified monitoring metric DTOs
+     */
+    List<UnifiedMonitoringMetricDTO> fetchMonitoringMetrics();
 }

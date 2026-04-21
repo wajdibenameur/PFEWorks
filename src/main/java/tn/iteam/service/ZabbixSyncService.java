@@ -67,7 +67,7 @@ public class ZabbixSyncService {
             final String finalIp = ip;
             final Integer finalPort = port;
 
-            monitoredHostRepository.findFirstByHostIdAndSourceOrderByIdDesc(hostId, "ZABBIX")
+            monitoredHostRepository.findFirstByHostIdAndSource(hostId, "ZABBIX")
                     .map(existing -> {
                         existing.setName(finalName);
                         existing.setIp(finalIp);

@@ -9,6 +9,6 @@ import java.util.Optional;
 
 @Repository
 public interface MonitoredHostRepository extends JpaRepository<MonitoredHost, Long> {
-    Optional<MonitoredHost> findFirstByHostIdAndSourceOrderByIdDesc(String hostId, String source);
+    Optional<MonitoredHost> findFirstByHostIdAndSource(String hostId, String source);
     List<MonitoredHost> findBySourceOrderByNameAsc(String source);
 }

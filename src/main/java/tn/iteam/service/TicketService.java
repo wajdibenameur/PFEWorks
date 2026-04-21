@@ -4,26 +4,25 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import tn.iteam.Enums.TicketStatus;
 import tn.iteam.domain.Ticket;
-import tn.iteam.domain.User;
 import tn.iteam.dto.ZabbixProblemDTO;
 
 import java.util.Optional;
 
 public interface TicketService {
 
-    Ticket createFromProblem(ZabbixProblemDTO problem, User creator);
+    Ticket createFromProblem(ZabbixProblemDTO problem, Long creatorId);
 
-    Ticket createManual(Ticket ticket, User creator);
+    Ticket createManual(Ticket ticket, Long creatorId);
 
     Ticket assign(Long ticketId, Long userId);
 
     Ticket updateStatus(Long ticketId, TicketStatus status);
 
-    Ticket validate(Long ticketId, User admin);
+    Ticket validate(Long ticketId, Long adminId);
 
-    Ticket reject(Long ticketId, User admin, String reason);
+    Ticket reject(Long ticketId, Long adminId, String reason);
 
-    Ticket addComment(Long ticketId, String comment, User user);
+    Ticket addComment(Long ticketId, String comment, Long userId);
 
     Page<Ticket> getAll(Pageable pageable);
 

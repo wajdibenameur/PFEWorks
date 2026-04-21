@@ -2,15 +2,14 @@ package tn.iteam.monitoring.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
-import tn.iteam.monitoring.provider.MonitoringProvider;
-import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.monitoring.snapshot.SnapshotStore;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,108 +20,116 @@ import java.util.Map;
 public class MonitoringCacheService {
 
     private static final Logger log = LoggerFactory.getLogger(MonitoringCacheService.class);
-    private static final String FRESHNESS_LIVE = "live";
-    private static final String FRESHNESS_PERSISTED = "persisted";
-    private static final String FRESHNESS_REDIS_FALLBACK = "redis_fallback";
+    private static final String FRESHNESS_SNAPSHOT_MISSING = "snapshot_missing";
+    private static final String DATASET_PROBLEMS = "problems";
+    private static final String DATASET_METRICS = "metrics";
+    private static final String DATASET_HOSTS = "hosts";
 
-    private final List<MonitoringProvider> providers;
-    private final SourceAvailabilityService sourceAvailabilityService;
+    private final SnapshotStore snapshotStore;
 
-    public MonitoringCacheService(List<MonitoringProvider> providers, SourceAvailabilityService sourceAvailabilityService) {
-        this.providers = List.copyOf(providers);
-        this.sourceAvailabilityService = sourceAvailabilityService;
+    public MonitoringCacheService(SnapshotStore snapshotStore) {
+        this.snapshotStore = snapshotStore;
     }
 
-    @Cacheable(
-            cacheNames = "monitoring:problems",
-            key = "#source == null ? 'ALL' : #source.trim().toUpperCase()",
-            unless = "#result == null || #result.degraded"
-    )
     public FetchResult<List<UnifiedMonitoringProblemDTO>> getProblems(String source) {
-        FetchResult<List<UnifiedMonitoringProblemDTO>> result = collect(source, "problems", provider -> provider.getProblems());
-        List<UnifiedMonitoringProblemDTO> sorted = result.getData().stream()
-                .sorted(Comparator.comparing(UnifiedMonitoringProblemDTO::getStartedAt, Comparator.nullsLast(Long::compareTo)).reversed())
-                .toList();
-        return new FetchResult<>(sorted, result.isDegraded(), result.getFreshness());
+        return loadOrRefresh(
+                DATASET_PROBLEMS,
+                source,
+                items -> items.stream()
+                        .sorted(Comparator.comparing(UnifiedMonitoringProblemDTO::getStartedAt, Comparator.nullsLast(Long::compareTo)).reversed())
+                        .toList()
+        );
     }
 
-    @Cacheable(
-            cacheNames = "monitoring:metrics",
-            key = "#source == null ? 'ALL' : #source.trim().toUpperCase()",
-            unless = "#result == null || #result.degraded"
-    )
     public FetchResult<List<UnifiedMonitoringMetricDTO>> getMetrics(String source) {
-        FetchResult<List<UnifiedMonitoringMetricDTO>> result = collect(source, "metrics", provider -> provider.getMetrics());
-        List<UnifiedMonitoringMetricDTO> sorted = result.getData().stream()
-                .sorted(Comparator.comparing(UnifiedMonitoringMetricDTO::getTimestamp, Comparator.nullsLast(Long::compareTo)).reversed())
-                .toList();
-        return new FetchResult<>(sorted, result.isDegraded(), result.getFreshness());
+        return loadOrRefresh(
+                DATASET_METRICS,
+                source,
+                items -> items.stream()
+                        .sorted(Comparator.comparing(UnifiedMonitoringMetricDTO::getTimestamp, Comparator.nullsLast(Long::compareTo)).reversed())
+                        .toList()
+        );
     }
 
-    @Cacheable(
-            cacheNames = "monitoring:hosts",
-            key = "#source == null ? 'ALL' : #source.trim().toUpperCase()",
-            unless = "#result == null || #result.degraded"
-    )
     public FetchResult<List<UnifiedMonitoringHostDTO>> getHosts(String source) {
-        FetchResult<List<UnifiedMonitoringHostDTO>> result = collect(source, "hosts", provider -> provider.getHosts());
-        List<UnifiedMonitoringHostDTO> sorted = result.getData().stream()
-                .sorted(Comparator.comparing(UnifiedMonitoringHostDTO::getSource)
-                        .thenComparing(UnifiedMonitoringHostDTO::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
-                .toList();
-        return new FetchResult<>(sorted, result.isDegraded(), result.getFreshness());
+        return loadOrRefresh(
+                DATASET_HOSTS,
+                source,
+                items -> items.stream()
+                        .sorted(Comparator.comparing(UnifiedMonitoringHostDTO::getSource)
+                                .thenComparing(UnifiedMonitoringHostDTO::getName, Comparator.nullsLast(String::compareToIgnoreCase)))
+                        .toList()
+        );
     }
 
-    private <T> FetchResult<List<T>> collect(
+    private <T> FetchResult<List<T>> loadOrRefresh(
+            String dataset,
             String source,
-            String operation,
-            ProviderFetcher<T> fetcher
+            ResultSorter<T> sorter
     ) {
-        List<T> aggregated = new java.util.ArrayList<>();
+        String normalizedSource = normalizeSource(source);
+        List<MonitoringSourceType> sources = requestedSources(dataset, normalizedSource);
+        List<T> aggregated = new ArrayList<>();
         boolean degraded = false;
         Map<String, String> freshness = new LinkedHashMap<>();
 
-        for (MonitoringProvider provider : providersFor(source)) {
-            try {
-                List<T> items = fetcher.fetch(provider);
-                if (items != null) {
-                    aggregated.addAll(items);
-                }
-                freshness.put(provider.getSourceType().name(), determineFreshness(provider.getSourceType()));
-            } catch (Exception ex) {
+        for (MonitoringSourceType sourceType : sources) {
+            snapshotStore.<List<T>>get(dataset, sourceType.name())
+                    .ifPresentOrElse(snapshot -> {
+                        if (snapshot.data() != null) {
+                            aggregated.addAll(snapshot.data());
+                        }
+                        freshness.put(sourceType.name(), firstFreshness(snapshot.freshness()));
+                        if (snapshot.degraded()) {
+                            log.debug("Serving degraded monitoring {} snapshot for source={}", dataset, sourceType.name());
+                        }
+                    }, () -> {
+                        freshness.put(sourceType.name(), FRESHNESS_SNAPSHOT_MISSING);
+                    });
+
+            if (FRESHNESS_SNAPSHOT_MISSING.equals(freshness.get(sourceType.name()))) {
                 degraded = true;
-                log.warn("Monitoring provider {} failed while fetching {}: {}",
-                        provider.getSourceType(), operation, ex.getMessage(), ex);
+            } else {
+                degraded = degraded || snapshotStore.<List<T>>get(dataset, sourceType.name())
+                        .map(snapshot -> snapshot.degraded())
+                        .orElse(true);
             }
         }
 
-        return new FetchResult<>(List.copyOf(aggregated), degraded, Map.copyOf(freshness));
+        return new FetchResult<>(sorter.sort(List.copyOf(aggregated)), degraded, Map.copyOf(freshness));
     }
 
-    private String determineFreshness(MonitoringSourceType sourceType) {
-        if (sourceType == MonitoringSourceType.ZABBIX) {
-            return FRESHNESS_PERSISTED;
-        }
-
-        return sourceAvailabilityService.isDegraded(sourceType.name())
-                ? FRESHNESS_REDIS_FALLBACK
-                : FRESHNESS_LIVE;
-    }
-
-    private List<MonitoringProvider> providersFor(String source) {
+    private String normalizeSource(String source) {
         if (source == null || source.isBlank() || "ALL".equalsIgnoreCase(source)) {
-            return providers;
+            return "ALL";
+        }
+        return source.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private List<MonitoringSourceType> requestedSources(String dataset, String source) {
+        if (source == null || source.isBlank() || "ALL".equalsIgnoreCase(source)) {
+            return java.util.Arrays.stream(MonitoringSourceType.values())
+                    .filter(sourceType -> sourceType.supportsDataset(dataset))
+                    .toList();
         }
 
         MonitoringSourceType requested = MonitoringSourceType.valueOf(source.trim().toUpperCase(Locale.ROOT));
-        return providers.stream()
-                .filter(provider -> provider.getSourceType() == requested)
-                .toList();
+        if (!requested.supportsDataset(dataset)) {
+            return List.of();
+        }
+        return List.of(requested);
     }
 
     @FunctionalInterface
-    private interface ProviderFetcher<T> {
-        List<T> fetch(MonitoringProvider provider);
+    private interface ResultSorter<T> {
+        List<T> sort(List<T> items);
+    }
+
+    private String firstFreshness(Map<String, String> freshness) {
+        if (freshness == null || freshness.isEmpty()) {
+            return "snapshot";
+        }
+        return freshness.values().iterator().next();
     }
 
     public static final class FetchResult<T> {

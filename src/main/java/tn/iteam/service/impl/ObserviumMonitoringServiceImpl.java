@@ -37,4 +37,12 @@ public class ObserviumMonitoringServiceImpl implements ObserviumMonitoringServic
         log.debug("Fetching monitoring problems from Observium");
         return monitoringMapper.toProblems(observiumAdapter.fetchProblems());
     }
+
+    @Override
+    public List<UnifiedMonitoringMetricDTO> fetchMonitoringMetrics() {
+        log.debug("Fetching monitoring metrics from Observium");
+        return observiumAdapter.fetchMetrics().stream()
+                .map(monitoringMapper::toMetric)
+                .toList();
+    }
 }

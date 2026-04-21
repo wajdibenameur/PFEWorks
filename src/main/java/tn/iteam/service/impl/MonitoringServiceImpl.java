@@ -94,7 +94,8 @@ public class MonitoringServiceImpl implements MonitoringService {
                     saveOrUpdateStatus(dtos);
 
                     List<ObserviumProblemDTO> problems = observiumAdapter.fetchProblemsAndSave();
-                    log.info("Collected {} Observium items, {} problems", dtos.size(), problems.size());
+                    int metrics = observiumAdapter.fetchMetricsAndSave().size();
+                    log.info("Collected {} Observium items, {} problems, {} metrics", dtos.size(), problems.size(), metrics);
                 }
         );
     }
@@ -112,7 +113,8 @@ public class MonitoringServiceImpl implements MonitoringService {
                 () -> {
                     List<ServiceStatusDTO> dtos = observiumAdapter.fetchAll();
                     saveOrUpdateStatus(dtos);
-                    log.info("Collected {} Observium hosts", dtos.size());
+                    int metrics = observiumAdapter.fetchMetricsAndSave().size();
+                    log.info("Collected {} Observium hosts and {} metrics", dtos.size(), metrics);
                 }
         );
     }
@@ -132,7 +134,8 @@ public class MonitoringServiceImpl implements MonitoringService {
                     saveOrUpdateStatus(dtos);
 
                     List<ZkBioProblemDTO> problems = zkbioAdapter.fetchProblemsAndSave();
-                    log.info("Collected {} ZKBio items, {} problems", dtos.size(), problems.size());
+                    int metrics = zkbioAdapter.fetchMetricsAndSave().size();
+                    log.info("Collected {} ZKBio items, {} problems, {} metrics", dtos.size(), problems.size(), metrics);
                 }
         );
     }

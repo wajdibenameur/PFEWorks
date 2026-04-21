@@ -9,15 +9,10 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class MonitoringAggregationService {
-
-    private static final Map<String, String> METRICS_COVERAGE = Map.of(
-            MonitoringSourceType.ZABBIX.name(), "supported",
-            MonitoringSourceType.OBSERVIUM.name(), "not_supported",
-            MonitoringSourceType.ZKBIO.name(), "not_supported"
-    );
 
     private final MonitoringCacheService monitoringCacheService;
 
@@ -54,10 +49,18 @@ public class MonitoringAggregationService {
 
     private Map<String, String> metricsCoverage(String source) {
         if (source == null || source.isBlank() || "ALL".equalsIgnoreCase(source)) {
-            return METRICS_COVERAGE;
+            return allMetricsCoverage();
         }
 
         MonitoringSourceType requested = MonitoringSourceType.valueOf(source.trim().toUpperCase());
-        return Map.of(requested.name(), METRICS_COVERAGE.getOrDefault(requested.name(), "not_supported"));
+        return Map.of(requested.name(), requested.metricsCoverage());
+    }
+
+    private Map<String, String> allMetricsCoverage() {
+        return java.util.Arrays.stream(MonitoringSourceType.values())
+                .collect(Collectors.toMap(
+                        MonitoringSourceType::name,
+                        MonitoringSourceType::metricsCoverage
+                ));
     }
 }

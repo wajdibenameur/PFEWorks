@@ -78,7 +78,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .probability(response.probability())
                         .status(toRiskStatus(response.probability()))
                         .build());
-            } catch (IOException | ModelException | TranslateException | IllegalArgumentException exception) {
+            } catch (IOException | ModelException | TranslateException | IllegalArgumentException | IllegalStateException exception) {
                 log.warn("Unable to compute prediction for host {}: {}", host.hostId(), exception.getMessage());
             }
         }
