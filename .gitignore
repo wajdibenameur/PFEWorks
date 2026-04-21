@@ -39,6 +39,7 @@ nbbuild/
 .settings/
 .springBeans
 .apt_generated
+.github/
 
 # =====================
 # NETBEANS
@@ -66,6 +67,14 @@ docs/
 src/main/java/depl
 src/main/java/depl/mintty.exe.stackdump
 main/resources/
+/main/
 
 mintty.exe.stackdump
 *.stackdump
+src/main/resources/sql/
+
+/depl/
+/codex-idea2/
+/codex-memory2/
+/docs/
+/suivi-pfe2/
