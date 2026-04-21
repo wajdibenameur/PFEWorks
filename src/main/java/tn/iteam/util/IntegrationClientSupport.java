@@ -1,5 +1,7 @@
 package tn.iteam.util;
 
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+
 public final class IntegrationClientSupport {
 
     public static final String STATUS_FIELD = "status";
@@ -88,5 +90,17 @@ public final class IntegrationClientSupport {
 
     public static String parenthesized(String value) {
         return '(' + value + ')';
+    }
+
+    public static String stableFallbackReason(String sourceLabel, String defaultReason, Throwable throwable) {
+        if (throwable instanceof CallNotPermittedException) {
+            return sourceLabel + " circuit breaker open";
+        }
+
+        if (throwable != null && throwable.getMessage() != null && !throwable.getMessage().isBlank()) {
+            return throwable.getMessage();
+        }
+
+        return defaultReason;
     }
 }

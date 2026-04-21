@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import tn.iteam.ml.config.MlTorchScriptProperties;
 import tn.iteam.ml.dto.TorchScriptPredictionResponse;
@@ -27,8 +28,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class TorchScriptPredictionService {
@@ -40,31 +43,50 @@ public class TorchScriptPredictionService {
     private float[] means;
     private float[] stds;
     private Path resolvedModelPath;
+    private boolean initialized;
 
     @PostConstruct
-    void init() throws IOException {
-        Path metadataPath = resolveConfiguredPath(properties.metadataPath());
-        resolvedModelPath = resolveConfiguredPath(properties.modelPath());
+    void init() {
+        disablePredictions();
 
-        JsonNode root = objectMapper.readTree(Files.readString(metadataPath));
-        featureOrder = new ArrayList<>();
-        for (JsonNode node : root.path("feature_order")) {
-            featureOrder.add(node.asText());
-        }
-
-        means = new float[root.path("feature_means").size()];
-        stds = new float[root.path("feature_stds").size()];
-        for (int index = 0; index < means.length; index++) {
-            means[index] = (float) root.path("feature_means").get(index).asDouble();
-            stds[index] = (float) root.path("feature_stds").get(index).asDouble();
-            if (Math.abs(stds[index]) < 1e-8f) {
-                stds[index] = 1.0f;
+        try {
+            if (properties.modelPath() == null || properties.modelPath().isBlank()
+                    || properties.metadataPath() == null || properties.metadataPath().isBlank()) {
+                log.warn("TorchScript prediction disabled: missing ml.torchscript.model-path or ml.torchscript.metadata-path");
+                return;
             }
+
+            Path metadataPath = resolveConfiguredPath(properties.metadataPath());
+            resolvedModelPath = resolveConfiguredPath(properties.modelPath());
+
+            JsonNode root = objectMapper.readTree(Files.readString(metadataPath));
+            featureOrder = new ArrayList<>();
+            for (JsonNode node : root.path("feature_order")) {
+                featureOrder.add(node.asText());
+            }
+
+            means = new float[root.path("feature_means").size()];
+            stds = new float[root.path("feature_stds").size()];
+            for (int index = 0; index < means.length; index++) {
+                means[index] = (float) root.path("feature_means").get(index).asDouble();
+                stds[index] = (float) root.path("feature_stds").get(index).asDouble();
+                if (Math.abs(stds[index]) < 1e-8f) {
+                    stds[index] = 1.0f;
+                }
+            }
+            initialized = true;
+            log.info("TorchScript prediction initialized from model={} metadata={}", resolvedModelPath, metadataPath);
+        } catch (Exception exception) {
+            disablePredictions();
+            log.warn("TorchScript prediction disabled: {}", exception.getMessage());
         }
     }
 
     public TorchScriptPredictionResponse predict(List<Double> features)
             throws ModelException, TranslateException, IOException {
+        if (!initialized) {
+            throw new IllegalStateException("TorchScript prediction is disabled: missing modelPath/metadataPath configuration");
+        }
         if (features.size() != means.length) {
             throw new IllegalArgumentException(
                     "Expected " + means.length + " features in this exact order: " + featureOrder
@@ -110,7 +132,15 @@ public class TorchScriptPredictionService {
     }
 
     public List<String> getFeatureOrder() {
-        return List.copyOf(featureOrder);
+        return featureOrder == null ? List.of() : List.copyOf(featureOrder);
+    }
+
+    private void disablePredictions() {
+        featureOrder = Collections.emptyList();
+        means = new float[0];
+        stds = new float[0];
+        resolvedModelPath = null;
+        initialized = false;
     }
 
     private Path resolveConfiguredPath(String configuredPath) throws IOException {
