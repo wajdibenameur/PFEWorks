@@ -2,28 +2,38 @@ package tn.iteam.cache;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Optional;
 
+/**
+ * Redis-based implementation of IntegrationCacheService.
+ * Managed by IntegrationCacheConfig - do not use @Service here to avoid bean conflicts.
+ */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@Component("redisIntegrationCacheService")
 public class RedisIntegrationCacheService implements IntegrationCacheService {
 
     private static final String KEY_PREFIX = "integration:snapshot";
 
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final Duration snapshotTtl;
 
-    @Value("${app.cache.ttl.integration-snapshot:60s}")
-    private Duration snapshotTtl;
+    public RedisIntegrationCacheService(
+            StringRedisTemplate redisTemplate,
+            ObjectMapper objectMapper,
+            @Value("${app.cache.ttl.integration-snapshot:60s}") Duration snapshotTtl
+    ) {
+        this.redisTemplate = redisTemplate;
+        this.objectMapper = objectMapper;
+        this.snapshotTtl = snapshotTtl;
+    }
 
     @Override
     public void saveSnapshot(String source, String key, Object data) {
