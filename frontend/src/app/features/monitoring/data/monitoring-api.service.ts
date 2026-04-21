@@ -12,16 +12,14 @@ import { MonitoringProblem } from '../../../core/models/monitoring-problem.model
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { ServiceStatus } from '../../../core/models/service-status.model';
 import { UnifiedMonitoringResponse } from '../../../core/models/unified-monitoring-response.model';
+import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
 import { ZabbixMetric } from '../../../core/models/zabbix-metric.model';
 import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
 import { ZkBioAttendance } from '../../../core/models/zkbio-attendance.model';
-import { ZkBioProblem } from '../../../core/models/zkbio-problem.model';
-import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
 
 @Injectable({ providedIn: 'root' })
 export class MonitoringApiService {
   private readonly monitoringBaseUrl: string;
-  private readonly zabbixBaseUrl: string;
   private readonly zkbioBaseUrl: string;
   private readonly dashboardBaseUrl: string;
 
@@ -30,17 +28,8 @@ export class MonitoringApiService {
     @Inject(APP_CONFIG) config: AppConfig
   ) {
     this.monitoringBaseUrl = `${config.apiBaseUrl}/api/monitoring`;
-    this.zabbixBaseUrl = `${config.apiBaseUrl}/api/zabbix`;
     this.zkbioBaseUrl = `${config.apiBaseUrl}/api/zkbio`;
     this.dashboardBaseUrl = `${config.apiBaseUrl}/dashboard`;
-  }
-
-  getActiveProblems(): Observable<ZabbixProblem[]> {
-    return this.http.get<ZabbixProblem[]>(`${this.zabbixBaseUrl}/active`);
-  }
-
-  getMetrics(): Observable<ZabbixMetric[]> {
-    return this.http.get<ZabbixMetric[]>(`${this.zabbixBaseUrl}/metrics`);
   }
 
   getSourceHealth(): Observable<SourceAvailability[]> {
@@ -55,8 +44,26 @@ export class MonitoringApiService {
     return this.getMonitoringProblemsResponse().pipe(map((response) => response.data));
   }
 
-  getMonitoringMetrics(): Observable<UnifiedMonitoringMetric[]> {
-    return this.getMonitoringMetricsResponse().pipe(map((response) => response.data));
+  // Temporary compatibility wrappers kept while the Zabbix workspace still
+  // expects Zabbix-shaped view models built from unified monitoring payloads.
+  getZabbixMonitoringProblems(): Observable<ZabbixProblem[]> {
+    return this.getMonitoringProblemsResponse().pipe(
+      map((response) =>
+        response.data
+          .filter((problem) => problem.source === 'ZABBIX')
+          .map((problem) => this.toZabbixProblem(problem))
+      )
+    );
+  }
+
+  getZabbixMonitoringMetrics(): Observable<ZabbixMetric[]> {
+    return this.getMonitoringMetricsResponse().pipe(
+      map((response) =>
+        response.data
+          .filter((metric) => metric.source === 'ZABBIX')
+          .map((metric) => this.toZabbixMetric(metric))
+      )
+    );
   }
 
   getMonitoringHostsResponse(): Observable<UnifiedMonitoringResponse<MonitoringHost[]>> {
@@ -77,10 +84,6 @@ export class MonitoringApiService {
 
   getZkBioDevices(): Observable<ServiceStatus[]> {
     return this.http.get<ServiceStatus[]>(`${this.zkbioBaseUrl}/devices`);
-  }
-
-  getZkBioProblems(): Observable<ZkBioProblem[]> {
-    return this.http.get<ZkBioProblem[]>(`${this.zkbioBaseUrl}/problems`);
   }
 
   getZkBioAttendance(): Observable<ZkBioAttendance[]> {
@@ -111,5 +114,38 @@ export class MonitoringApiService {
       `${this.monitoringBaseUrl}/collect/${target}`,
       {}
     );
+  }
+
+  private toZabbixProblem(problem: MonitoringProblem): ZabbixProblem {
+    return {
+      problemId: problem.problemId ?? problem.id,
+      host: problem.hostName ?? problem.hostId ?? 'UNKNOWN',
+      port: problem.port ?? null,
+      hostId: problem.hostId ?? null,
+      description: problem.description ?? 'No description',
+      severity: problem.severity ?? 'UNKNOWN',
+      active: problem.active,
+      source: problem.source,
+      eventId: problem.eventId ?? 0,
+      ip: problem.ip ?? null,
+      startedAt: problem.startedAt ?? null,
+      startedAtFormatted: problem.startedAtFormatted ?? null,
+      resolvedAt: problem.resolvedAt ?? null,
+      resolvedAtFormatted: problem.resolvedAtFormatted ?? null,
+      status: problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED')
+    };
+  }
+
+  private toZabbixMetric(metric: UnifiedMonitoringMetric): ZabbixMetric {
+    return {
+      hostId: metric.hostId,
+      hostName: metric.hostName,
+      itemId: metric.itemId,
+      metricKey: metric.metricKey,
+      value: metric.value ?? 0,
+      timestamp: metric.timestamp ?? 0,
+      ip: metric.ip,
+      port: metric.port
+    };
   }
 }

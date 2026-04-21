@@ -48,6 +48,44 @@
     </article>
   </section>
 
+  <section class="panel">
+    <header class="panel-header">
+      <div>
+        <h2>Unified Monitoring Metadata</h2>
+        <small>Wrapper semantics reused from the generic monitoring endpoints</small>
+      </div>
+    </header>
+    <div class="devices-grid">
+      <article class="device-card">
+        <div class="device-header">
+          <h3>Degraded</h3>
+          <span class="device-status">{{ monitoringDegraded() ? 'YES' : 'NO' }}</span>
+        </div>
+        <div class="device-details">
+          <p><strong>Problems wrapper:</strong> {{ monitoringDegraded() ? 'degraded response' : 'healthy response' }}</p>
+        </div>
+      </article>
+      <article class="device-card">
+        <div class="device-header">
+          <h3>Freshness</h3>
+          <span class="device-status">{{ problemsFreshness() ?? 'UNKNOWN' }}</span>
+        </div>
+        <div class="device-details">
+          <p><strong>Problems source:</strong> {{ problemsFreshness() ?? 'unknown' }}</p>
+        </div>
+      </article>
+      <article class="device-card">
+        <div class="device-header">
+          <h3>Coverage</h3>
+          <span class="device-status">{{ coverageLabel() | uppercase }}</span>
+        </div>
+        <div class="device-details">
+          <p><strong>Metrics source:</strong> {{ coverageLabel() }}</p>
+        </div>
+      </article>
+    </div>
+  </section>
+
   <!-- Tabs -->
   <section class="tabs-section">
     <div class="tabs">
@@ -107,6 +145,8 @@
                       <th>Description</th>
                       <th>Severity</th>
                       <th>Status</th>
+                      <th>Started</th>
+                      <th>Resolved</th>
                       <th>Event ID</th>
                     </tr>
                   </thead>
@@ -126,8 +166,14 @@
                         </td>
                         <td class="status-cell">
                           <span class="status-indicator" [class]="problem.active ? 'active' : 'resolved'">
-                            {{ problem.active ? 'Active' : 'Resolved' }}
+                            {{ displayProblemStatus(problem) }}
                           </span>
+                        </td>
+                        <td class="time-cell">
+                          {{ problem.startedAtFormatted ?? formatTimestamp(problem.startedAt ?? 0) }}
+                        </td>
+                        <td class="time-cell">
+                          {{ problem.resolvedAtFormatted ?? formatTimestamp(problem.resolvedAt ?? 0) }}
                         </td>
                         <td class="event-id-cell">
                           {{ problem.eventId }}

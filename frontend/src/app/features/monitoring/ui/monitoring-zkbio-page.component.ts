@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, forkJoin, of } from 'rxjs';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
+import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { ServiceStatus } from '../../../core/models/service-status.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { ZkBioAttendance } from '../../../core/models/zkbio-attendance.model';
@@ -36,6 +37,9 @@ export class MonitoringZkBioPageComponent implements OnInit {
   protected readonly devices = signal<ServiceStatus[]>([]);
   protected readonly problems = signal<ZkBioProblem[]>([]);
   protected readonly attendanceLogs = signal<ZkBioAttendance[]>([]);
+  protected readonly monitoringDegraded = signal(false);
+  protected readonly problemsFreshness = signal<string | null>(null);
+  protected readonly metricsCoverage = signal<string | null>(null);
 
   protected readonly activeTab = signal<'problems' | 'attendance' | 'devices'>('problems');
   protected readonly problemSearch = signal('');
@@ -67,10 +71,26 @@ export class MonitoringZkBioPageComponent implements OnInit {
           return of<ServiceStatus[]>([]);
         })
       ),
-      problems: this.api.getZkBioProblems().pipe(
+      monitoringProblems: this.api.getMonitoringProblemsResponse().pipe(
         catchError((error) => {
-          this.handleError('problems', error);
-          return of<ZkBioProblem[]>([]);
+          this.handleError('monitoring problems', error);
+          return of({
+            data: [] as MonitoringProblem[],
+            degraded: true,
+            freshness: {},
+            coverage: {}
+          });
+        })
+      ),
+      metricsMetadata: this.api.getMonitoringMetricsResponse().pipe(
+        catchError((error) => {
+          this.handleError('monitoring coverage', error);
+          return of({
+            data: [],
+            degraded: true,
+            freshness: {},
+            coverage: {}
+          });
         })
       ),
       attendance: this.api.getZkBioAttendance().pipe(
@@ -86,14 +106,20 @@ export class MonitoringZkBioPageComponent implements OnInit {
         })
       )
     }).subscribe({
-      next: ({ status, devices, problems, attendance, sourceHealth }) => {
+      next: ({ status, devices, monitoringProblems, metricsMetadata, attendance, sourceHealth }) => {
         const availability =
           sourceHealth.find((entry) => entry.source.toUpperCase() === 'ZKBIO') ?? null;
+        const zkbioProblems = monitoringProblems.data
+          .filter((problem) => (problem.source ?? '').toUpperCase() === 'ZKBIO')
+          .map((problem) => this.toZkBioProblem(problem));
 
         this.serverStatus.set(this.applyAvailability(status, availability));
         this.devices.set(devices);
-        this.problems.set(problems);
+        this.problems.set(zkbioProblems);
         this.attendanceLogs.set(attendance);
+        this.monitoringDegraded.set(monitoringProblems.degraded);
+        this.problemsFreshness.set(this.readMetadataValue(monitoringProblems.freshness, 'ZKBIO'));
+        this.metricsCoverage.set(this.readMetadataValue(metricsMetadata.coverage, 'ZKBIO'));
         this.lastRefresh.set(new Date());
         this.isLoading.set(false);
       }
@@ -136,11 +162,16 @@ export class MonitoringZkBioPageComponent implements OnInit {
 
   protected get filteredProblems(): ZkBioProblem[] {
     const search = this.problemSearch().toLowerCase();
-    if (!search) return this.problems();
-    return this.problems().filter((problem) =>
+    const problems = [...this.problems()].sort(
+      (left, right) => this.problemTimestamp(right) - this.problemTimestamp(left)
+    );
+
+    if (!search) return problems;
+    return problems.filter((problem) =>
       problem.host?.toLowerCase().includes(search) ||
       problem.description?.toLowerCase().includes(search) ||
-      problem.severity?.toLowerCase().includes(search)
+      problem.severity?.toLowerCase().includes(search) ||
+      problem.status?.toLowerCase().includes(search)
     );
   }
 
@@ -161,6 +192,31 @@ export class MonitoringZkBioPageComponent implements OnInit {
   protected formatTimestamp(timestamp: number): string {
     if (!timestamp) return '-';
     return new Date(timestamp * 1000).toLocaleString();
+  }
+
+  protected displayProblemStatus(problem: ZkBioProblem): string {
+    return problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED');
+  }
+
+  protected coverageLabel(): string {
+    const coverage = (this.metricsCoverage() ?? '').toLowerCase();
+    if (!coverage) {
+      return 'unknown';
+    }
+    if (coverage === 'native') {
+      return 'native';
+    }
+    if (coverage === 'synthetic') {
+      return 'synthetic';
+    }
+    if (coverage === 'not_applicable') {
+      return 'hosts only';
+    }
+    return coverage.replace(/_/g, ' ');
+  }
+
+  protected problemTimestamp(problem: ZkBioProblem): number {
+    return problem.startedAt ?? problem.eventId ?? 0;
   }
 
   protected getStatusClass(status: string | null | undefined): string {
@@ -287,6 +343,33 @@ export class MonitoringZkBioPageComponent implements OnInit {
     }
 
     return Array.from(map.values());
+  }
+
+  private toZkBioProblem(problem: MonitoringProblem): ZkBioProblem {
+    return {
+      problemId: problem.problemId ?? problem.id,
+      host: problem.hostName ?? problem.hostId ?? 'UNKNOWN',
+      description: problem.description ?? 'No description',
+      severity: problem.severity ?? 'UNKNOWN',
+      active: problem.active,
+      status: problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED'),
+      startedAt: problem.startedAt ?? null,
+      startedAtFormatted: problem.startedAtFormatted ?? null,
+      resolvedAt: problem.resolvedAt ?? null,
+      resolvedAtFormatted: problem.resolvedAtFormatted ?? null,
+      source: typeof problem.source === 'string' ? problem.source : String(problem.source ?? 'ZKBIO'),
+      eventId: problem.eventId ?? 0
+    };
+  }
+
+  private readMetadataValue(
+    values: Record<string, string> | null | undefined,
+    key: string
+  ): string | null {
+    if (!values) {
+      return null;
+    }
+    return values[key] ?? null;
   }
 
   private handleError(context: string, error: unknown): void {

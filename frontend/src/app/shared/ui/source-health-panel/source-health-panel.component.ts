@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
-export type SourceCoverage = 'REAL' | 'MISSING_BACKEND_READ_ENDPOINT';
+export type SourceCoverage = 'native' | 'synthetic' | 'not_applicable' | 'unknown';
 
 export interface SourceHealthVm {
   source: string;
@@ -21,4 +21,17 @@ export interface SourceHealthVm {
 })
 export class SourceHealthPanelComponent {
   readonly items = input.required<SourceHealthVm[]>();
+
+  coverageLabel(coverage: SourceCoverage): string {
+    switch (coverage) {
+      case 'native':
+        return 'Native metrics';
+      case 'synthetic':
+        return 'Synthetic metrics';
+      case 'not_applicable':
+        return 'Hosts only';
+      default:
+        return 'Unknown coverage';
+    }
+  }
 }

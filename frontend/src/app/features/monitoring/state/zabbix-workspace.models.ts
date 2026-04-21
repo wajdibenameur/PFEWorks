@@ -11,7 +11,7 @@ export interface ZabbixOverviewVm {
   downHosts: number;
   riskyHosts: number;
   anomalies: number;
-  availability: 'AVAILABLE' | 'UNAVAILABLE' | 'UNKNOWN';
+  availability: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN';
   availabilityNote: string;
 }
 

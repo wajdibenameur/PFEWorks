@@ -10,7 +10,7 @@
         <div class="title-row">
           <h3>{{ item.source }}</h3>
           <span class="coverage coverage-{{ item.coverage }}">
-            {{ item.coverage === 'REAL' ? 'Real' : 'Coverage Missing' }}
+            {{ coverageLabel(item.coverage) }}
           </span>
           <span class="coverage coverage-REAL">
             {{ item.availability === 'AVAILABLE' ? 'Available' : item.availability === 'DEGRADED' ? 'Degraded' : item.availability === 'UNAVAILABLE' ? 'Unavailable' : 'Unknown' }}

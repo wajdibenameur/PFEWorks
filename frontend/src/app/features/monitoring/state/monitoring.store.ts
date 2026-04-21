@@ -3,9 +3,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, forkJoin, of } from 'rxjs';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
+import { MonitoringHost } from '../../../core/models/monitoring-host.model';
+import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
-import { ZabbixMetric } from '../../../core/models/zabbix-metric.model';
-import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
+import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
 import { MonitoringApiService } from '../data/monitoring-api.service';
 import { MonitoringRealtimeService } from '../data/monitoring-realtime.service';
 import {
@@ -19,10 +20,13 @@ import {
 } from './global-monitoring.models';
 
 interface HostAccumulator {
+  hostId: string | null;
   hostname: string;
-  ip: string;
+  ip: string | null;
   port: number | null;
   source: MonitoringSource;
+  category: string | null;
+  status: string | null;
   metricKeys: Set<string>;
   problemCount: number;
   lastMetricTimestamp: number | null;
@@ -38,12 +42,18 @@ export class MonitoringStore {
   readonly errorMessage = signal<string | null>(null);
   readonly lastRefresh = signal<Date | null>(null);
 
-  readonly problems = signal<ZabbixProblem[]>([]);
-  readonly metrics = signal<ZabbixMetric[]>([]);
+  readonly hosts = signal<MonitoringHost[]>([]);
+  readonly problems = signal<MonitoringProblem[]>([]);
+  readonly metrics = signal<UnifiedMonitoringMetric[]>([]);
   readonly sourceAvailability = signal<SourceAvailability[]>([]);
+  readonly hostsFreshness = signal<Record<string, string>>({});
+  readonly problemsFreshness = signal<Record<string, string>>({});
+  readonly metricsFreshness = signal<Record<string, string>>({});
+  readonly metricsCoverage = signal<Record<string, string>>({});
+  readonly unifiedDegraded = signal(false);
 
   readonly assets = computed<GlobalAssetVm[]>(() =>
-    this.buildAssets(this.problems(), this.metrics())
+    this.buildAssets(this.hosts(), this.problems(), this.metrics())
   );
 
   readonly kpi = computed<GlobalKpiVm>(() => {
@@ -66,66 +76,58 @@ export class MonitoringStore {
     const problems = this.problems();
     return {
       totalAlerts: problems.length,
-      critical: problems.filter((problem) => problem.severity === '5').length,
-      high: problems.filter((problem) => problem.severity === '4').length,
-      medium: problems.filter((problem) => problem.severity === '3').length,
-      warning: problems.filter((problem) => problem.severity === '2').length,
-      info: problems.filter((problem) => problem.severity === '1').length
+      critical: problems.filter((problem) => this.severityRank(problem.severity) >= 5).length,
+      high: problems.filter((problem) => this.severityRank(problem.severity) === 4).length,
+      medium: problems.filter((problem) => this.severityRank(problem.severity) === 3).length,
+      warning: problems.filter((problem) => this.severityRank(problem.severity) === 2).length,
+      info: problems.filter((problem) => this.severityRank(problem.severity) <= 1).length
     };
   });
 
   readonly sourceHealth = computed<SourceHealthVm[]>(() => {
-    const zabbixAssets = this.assets().filter((asset) => asset.source === 'ZABBIX');
     const availabilityMap = new Map(
       this.sourceAvailability().map((entry) => [entry.source.toUpperCase(), entry])
     );
-    const zabbixAvailability = availabilityMap.get('ZABBIX');
-    const observiumAvailability = availabilityMap.get('OBSERVIUM');
-    const cameraAvailability = availabilityMap.get('CAMERA');
-    const zkbioAvailability = availabilityMap.get('ZKBIO');
+    const assetsBySource = new Map<MonitoringSource, GlobalAssetVm[]>(
+      (['ZABBIX', 'OBSERVIUM', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => [
+        source,
+        this.assets().filter((asset) => asset.source === source)
+      ])
+    );
 
-    return [
-      {
-        source: 'ZABBIX',
-        total: zabbixAssets.length,
-        down: zabbixAssets.filter((asset) => asset.status === 'DOWN').length,
-        coverage: 'REAL',
-        availability: this.mapAvailability(zabbixAvailability),
-        note: zabbixAvailability?.available === false
-          ? `Zabbix unavailable: ${zabbixAvailability.lastError ?? 'last persisted snapshot in use'}`
-          : 'Computed from /api/zabbix/active + /api/zabbix/metrics'
-      },
-      {
-        source: 'OBSERVIUM',
-        total: null,
-        down: null,
-        coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        availability: this.mapAvailability(observiumAvailability),
-        note: observiumAvailability?.available === false
-          ? `Observium unavailable: ${observiumAvailability.lastError ?? 'integration error'}`
-          : 'Collection endpoint exists but no read endpoint is currently exposed'
-      },
-      {
-        source: 'CAMERA',
-        total: null,
-        down: null,
-        coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        availability: this.mapAvailability(cameraAvailability),
-        note: cameraAvailability?.available === false
-          ? `Camera scan unavailable: ${cameraAvailability.lastError ?? 'scan error'}`
-          : 'Collection endpoint exists but no read endpoint is currently exposed'
-      },
-      {
-        source: 'ZKBIO',
-        total: null,
-        down: null,
-        coverage: 'MISSING_BACKEND_READ_ENDPOINT',
-        availability: this.mapAvailability(zkbioAvailability),
-        note: zkbioAvailability?.available === false
-          ? `ZKBio unavailable: ${zkbioAvailability.lastError ?? 'integration error'}`
-          : 'No read endpoint currently connected in frontend'
+    return (['ZABBIX', 'OBSERVIUM', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => {
+      const availability = availabilityMap.get(source);
+      const assets = assetsBySource.get(source) ?? [];
+      const coverage = this.metricsCoverageLabel(source);
+      const metricsFreshness = this.readMetricsFreshness(source);
+      const availabilityStatus = this.mapAvailability(availability);
+      const noteParts = [
+        `Hosts: ${this.hostsFreshness()[source] ?? 'snapshot_missing'}`,
+        `Problems: ${this.problemsFreshness()[source] ?? 'snapshot_missing'}`,
+        source === 'CAMERA'
+          ? null
+          : `Metrics: ${coverage === 'not_applicable' ? 'not_applicable' : metricsFreshness}`
+      ].filter((value): value is string => Boolean(value));
+
+      if (availability?.lastError) {
+        noteParts.push(`Last error: ${availability.lastError}`);
       }
-    ];
+      if (availabilityStatus === 'DEGRADED') {
+        noteParts.push('Serving the latest snapshot fallback while the live source is degraded.');
+      }
+      if (source === 'CAMERA') {
+        noteParts.push('Camera currently contributes only to the unified hosts inventory.');
+      }
+
+      return {
+        source,
+        total: assets.length,
+        down: assets.filter((asset) => asset.status === 'DOWN').length,
+        coverage,
+        availability: availabilityStatus,
+        note: noteParts.join(' ')
+      };
+    });
   });
 
   readonly topAlertHosts = computed(() =>
@@ -138,25 +140,25 @@ export class MonitoringStore {
   readonly dataCoverage = computed<DataCoverageVm[]>(() => [
     {
       title: 'Global KPIs',
-      status: 'PARTIAL',
-      detail: 'Totals are currently derived from Zabbix read endpoints only.'
+      status: 'REAL',
+      detail: 'Built from unified /api/monitoring/hosts and /api/monitoring/problems across Zabbix, Observium, ZKBio, and Camera.'
     },
     {
-      title: 'Server/Printer Breakdown',
-      status: 'ESTIMATED',
+      title: 'Asset Categories',
+      status: 'PARTIAL',
       detail:
-        'Category is inferred from hostname and metric keys until backend provides a unified typed asset endpoint.'
+        'Uses backend host categories when available and falls back to lightweight frontend inference for partial records.'
     },
     {
       title: 'Alerts Summary',
       status: 'REAL',
-      detail: 'Built from /api/zabbix/active and realtime problem streams.'
+      detail: 'Built from unified monitoring problems and the active realtime /topic/monitoring/problems stream.'
     },
     {
-      title: 'Asset Inventory',
+      title: 'Realtime Coverage',
       status: 'PARTIAL',
       detail:
-        'Hostnames, addresses, and IPs come from current Zabbix endpoints. Other sources need read APIs.'
+        'Problems, metrics, and source availability update in realtime; hosts refresh through snapshots because no /topic/monitoring/hosts topic is currently published.'
     }
   ]);
 
@@ -172,20 +174,28 @@ export class MonitoringStore {
     this.errorMessage.set(null);
 
     forkJoin({
-      problems: this.api.getActiveProblems().pipe(
+      hostsResponse: this.api.getMonitoringHostsResponse().pipe(
         catchError((error) => {
           this.errorMessage.set(
-            extractApiErrorMessage(error, 'Unable to load active Zabbix problems.')
+            extractApiErrorMessage(error, 'Unable to load monitoring hosts.')
           );
-          return of([]);
+          return of({ data: [] as MonitoringHost[], degraded: true, freshness: {}, coverage: {} });
         })
       ),
-      metrics: this.api.getMetrics().pipe(
+      problemsResponse: this.api.getMonitoringProblemsResponse().pipe(
         catchError((error) => {
           this.errorMessage.set(
-            extractApiErrorMessage(error, 'Unable to load Zabbix metrics snapshot.')
+            extractApiErrorMessage(error, 'Unable to load monitoring problems.')
           );
-          return of([]);
+          return of({ data: [] as MonitoringProblem[], degraded: true, freshness: {}, coverage: {} });
+        })
+      ),
+      metricsResponse: this.api.getMonitoringMetricsResponse().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load monitoring metrics snapshot.')
+          );
+          return of({ data: [] as UnifiedMonitoringMetric[], degraded: true, freshness: {}, coverage: {} });
         })
       ),
       sourceHealth: this.api.getSourceHealth().pipe(
@@ -197,10 +207,18 @@ export class MonitoringStore {
         })
       )
     }).subscribe({
-      next: ({ problems, metrics, sourceHealth }) => {
-        this.problems.set(this.mergeProblems([], problems));
-        this.metrics.set(this.mergeMetrics([], metrics));
+      next: ({ hostsResponse, problemsResponse, metricsResponse, sourceHealth }) => {
+        this.hosts.set(this.mergeHosts([], hostsResponse.data));
+        this.problems.set(this.mergeProblems([], problemsResponse.data));
+        this.metrics.set(this.mergeMetrics([], metricsResponse.data));
         this.sourceAvailability.set(sourceHealth);
+        this.hostsFreshness.set(hostsResponse.freshness);
+        this.problemsFreshness.set(problemsResponse.freshness);
+        this.metricsFreshness.set(metricsResponse.freshness);
+        this.metricsCoverage.set(metricsResponse.coverage);
+        this.unifiedDegraded.set(
+          hostsResponse.degraded || problemsResponse.degraded || metricsResponse.degraded
+        );
         this.lastRefresh.set(new Date());
         this.isLoading.set(false);
       }
@@ -213,9 +231,10 @@ export class MonitoringStore {
     }
     this.realtimeBound = true;
 
-    this.realtime.problems$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringProblems$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.problems.set(this.mergeProblems(this.problems(), incoming));
+        this.problemsFreshness.update((freshness) => this.markRealtimeFreshness(freshness, incoming));
       },
       error: (error) => {
         this.errorMessage.set(
@@ -224,9 +243,10 @@ export class MonitoringStore {
       }
     });
 
-    this.realtime.metrics$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringMetrics$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.metrics.set(this.mergeMetrics(this.metrics(), incoming));
+        this.metricsFreshness.update((freshness) => this.markRealtimeFreshness(freshness, incoming));
       },
       error: (error) => {
         this.errorMessage.set(
@@ -293,8 +313,21 @@ export class MonitoringStore {
     return Array.from(map.values());
   }
 
-  private mergeProblems(existing: ZabbixProblem[], incoming: ZabbixProblem[]): ZabbixProblem[] {
-    const map = new Map<string, ZabbixProblem>();
+  private mergeHosts(existing: MonitoringHost[], incoming: MonitoringHost[]): MonitoringHost[] {
+    const map = new Map<string, MonitoringHost>();
+
+    for (const host of existing) {
+      map.set(this.hostEntityKey(host.source, host.hostId, host.name, host.id), host);
+    }
+    for (const host of incoming) {
+      map.set(this.hostEntityKey(host.source, host.hostId, host.name, host.id), host);
+    }
+
+    return Array.from(map.values());
+  }
+
+  private mergeProblems(existing: MonitoringProblem[], incoming: MonitoringProblem[]): MonitoringProblem[] {
+    const map = new Map<string, MonitoringProblem>();
 
     for (const problem of existing) {
       map.set(this.problemKey(problem), problem);
@@ -306,8 +339,8 @@ export class MonitoringStore {
     return Array.from(map.values());
   }
 
-  private mergeMetrics(existing: ZabbixMetric[], incoming: ZabbixMetric[]): ZabbixMetric[] {
-    const map = new Map<string, ZabbixMetric>();
+  private mergeMetrics(existing: UnifiedMonitoringMetric[], incoming: UnifiedMonitoringMetric[]): UnifiedMonitoringMetric[] {
+    const map = new Map<string, UnifiedMonitoringMetric>();
 
     for (const metric of existing) {
       map.set(this.metricKey(metric), metric);
@@ -319,34 +352,66 @@ export class MonitoringStore {
     return Array.from(map.values());
   }
 
-  private problemKey(problem: ZabbixProblem): string {
+  private problemKey(problem: MonitoringProblem): string {
     if (problem.problemId) {
-      return problem.problemId;
+      return `${problem.source}:${problem.problemId}`;
     }
-    return String(problem.eventId ?? problem.description);
+    return `${problem.source}:${String(problem.eventId ?? problem.description)}`;
   }
 
-  private metricKey(metric: ZabbixMetric): string {
-    return `${metric.hostId}:${metric.itemId}:${metric.timestamp}`;
+  private metricKey(metric: UnifiedMonitoringMetric): string {
+    return `${metric.source}:${metric.hostId}:${metric.itemId}:${metric.timestamp}`;
   }
 
-  private buildAssets(problems: ZabbixProblem[], metrics: ZabbixMetric[]): GlobalAssetVm[] {
+  private hostEntityKey(
+    source: string | null | undefined,
+    hostId: string | null | undefined,
+    name: string | null | undefined,
+    id: string | null | undefined
+  ): string {
+    return `${(source ?? 'UNKNOWN').toUpperCase()}:${hostId ?? name ?? id ?? 'UNKNOWN_HOST'}`;
+  }
+
+  private buildAssets(
+    hosts: MonitoringHost[],
+    problems: MonitoringProblem[],
+    metrics: UnifiedMonitoringMetric[]
+  ): GlobalAssetVm[] {
     const hostMap = new Map<string, HostAccumulator>();
 
+    for (const host of hosts) {
+      const key = this.hostEntityKey(host.source, host.hostId, host.name, host.id);
+      hostMap.set(key, {
+        hostId: host.hostId,
+        hostname: this.normalizeHost(host.name ?? host.hostId ?? host.id),
+        ip: host.ip ?? null,
+        port: host.port ?? null,
+        source: (host.source?.toUpperCase() ?? 'ZABBIX') as MonitoringSource,
+        category: host.category ?? null,
+        status: host.status ?? null,
+        metricKeys: new Set<string>(),
+        problemCount: 0,
+        lastMetricTimestamp: null
+      });
+    }
+
     for (const metric of metrics) {
-      const host = this.normalizeHost(metric.hostName || metric.hostId);
-      const current = hostMap.get(host) ?? {
-        hostname: host,
-        ip: metric.ip || 'IP_UNKNOWN',
+      const key = this.hostEntityKey(metric.source, metric.hostId, metric.hostName, metric.id);
+      const current = hostMap.get(key) ?? {
+        hostId: metric.hostId,
+        hostname: this.normalizeHost(metric.hostName || metric.hostId),
+        ip: metric.ip ?? null,
         port: metric.port ?? null,
-        source: 'ZABBIX' as MonitoringSource,
+        source: metric.source,
+        category: null,
+        status: null,
         metricKeys: new Set<string>(),
         problemCount: 0,
         lastMetricTimestamp: null
       };
 
-      if (!current.ip || current.ip === 'IP_UNKNOWN') {
-        current.ip = metric.ip || current.ip;
+      if (!current.ip) {
+        current.ip = metric.ip ?? current.ip;
       }
       if (current.port == null && metric.port != null) {
         current.port = metric.port;
@@ -357,48 +422,63 @@ export class MonitoringStore {
         metric.timestamp || 0
       );
 
-      hostMap.set(host, current);
+      hostMap.set(key, current);
     }
 
     for (const problem of problems) {
-      const host = this.normalizeHost(problem.host || problem.hostId || problem.problemId);
-      const current = hostMap.get(host) ?? {
-        hostname: host,
-        ip: problem.ip || 'IP_UNKNOWN',
+      const key = this.hostEntityKey(
+        problem.source,
+        problem.hostId,
+        problem.hostName,
+        problem.id
+      );
+      const current = hostMap.get(key) ?? {
+        hostId: problem.hostId,
+        hostname: this.normalizeHost(problem.hostName || problem.hostId || problem.problemId),
+        ip: problem.ip ?? null,
         port: problem.port ?? null,
-        source: 'ZABBIX' as MonitoringSource,
+        source: (problem.source?.toUpperCase() ?? 'ZABBIX') as MonitoringSource,
+        category: null,
+        status: null,
         metricKeys: new Set<string>(),
         problemCount: 0,
         lastMetricTimestamp: null
       };
 
-      if (!current.ip || current.ip === 'IP_UNKNOWN') {
-        current.ip = problem.ip || current.ip;
+      if (!current.ip) {
+        current.ip = problem.ip ?? current.ip;
       }
       if (current.port == null && problem.port != null) {
         current.port = problem.port;
       }
       current.problemCount += 1;
-      hostMap.set(host, current);
+      hostMap.set(key, current);
     }
 
     return Array.from(hostMap.values())
       .map((entry) => {
-        const category = this.inferCategory(entry.hostname, entry.metricKeys);
+        const category = this.normalizeAssetCategory(entry.category, entry.hostname, entry.metricKeys);
         const hasActiveAlert = entry.problemCount > 0;
+        const backendStatus = this.normalizeAssetStatus(entry.status);
+        const finalStatus =
+          hasActiveAlert || backendStatus === 'DOWN'
+            ? 'DOWN'
+            : backendStatus === 'UP'
+              ? 'UP'
+              : 'UNKNOWN';
 
         return {
-          id: `${entry.source}:${entry.hostname}`,
+          id: `${entry.source}:${entry.hostId ?? entry.hostname}`,
           hostname: entry.hostname,
           address:
-            entry.ip && entry.port != null && entry.ip !== 'IP_UNKNOWN'
+            entry.ip && entry.port != null
               ? `${entry.ip}:${entry.port}`
-              : entry.ip,
-          ip: entry.ip,
+              : entry.ip ?? 'IP_UNKNOWN',
+          ip: entry.ip ?? 'IP_UNKNOWN',
           port: entry.port,
           source: entry.source,
           category,
-          status: hasActiveAlert ? 'DOWN' : 'UP',
+          status: finalStatus,
           hasActiveAlert,
           problemCount: entry.problemCount,
           lastMetricTimestamp: entry.lastMetricTimestamp
@@ -412,6 +492,27 @@ export class MonitoringStore {
       return 'UNKNOWN_HOST';
     }
     return host.trim();
+  }
+
+  private normalizeAssetCategory(
+    category: string | null,
+    hostname: string,
+    metricKeys: Set<string>
+  ): AssetCategory {
+    const normalizedCategory = (category ?? '').toUpperCase();
+    if (normalizedCategory.includes('PRINT')) {
+      return 'PRINTER';
+    }
+    if (normalizedCategory.includes('CAM')) {
+      return 'CAMERA';
+    }
+    if (normalizedCategory.includes('ACCESS') || normalizedCategory.includes('DOOR')) {
+      return 'ACCESS_CONTROL';
+    }
+    if (normalizedCategory.includes('SERVER') || normalizedCategory.includes('HOST')) {
+      return 'SERVER';
+    }
+    return this.inferCategory(hostname, metricKeys);
   }
 
   private inferCategory(hostname: string, metricKeys: Set<string>): AssetCategory {
@@ -432,6 +533,64 @@ export class MonitoringStore {
       return 'UNKNOWN';
     }
     return 'SERVER';
+  }
+
+  private normalizeAssetStatus(status: string | null | undefined): 'UP' | 'DOWN' | 'UNKNOWN' {
+    const normalized = (status ?? '').toUpperCase();
+    if (['UP', 'AVAILABLE', 'NORMAL'].includes(normalized)) {
+      return 'UP';
+    }
+    if (['DOWN', 'UNAVAILABLE', 'DEGRADED', 'ERROR', 'ACTIVE'].includes(normalized)) {
+      return 'DOWN';
+    }
+    return 'UNKNOWN';
+  }
+
+  private metricsCoverageLabel(source: MonitoringSource): SourceHealthVm['coverage'] {
+    const coverage = (this.metricsCoverage()[source] ?? '').toLowerCase();
+    if (coverage === 'native' || coverage === 'synthetic' || coverage === 'not_applicable') {
+      return coverage;
+    }
+    return 'unknown';
+  }
+
+  private readMetricsFreshness(source: MonitoringSource): string {
+    return this.metricsFreshness()[source] ?? 'snapshot_missing';
+  }
+
+  private markRealtimeFreshness(
+    current: Record<string, string>,
+    incoming: Array<{ source: string | null | undefined }>
+  ): Record<string, string> {
+    const next = { ...current };
+    for (const source of new Set(
+      incoming
+        .map((item) => item.source?.toUpperCase())
+        .filter((source): source is string => Boolean(source))
+    )) {
+      next[source] = 'live';
+    }
+    return next;
+  }
+
+  private severityRank(value: string | null | undefined): number {
+    const normalized = (value ?? '').toUpperCase();
+    if (normalized === 'DISASTER' || normalized === 'CRITICAL') {
+      return 5;
+    }
+    if (normalized === 'HIGH') {
+      return 4;
+    }
+    if (normalized === 'AVERAGE' || normalized === 'MEDIUM') {
+      return 3;
+    }
+    if (normalized === 'WARNING' || normalized === 'WARN') {
+      return 2;
+    }
+    if (normalized === 'INFO' || normalized === 'INFORMATION') {
+      return 1;
+    }
+    return Number(value ?? 0) || 0;
   }
 
   private scheduleSnapshotRefresh(): void {

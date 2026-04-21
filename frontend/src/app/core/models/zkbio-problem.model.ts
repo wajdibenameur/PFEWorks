@@ -4,6 +4,11 @@ export interface ZkBioProblem {
   description: string;
   severity: string;
   active: boolean;
+  status?: string | null;
+  startedAt?: number | null;
+  startedAtFormatted?: string | null;
+  resolvedAt?: number | null;
+  resolvedAtFormatted?: string | null;
   source: string;
   eventId: number;
 }

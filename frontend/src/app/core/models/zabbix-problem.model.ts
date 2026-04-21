@@ -8,7 +8,7 @@ export interface ZabbixProblem {
   active: boolean;
   source: string;
   eventId: number;
-  ip: string;
+  ip: string | null;
   startedAt?: number | null;
   startedAtFormatted?: string | null;
   resolvedAt?: number | null;

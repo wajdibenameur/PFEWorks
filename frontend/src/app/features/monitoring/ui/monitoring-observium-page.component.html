@@ -18,7 +18,7 @@
       <p class="eyebrow">Monitoring Source</p>
       <h1>Observium</h1>
       <p>
-        Overview of Observium hosts and active problems using the generic monitoring endpoints.
+        Source-filtered view of unified Observium hosts, problems, metrics, and source metadata.
       </p>
     </div>
 
@@ -31,6 +31,9 @@
             'Waiting for Observium source status.'
         }}
       </span>
+      <small>
+        Hosts: {{ hostsFreshness() }} • Problems: {{ problemsFreshness() }} • Metrics: {{ metricsFreshness() }}
+      </small>
     </div>
   </section>
 
@@ -62,6 +65,29 @@
     <article class="kpi-card">
       <span>Active Alerts</span>
       <strong>{{ kpi().activeAlerts }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Metrics Samples</span>
+      <strong>{{ kpi().totalMetrics }}</strong>
+    </article>
+  </section>
+
+  <section class="metadata-grid">
+    <article class="metadata-card">
+      <span>Coverage</span>
+      <strong>{{ coverageLabel() }}</strong>
+      <small>Backend coverage: {{ metricsCoverage() }}</small>
+    </article>
+    <article class="metadata-card">
+      <span>Monitoring State</span>
+      <strong>{{ monitoringDegraded() ? 'DEGRADED' : 'LIVE' }}</strong>
+      <small>
+        {{
+          monitoringDegraded()
+            ? 'At least one unified Observium dataset is currently degraded.'
+            : 'Unified Observium datasets are currently aligned with live snapshots.'
+        }}
+      </small>
     </article>
   </section>
 
@@ -189,5 +215,43 @@
         </ul>
       }
     </article>
+  </section>
+
+  <section class="panel">
+    <header class="panel-header">
+      <div>
+        <h2>Unified Metrics</h2>
+        <small>{{ metricGroups().length }} metric families loaded from Observium</small>
+      </div>
+    </header>
+
+    @if (!metricGroups().length) {
+      <p class="empty">No Observium metric is currently available.</p>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Latest Value</th>
+              <th>Hosts</th>
+              <th>Samples</th>
+              <th>Last Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (metric of metricGroups(); track metricTrackBy($index, metric)) {
+              <tr>
+                <td>{{ metric.label }}</td>
+                <td>{{ metricValue(metric) }}</td>
+                <td>{{ metric.hosts }}</td>
+                <td>{{ metric.sampleCount }}</td>
+                <td>{{ metricTimestamp(metric) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
   </section>
 </main>

@@ -38,7 +38,7 @@ export interface SourceHealthVm {
   source: MonitoringSource;
   total: number | null;
   down: number | null;
-  coverage: 'REAL' | 'MISSING_BACKEND_READ_ENDPOINT';
+  coverage: 'native' | 'synthetic' | 'not_applicable' | 'unknown';
   availability: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN';
   note: string;
 }

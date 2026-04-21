@@ -68,6 +68,12 @@
   margin: 0;
 }
 
+.status-pill small {
+  color: var(--text-soft);
+  display: block;
+  line-height: 1.4;
+}
+
 .status-pill {
   align-content: center;
   background: rgba(34, 197, 94, 0.12);
@@ -128,6 +134,35 @@
   display: grid;
   gap: 0.8rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.metadata-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.metadata-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.95rem;
+}
+
+.metadata-card span,
+.metadata-card small {
+  color: var(--text-soft);
+}
+
+.metadata-card span {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.metadata-card strong {
+  font-size: 1.2rem;
 }
 
 .kpi-card span {

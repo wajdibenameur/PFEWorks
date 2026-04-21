@@ -77,7 +77,9 @@ export class ZabbixWorkspaceStore {
 
     const source = this.zabbixSource();
     const availability =
-      source?.status === 'AVAILABLE' || source?.status === 'UNAVAILABLE'
+      source?.status === 'AVAILABLE' ||
+      source?.status === 'DEGRADED' ||
+      source?.status === 'UNAVAILABLE'
         ? source.status
         : source?.available
           ? 'AVAILABLE'
@@ -429,7 +431,7 @@ export class ZabbixWorkspaceStore {
     this.errorMessage.set(null);
 
     forkJoin({
-      problems: this.api.getActiveProblems().pipe(
+      problems: this.api.getZabbixMonitoringProblems().pipe(
         catchError((error) => {
           this.errorMessage.set(
             extractApiErrorMessage(error, 'Unable to load active Zabbix problems.')
@@ -437,7 +439,7 @@ export class ZabbixWorkspaceStore {
           return of([]);
         })
       ),
-      metrics: this.api.getMetrics().pipe(
+      metrics: this.api.getZabbixMonitoringMetrics().pipe(
         catchError((error) => {
           this.errorMessage.set(
             extractApiErrorMessage(error, 'Unable to load Zabbix metrics snapshot.')
@@ -498,7 +500,7 @@ export class ZabbixWorkspaceStore {
     }
     this.realtimeBound = true;
 
-    this.realtime.problems$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringProblemsForZabbix$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.problems.set(this.mergeProblems(this.problems(), incoming));
         this.ensureSelection();
@@ -510,7 +512,7 @@ export class ZabbixWorkspaceStore {
       }
     });
 
-    this.realtime.metrics$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringMetricsForZabbix$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.metrics.set(this.mergeMetrics(this.metrics(), incoming));
         this.ensureSelection();
