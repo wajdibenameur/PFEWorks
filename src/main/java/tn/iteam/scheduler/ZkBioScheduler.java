@@ -1,54 +1,48 @@
 package tn.iteam.scheduler;
 
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import tn.iteam.dto.ZkBioAttendanceDTO;
-import tn.iteam.dto.ZkBioProblemDTO;
-import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
-import tn.iteam.service.ZkBioMonitoringService;
-import tn.iteam.service.ZkBioServiceInterface;
+import tn.iteam.integration.IntegrationService;
+import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.websocket.MonitoringWebSocketPublisher;
 import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
-import java.util.List;
-
-@Slf4j
+/**
+ * Periodic ZKBio refresh scheduler.
+ *
+ * Initial warmup is handled by {@code MonitoringStartup}; this component is
+ * limited to recurring refresh cycles after application startup.
+ */
 @Component
 @RequiredArgsConstructor
 public class ZkBioScheduler {
 
-    private final ZkBioServiceInterface zkBioService;
-    private final ZkBioMonitoringService zkBioMonitoringService;
-    private final ZkBioWebSocketPublisher publisher;
-    private final MonitoringWebSocketPublisher monitoringPublisher;
+    @Qualifier("zkBioIntegrationService")
+    private final IntegrationService zkBioIntegrationService;
+    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
+    private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
 
-    @Scheduled(fixedRateString = "${zkbio.scheduler.problems.rate:30000}")
-    public void fetchAndPublishProblems() {
-        log.info("Scheduled: Fetching ZKBio problems for WebSocket broadcast");
-        try {
-            List<ZkBioProblemDTO> problems = zkBioService.fetchProblems();
-            publisher.publishProblems(problems);
-            List<UnifiedMonitoringProblemDTO> monitoringProblems = zkBioMonitoringService.fetchMonitoringProblems();
-            monitoringPublisher.publishProblems(monitoringProblems);
-            log.info("Published {} ZKBio problems to WebSocket", problems.size());
-        } catch (Exception e) {
-            log.error("Error fetching/publishing ZKBio problems", e);
-        }
+    @Scheduled(
+            fixedRateString = "${zkbio.scheduler.problems.rate:30000}",
+            initialDelayString = "${zkbio.scheduler.problems.initial-delay:30000}"
+    )
+    public void refreshProblemsAndMetrics() {
+        zkBioIntegrationService.refreshProblems();
+        zkBioIntegrationService.refreshMetrics();
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZKBIO);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZKBIO);
     }
 
-    @Scheduled(fixedRateString = "${zkbio.scheduler.devices.rate:60000}")
-    public void fetchAndPublishAttendance() {
-        log.info("Scheduled: Fetching ZKBio attendance logs for WebSocket broadcast");
-        try {
-            publisher.publishStatus(zkBioService.getServerStatus());
-            publisher.publishDevices(zkBioService.fetchDevices());
-            List<ZkBioAttendanceDTO> logs = zkBioService.fetchAttendanceLogs();
-            publisher.publishAttendance(logs);
-            log.info("Published {} ZKBio attendance logs to WebSocket", logs.size());
-        } catch (Exception e) {
-            log.error("Error fetching/publishing ZKBio attendance logs", e);
-        }
+    @Scheduled(
+            fixedRateString = "${zkbio.scheduler.devices.rate:60000}",
+            initialDelayString = "${zkbio.scheduler.devices.initial-delay:60000}"
+    )
+    public void refreshAttendanceDevicesAndStatus() {
+        zkBioIntegrationService.refreshAttendance();
+        zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
+        zkBioWebSocketPublisher.publishDevicesFromSnapshot();
+        zkBioWebSocketPublisher.publishStatusFromSnapshot();
     }
 }

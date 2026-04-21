@@ -5,13 +5,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.SourceAvailabilityDTO;
+import tn.iteam.integration.*;
+import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
-import tn.iteam.service.MonitoringService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.websocket.MonitoringWebSocketPublisher;
+import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
 import java.util.List;
 
@@ -20,9 +23,14 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MonitoringController {
 
-    private final MonitoringService monitoringService;
+    private final CameraIntegrationService cameraIntegrationService;
     private final MonitoringAggregationService aggregationService;
     private final SourceAvailabilityService sourceAvailabilityService;
+    private final ZabbixIntegrationService zabbixIntegrationService;
+    private final ObserviumIntegrationService observiumIntegrationService;
+    private final IntegrationService zkBioIntegrationService;
+    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
+    private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
 
     @GetMapping("/problems")
     public UnifiedMonitoringResponse<List<UnifiedMonitoringProblemDTO>> getProblems() {
@@ -46,8 +54,13 @@ public class MonitoringController {
 
     @PostMapping("/collect")
     public ResponseEntity<ApiResponse<Void>> collectAll() {
-
-        monitoringService.collectAll();
+        zabbixIntegrationService.refresh();
+        observiumIntegrationService.refresh();
+        zkBioIntegrationService.refresh();
+        zkBioIntegrationService.refreshAttendance();
+        cameraIntegrationService.refresh();
+        publishUnifiedSnapshots();
+        publishZkBioSnapshots();
 
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
@@ -60,8 +73,9 @@ public class MonitoringController {
 
     @PostMapping("/collect/zabbix")
     public ResponseEntity<ApiResponse<Void>> collectZabbix() {
-
-        monitoringService.collectZabbix();
+        zabbixIntegrationService.refresh();
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
 
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
@@ -74,8 +88,9 @@ public class MonitoringController {
 
     @PostMapping("/collect/observium")
     public ResponseEntity<ApiResponse<Void>> collectObservium() {
-
-        monitoringService.collectObservium();
+        observiumIntegrationService.refresh();
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.OBSERVIUM);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.OBSERVIUM);
 
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
@@ -88,8 +103,7 @@ public class MonitoringController {
 
     @PostMapping("/collect/camera")
     public ResponseEntity<ApiResponse<Void>> collectCamera() {
-
-        monitoringService.collectCamera();
+        cameraIntegrationService.refresh();
 
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
@@ -98,6 +112,21 @@ public class MonitoringController {
                         .source("SYSTEM")
                         .build()
         );
+    }
+
+    private void publishUnifiedSnapshots() {
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.OBSERVIUM);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.OBSERVIUM);
+        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZKBIO);
+        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZKBIO);
+    }
+
+    private void publishZkBioSnapshots() {
+        zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
+        zkBioWebSocketPublisher.publishDevicesFromSnapshot();
+        zkBioWebSocketPublisher.publishStatusFromSnapshot();
     }
 
 }

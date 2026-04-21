@@ -13,6 +13,15 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/zabbix")
 @RequiredArgsConstructor
+/**
+ * Temporary compatibility controller for legacy frontend calls.
+ *
+ * Keep this endpoint while the frontend still consumes {@code /api/zabbix/active}.
+ * The response is already derived from the unified monitoring aggregation flow.
+ *
+ * When the frontend fully migrates to {@code /api/monitoring/*}, this controller
+ * can be moved to {@code depl}.
+ */
 public class ZabbixProblemController {
 
     private final MonitoringAggregationService aggregationService;

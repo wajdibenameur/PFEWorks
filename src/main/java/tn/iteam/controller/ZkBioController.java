@@ -2,12 +2,14 @@ package tn.iteam.controller;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.dto.ZkBioAttendanceDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
+import tn.iteam.integration.IntegrationService;
 import tn.iteam.service.ZkBioServiceInterface;
 
 import java.util.List;
@@ -19,6 +21,8 @@ import java.util.List;
 public class ZkBioController {
 
     private final ZkBioServiceInterface zkBioService;
+    @Qualifier("zkBioIntegrationService")
+    private final IntegrationService zkBioIntegrationService;
 
     @GetMapping("/status")
     public ServiceStatusDTO getServerStatus() {
@@ -55,7 +59,7 @@ public class ZkBioController {
     @PostMapping("/collect")
     public ResponseEntity<ApiResponse<Void>> triggerCollection() {
         log.info("POST /api/zkbio/collect");
-        zkBioService.collectData();
+        zkBioIntegrationService.refreshAllAndPublish();
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
                         .success(true)

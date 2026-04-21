@@ -7,7 +7,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import tn.iteam.Enums.TicketStatus;
 import tn.iteam.domain.Ticket;
-import tn.iteam.domain.User;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.service.TicketService;
 
@@ -26,10 +25,7 @@ public class TicketController {
             @RequestBody ZabbixProblemDTO problem,
             @RequestParam Long userId
     ) {
-        User creator = new User();
-        creator.setId(userId); //  simplification sans UserRepository
-
-        return ResponseEntity.ok(ticketService.createFromProblem(problem, creator));
+        return ResponseEntity.ok(ticketService.createFromProblem(problem, userId));
     }
 
     // ================= CREATE MANUAL =================
@@ -38,10 +34,7 @@ public class TicketController {
             @RequestBody Ticket ticket,
             @RequestParam Long userId
     ) {
-        User creator = new User();
-        creator.setId(userId);
-
-        return ResponseEntity.ok(ticketService.createManual(ticket, creator));
+        return ResponseEntity.ok(ticketService.createManual(ticket, userId));
     }
 
     // ================= ASSIGN =================
@@ -68,10 +61,7 @@ public class TicketController {
             @PathVariable Long id,
             @RequestParam Long adminId
     ) {
-        User admin = new User();
-        admin.setId(adminId);
-
-        return ResponseEntity.ok(ticketService.validate(id, admin));
+        return ResponseEntity.ok(ticketService.validate(id, adminId));
     }
 
     // ================= REJECT =================
@@ -81,10 +71,7 @@ public class TicketController {
             @RequestParam Long adminId,
             @RequestParam String reason
     ) {
-        User admin = new User();
-        admin.setId(adminId);
-
-        return ResponseEntity.ok(ticketService.reject(id, admin, reason));
+        return ResponseEntity.ok(ticketService.reject(id, adminId, reason));
     }
 
     // ================= ADD COMMENT =================
@@ -94,10 +81,7 @@ public class TicketController {
             @RequestParam String comment,
             @RequestParam Long userId
     ) {
-        User user = new User();
-        user.setId(userId);
-
-        return ResponseEntity.ok(ticketService.addComment(id, comment, user));
+        return ResponseEntity.ok(ticketService.addComment(id, comment, userId));
     }
 
     // ================= GET ALL (PAGINATION) =================
