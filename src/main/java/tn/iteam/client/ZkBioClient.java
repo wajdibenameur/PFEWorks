@@ -2,26 +2,29 @@ package tn.iteam.client;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
 import tn.iteam.cache.IntegrationCacheService;
+import tn.iteam.exception.IntegrationResponseException;
+import tn.iteam.exception.IntegrationTimeoutException;
+import tn.iteam.exception.IntegrationUnavailableException;
 import tn.iteam.service.SourceAvailabilityService;
+import reactor.core.publisher.Mono;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class ZkBioClient {
 
     private static final String DEVICE_LIST_ENDPOINT = "/api/v1/device/list";
@@ -34,8 +37,10 @@ public class ZkBioClient {
     private static final String STATUS_SNAPSHOT_KEY = "business-status";
     private static final String ALERTS_SNAPSHOT_KEY = "business-alerts";
     private static final String USERS_SNAPSHOT_KEY = "business-users";
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-    private final RestTemplate restTemplate;
+    @Qualifier("zkbioUnsafeTlsWebClientForInternalUseOnly")
+    private final WebClient webClient;
     private final ObjectMapper objectMapper;
     private final IntegrationCacheService integrationCacheService;
     private final SourceAvailabilityService availabilityService;
@@ -46,6 +51,18 @@ public class ZkBioClient {
     @Value("${zkbio.token:}")
     private String apiToken;
 
+    public ZkBioClient(
+            @Qualifier("zkbioUnsafeTlsWebClientForInternalUseOnly") WebClient webClient,
+            ObjectMapper objectMapper,
+            IntegrationCacheService integrationCacheService,
+            SourceAvailabilityService availabilityService
+    ) {
+        this.webClient = webClient;
+        this.objectMapper = objectMapper;
+        this.integrationCacheService = integrationCacheService;
+        this.availabilityService = availabilityService;
+    }
+
     public JsonNode getDevices() {
         Map<String, Object> payload = new HashMap<>();
         payload.put("page", 1);
@@ -55,18 +72,12 @@ public class ZkBioClient {
 
     public JsonNode getStatus() {
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    baseUrl + STATUS_ENDPOINT,
-                    HttpMethod.GET,
-                    new HttpEntity<>(createHeaders()),
-                    String.class
-            );
-            JsonNode payload = parseBody(response.getBody());
+            JsonNode payload = callGet(STATUS_ENDPOINT);
             integrationCacheService.saveSnapshot(SOURCE, STATUS_SNAPSHOT_KEY, payload);
             availabilityService.markAvailable(SOURCE);
             return payload;
         } catch (Exception ex) {
-            log.error("Error fetching ZKBio status: {}", ex.getMessage());
+            log.warn("ZKBio status unavailable: {}", ex.getMessage());
             return integrationCacheService.getSnapshot(SOURCE, STATUS_SNAPSHOT_KEY, JsonNode.class)
                     .map(snapshot -> {
                         availabilityService.markDegraded(SOURCE, ex.getMessage());
@@ -129,18 +140,12 @@ public class ZkBioClient {
 
     private JsonNode postForList(String endpoint, Map<String, Object> payload, String snapshotKey) {
         try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    baseUrl + endpoint,
-                    HttpMethod.POST,
-                    new HttpEntity<>(payload, createHeaders()),
-                    String.class
-            );
-            JsonNode result = extractListPayload(parseBody(response.getBody()));
+            JsonNode result = extractListPayload(callPost(endpoint, payload));
             integrationCacheService.saveSnapshot(SOURCE, snapshotKey, result);
             availabilityService.markAvailable(SOURCE);
             return result;
         } catch (Exception ex) {
-            log.error("Error calling ZKBio endpoint {}: {}", endpoint, ex.getMessage());
+            log.warn("ZKBio endpoint {} unavailable: {}", endpoint, ex.getMessage());
             return integrationCacheService.getSnapshot(SOURCE, snapshotKey, JsonNode.class)
                     .map(snapshot -> {
                         availabilityService.markDegraded(SOURCE, ex.getMessage());
@@ -162,11 +167,65 @@ public class ZkBioClient {
         return headers;
     }
 
+    private JsonNode callGet(String endpoint) throws Exception {
+        return webClient.get()
+                .uri(baseUrl + endpoint)
+                .headers(headers -> headers.addAll(createHeaders()))
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, response ->
+                        response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body -> Mono.error(new IntegrationUnavailableException(
+                                        SOURCE,
+                                        "ZkBio error: " + body
+                                )))
+                )
+                .bodyToMono(String.class)
+                .timeout(REQUEST_TIMEOUT)
+                .switchIfEmpty(Mono.just(""))
+                .map(this::parseBodyUnchecked)
+                .blockOptional()
+                .orElseGet(() -> objectMapper.createObjectNode());
+    }
+
+    private JsonNode callPost(String endpoint, Map<String, Object> payload) {
+        return webClient.post()
+                .uri(baseUrl + endpoint)
+                .headers(headers -> headers.addAll(createHeaders()))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(payload)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, response ->
+                        response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body -> Mono.error(new IntegrationUnavailableException(
+                                        SOURCE,
+                                        "ZkBio error: " + body
+                                )))
+                )
+                .bodyToMono(String.class)
+                .timeout(REQUEST_TIMEOUT)
+                .switchIfEmpty(Mono.just(""))
+                .map(this::parseBodyUnchecked)
+                .blockOptional()
+                .orElseGet(() -> objectMapper.createObjectNode());
+    }
+
     private JsonNode parseBody(String responseBody) throws Exception {
         if (responseBody == null || responseBody.isBlank()) {
             return objectMapper.createObjectNode();
         }
         return objectMapper.readTree(responseBody);
+    }
+
+    private JsonNode parseBodyUnchecked(String responseBody) {
+        try {
+            return parseBody(responseBody);
+        } catch (Exception exception) {
+            throw new IntegrationResponseException(SOURCE, "Failed to parse ZKBio response", exception);
+        }
     }
 
     private JsonNode extractListPayload(JsonNode root) {

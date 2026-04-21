@@ -8,22 +8,19 @@ import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
-import tn.iteam.cache.IntegrationCacheService;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
+import reactor.core.publisher.Mono;
 import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
-import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.util.IntegrationClientSupport;
-
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -90,11 +87,25 @@ public class ZabbixClient {
     private static final List<Integer> HIGH_SEVERITIES = List.of(3, 4, 5);
     private static final List<String> ITEM_OUTPUT = List.of(ITEM_ID, NAME, KEY, VALUE_TYPE, HOST_ID);
     private static final Map<String, Integer> ACTIVE_STATUS_FILTER = Map.of(STATUS, 0);
-
-    private final RestTemplate restTemplate;
-    private final IntegrationCacheService integrationCacheService;
-    private final SourceAvailabilityService availabilityService;
+    private static final String CONTEXT_HOSTS = "hosts";
+    private static final String CONTEXT_HOST_BY_ID = "host by id";
+    private static final String CONTEXT_RECENT_PROBLEMS = "recent problems";
+    private static final String CONTEXT_RECENT_PROBLEMS_BY_HOST = "recent problems by host";
+    private static final String CONTEXT_TRIGGER_BY_ID = "trigger by id";
+    private static final String CONTEXT_ITEMS_BY_HOST = "items by host";
+    private static final String CONTEXT_ITEMS_BY_HOSTS = "items by hosts";
+    private static final String CONTEXT_HISTORY = "history";
+    private static final String CONTEXT_HISTORY_BATCH = "history batch";
+    private static final String CONTEXT_LAST_ITEM_VALUE = "last item value";
+    private static final String CONTEXT_VERSION_API = "version API";
+    private static final String METHOD_HISTORY_GET = "history.get";
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    private final WebClient webClient;
     private final ObjectMapper objectMapper;
+
+    private static final String RESULT_ARRAY_LOG = "[ZABBIX] {} -> result array size={}";
+    private static final String RESULT_OBJECT_LOG = "[ZABBIX] {} -> result is object";
+    private static final String RESULT_VALUE_LOG = "[ZABBIX] {} -> result type={}, value={}";
 
     @Value("${zabbix.url}")
     private String zabbixUrl;
@@ -103,14 +114,10 @@ public class ZabbixClient {
     private String apiToken;
 
     public ZabbixClient(
-            RestTemplate restTemplate,
-            IntegrationCacheService integrationCacheService,
-            SourceAvailabilityService availabilityService,
+            WebClient webClient,
             ObjectMapper objectMapper
     ) {
-        this.restTemplate = restTemplate;
-        this.integrationCacheService = integrationCacheService;
-        this.availabilityService = availabilityService;
+        this.webClient = webClient;
         this.objectMapper = objectMapper;
     }
 
@@ -130,35 +137,36 @@ public class ZabbixClient {
             return;
         }
 
+
         if (result.isArray()) {
-            log.info(LOG_PREFIX + "{} -> result array size={}", context, result.size());
+            log.info(RESULT_ARRAY_LOG, context, result.size());
+
         } else if (result.isObject()) {
-            log.info(LOG_PREFIX + "{} -> result is object", context);
+            log.info(RESULT_OBJECT_LOG, context);
+
         } else {
-            log.info(LOG_PREFIX + "{} -> result type={}, value={}", context, result.getNodeType(), result.asText());
+            if (log.isInfoEnabled()) {
+                log.info(RESULT_VALUE_LOG, context, result.getNodeType(), result.asText());
+            }
         }
     }
 
-    private JsonNode executeRequestLive(Map<String, Object> payload, String context, String snapshotKey) {
+    private JsonNode executeRequestLive(Map<String, Object> payload, String context) {
         try {
             String prettyPayload = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload);
             log.debug(LOG_PREFIX + "START context={} url={}", context, zabbixUrl);
             log.debug(LOG_PREFIX + "{} payload:\n{}", context, prettyPayload);
 
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, createAuthenticatedHeaders());
-            ResponseEntity<String> response = restTemplate.postForEntity(zabbixUrl, request, String.class);
-
-            if (response.getBody() == null) {
+            String responseBody = callPost(zabbixUrl, payload, createAuthenticatedHeaders());
+            if (responseBody == null) {
                 throw new IntegrationResponseException(SOURCE, EMPTY_RESPONSE_TEMPLATE.formatted(context));
             }
 
-            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode root = objectMapper.readTree(responseBody);
 
             if (root.has(IntegrationClientSupport.RESULT_FIELD)) {
                 JsonNode result = root.get(IntegrationClientSupport.RESULT_FIELD);
                 logResultSummary(context, result);
-                integrationCacheService.saveSnapshot(SOURCE, snapshotKey, result);
-                markAvailable();
                 return result;
             }
 
@@ -174,39 +182,24 @@ public class ZabbixClient {
                     SOURCE,
                     UNEXPECTED_RESPONSE_STRUCTURE_PREFIX + ' ' + IntegrationClientSupport.parenthesized(context)
             );
-        } catch (HttpStatusCodeException ex) {
-            int statusCode = ex.getStatusCode().value();
-            log.warn(LOG_PREFIX + "{} HTTP error {}: {}", context, statusCode, ex.getStatusText());
-            throw new IntegrationUnavailableException(
-                    SOURCE,
-                    IntegrationClientSupport.returnedHttpDuring(SOURCE_LABEL, statusCode, context),
-                    ex
-            );
-        } catch (ResourceAccessException ex) {
-            log.warn(LOG_PREFIX + "{} timeout/unreachable: {}", context, ex.getMessage());
-            throw new IntegrationTimeoutException(
-                    SOURCE,
-                    IntegrationClientSupport.timeoutDuring(SOURCE_LABEL, context),
-                    ex
-            );
         } catch (JsonProcessingException ex) {
-            log.warn(LOG_PREFIX + "{} invalid JSON response: {}", context, ex.getOriginalMessage());
+
             throw new IntegrationResponseException(
                     SOURCE,
                     INVALID_JSON_RESPONSE_PREFIX + ' ' + IntegrationClientSupport.parenthesized(context),
                     ex
             );
-        } catch (RestClientException ex) {
-            log.warn(LOG_PREFIX + "{} transport error: {}", context, ex.getMessage());
-            throw new IntegrationUnavailableException(
+        } catch (WebClientException ex) {
+
+            throw new IntegrationTimeoutException(
                     SOURCE,
-                    IntegrationClientSupport.duringMessage(UNABLE_TO_REACH_PREFIX, context),
+                    IntegrationClientSupport.timeoutDuring(SOURCE_LABEL, context),
                     ex
             );
         } catch (IntegrationUnavailableException | IntegrationTimeoutException | IntegrationResponseException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.error(LOG_PREFIX + "Unexpected error during {}: {}", context, ex.getMessage(), ex);
+
             throw new IntegrationUnavailableException(
                     SOURCE,
                     UNEXPECTED_ERROR_PREFIX + ' ' + IntegrationClientSupport.parenthesized(context),
@@ -215,7 +208,7 @@ public class ZabbixClient {
         }
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getHostsFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getHostsFallback")
     public JsonNode getHosts() {
         log.info(LOG_PREFIX + "getHosts() called");
@@ -226,10 +219,10 @@ public class ZabbixClient {
         params.put(SELECT_INTERFACES, INTERFACE_OUTPUT);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "hosts", "hosts");
+        return executeRequestLive(payload,CONTEXT_HOSTS);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getHostByIdFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getHostByIdFallback")
     public JsonNode getHostById(String hostId) {
         log.info(LOG_PREFIX + "getHostById() called with hostId={}", hostId);
@@ -241,10 +234,10 @@ public class ZabbixClient {
         params.put(SELECT_INTERFACES, INTERFACE_OUTPUT);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "host by id", "host-by-id-" + hostId);
+        return executeRequestLive(payload,CONTEXT_HOST_BY_ID);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getRecentProblemsFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getRecentProblemsFallback")
     public JsonNode getRecentProblems() {
         log.info(LOG_PREFIX + "getRecentProblems() called");
@@ -261,10 +254,11 @@ public class ZabbixClient {
         params.put(SEVERITIES, HIGH_SEVERITIES);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "recent problems", "recent-problems");
+        return executeRequestLive(payload,CONTEXT_RECENT_PROBLEMS);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getRecentProblemsByHostFallback")
+
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getRecentProblemsByHostFallback")
     public JsonNode getRecentProblemsByHost(String hostId) {
         log.info(LOG_PREFIX + "getRecentProblemsByHost() called with hostId={}", hostId);
@@ -282,10 +276,9 @@ public class ZabbixClient {
         params.put(SEVERITIES, HIGH_SEVERITIES);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "recent problems by host", "recent-problems-by-host-" + hostId);
+        return executeRequestLive(payload, CONTEXT_RECENT_PROBLEMS);
     }
-
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getTriggerByIdFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getTriggerByIdFallback")
     public JsonNode getTriggerById(String triggerId) {
         log.info(LOG_PREFIX + "getTriggerById() called with triggerId={}", triggerId);
@@ -297,27 +290,22 @@ public class ZabbixClient {
         params.put(SELECT_HOSTS, PROBLEM_HOST_OUTPUT);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "trigger by id", "trigger-by-id-" + triggerId);
+        return executeRequestLive(payload,CONTEXT_TRIGGER_BY_ID);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getVersionFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getVersionFallback")
     public String getVersion() {
         try {
             Map<String, Object> payload = createBasePayload("apiinfo.version");
-            HttpEntity<Map<String, Object>> request = new HttpEntity<>(payload, createJsonHeaders());
-            ResponseEntity<String> response = restTemplate.postForEntity(zabbixUrl, request, String.class);
-
-            if (response.getBody() == null) {
+            String responseBody = callPost(zabbixUrl, payload, createJsonHeaders());
+            if (responseBody == null) {
                 throw new IntegrationResponseException(SOURCE, EMPTY_RESPONSE_TEMPLATE.formatted(VERSION_API_TARGET));
             }
 
-            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode root = objectMapper.readTree(responseBody);
             if (root.has(IntegrationClientSupport.RESULT_FIELD)) {
-                String version = root.get(IntegrationClientSupport.RESULT_FIELD).asText();
-                integrationCacheService.saveSnapshot(SOURCE, "version", version);
-                markAvailable();
-                return version;
+                return root.get(IntegrationClientSupport.RESULT_FIELD).asText();
             }
             if (root.has(IntegrationClientSupport.ERROR_FIELD)) {
                 throw new IntegrationResponseException(
@@ -326,40 +314,25 @@ public class ZabbixClient {
                 );
             }
             throw new IntegrationResponseException(SOURCE, "Unexpected response from Zabbix version API");
-        } catch (HttpStatusCodeException ex) {
-            int statusCode = ex.getStatusCode().value();
-            log.warn(LOG_PREFIX + "getVersion HTTP error {}: {}", statusCode, ex.getStatusText());
-            throw new IntegrationUnavailableException(
-                    SOURCE,
-                    IntegrationClientSupport.returnedHttpDuring(SOURCE_LABEL, statusCode, GET_VERSION_CONTEXT),
-                    ex
-            );
-        } catch (ResourceAccessException ex) {
-            log.warn(LOG_PREFIX + "getVersion timeout/unreachable: {}", ex.getMessage());
+        } catch (JsonProcessingException ex) {
+
+            throw new IntegrationResponseException(SOURCE, "Invalid JSON response from Zabbix version API", ex);
+        } catch (WebClientException ex) {
+
             throw new IntegrationTimeoutException(
                     SOURCE,
                     IntegrationClientSupport.timeoutDuring(SOURCE_LABEL, GET_VERSION_CONTEXT),
                     ex
             );
-        } catch (JsonProcessingException ex) {
-            log.warn(LOG_PREFIX + "getVersion invalid JSON response: {}", ex.getOriginalMessage());
-            throw new IntegrationResponseException(SOURCE, "Invalid JSON response from Zabbix version API", ex);
-        } catch (RestClientException ex) {
-            log.warn(LOG_PREFIX + "getVersion transport error: {}", ex.getMessage());
-            throw new IntegrationUnavailableException(
-                    SOURCE,
-                    IntegrationClientSupport.duringMessage(UNABLE_TO_REACH_PREFIX, GET_VERSION_CONTEXT),
-                    ex
-            );
         } catch (IntegrationUnavailableException | IntegrationTimeoutException | IntegrationResponseException ex) {
             throw ex;
         } catch (Exception ex) {
-            log.error(LOG_PREFIX + "Unexpected getVersion error: {}", ex.getMessage(), ex);
+
             throw new IntegrationUnavailableException(SOURCE, UNEXPECTED_VERSION_ERROR, ex);
         }
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getItemsByHostFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getItemsByHostFallback")
     public JsonNode getItemsByHost(String hostId) {
         log.info(LOG_PREFIX + "getItemsByHost() called with hostId={}", hostId);
@@ -371,10 +344,9 @@ public class ZabbixClient {
         params.put(FILTER, ACTIVE_STATUS_FILTER);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "items by host", "items-by-host-" + hostId);
+        return executeRequestLive(payload,CONTEXT_ITEMS_BY_HOST);
     }
-
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getItemsByHostsFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getItemsByHostsFallback")
     public JsonNode getItemsByHosts(List<String> hostIds) {
         log.info(LOG_PREFIX + "getItemsByHosts() called with hostIds count={}", hostIds != null ? hostIds.size() : 0);
@@ -386,16 +358,16 @@ public class ZabbixClient {
         params.put(FILTER, ACTIVE_STATUS_FILTER);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "items by hosts", "items-by-hosts-" + hashItems(hostIds));
+        return executeRequestLive(payload, CONTEXT_ITEMS_BY_HOSTS);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getItemHistoryFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getItemHistoryFallback")
     public JsonNode getItemHistory(String itemId, int valueType, long from, long to) {
         log.info(LOG_PREFIX + "getItemHistory() called with itemId={}, valueType={}, from={}, to={}",
                 itemId, valueType, from, to);
 
-        Map<String, Object> payload = createBasePayload("history.get");
+        Map<String, Object> payload = createBasePayload(METHOD_HISTORY_GET);
         Map<String, Object> params = new HashMap<>();
         params.put(HISTORY, valueType);
         params.put(ITEMIDS, List.of(itemId));
@@ -406,16 +378,16 @@ public class ZabbixClient {
         params.put(SORT_ORDER, ASC);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "history", "history-" + itemId + "-vt-" + valueType + "-from-" + from + "-to-" + to);
+        return executeRequestLive(payload, CONTEXT_HISTORY);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getHistoryBatchFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getHistoryBatchFallback")
     public JsonNode getHistoryBatch(List<String> itemIds, int valueType, long from, long to) {
         log.info(LOG_PREFIX + "getHistoryBatch() called with itemIds count={}, valueType={}, from={}, to={}",
                 itemIds != null ? itemIds.size() : 0, valueType, from, to);
 
-        Map<String, Object> payload = createBasePayload("history.get");
+        Map<String, Object> payload = createBasePayload(METHOD_HISTORY_GET);
         Map<String, Object> params = new HashMap<>();
         params.put(HISTORY, valueType);
         params.put(ITEMIDS, itemIds);
@@ -424,20 +396,16 @@ public class ZabbixClient {
         params.put(OUTPUT, EXTEND);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(
-                payload,
-                "history batch",
-                "history-batch-vt-" + valueType + "-from-" + from + "-to-" + to + "-items-" + hashItems(itemIds)
-        );
+        return executeRequestLive(payload,CONTEXT_HISTORY_BATCH);
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getLastItemValueFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getLastItemValueFallback")
     public JsonNode getLastItemValue(String itemId, int valueType) {
         long now = Instant.now().getEpochSecond();
         long oneHourAgo = now - 3600;
 
-        Map<String, Object> payload = createBasePayload("history.get");
+        Map<String, Object> payload = createBasePayload(METHOD_HISTORY_GET);
         Map<String, Object> params = new HashMap<>();
         params.put(HISTORY, valueType);
         params.put(ITEMIDS, List.of(itemId));
@@ -449,7 +417,7 @@ public class ZabbixClient {
         params.put(LIMIT, 1);
         payload.put(PARAMS, params);
 
-        return executeRequestLive(payload, "last item value", "last-item-value-" + itemId + "-vt-" + valueType);
+        return executeRequestLive(payload, CONTEXT_LAST_ITEM_VALUE);
     }
 
     private HttpHeaders createAuthenticatedHeaders() {
@@ -464,103 +432,116 @@ public class ZabbixClient {
         return headers;
     }
 
-    private void markAvailable() {
-        availabilityService.markAvailable(SOURCE);
+    private String callPost(String url, Map<String, Object> payload, HttpHeaders headers) {
+        return webClient.post()
+                .uri(url)
+                .headers(httpHeaders -> httpHeaders.addAll(headers))
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .bodyValue(payload)
+                .retrieve()
+                .onStatus(HttpStatusCode::isError, response ->
+                        response.bodyToMono(String.class)
+                                .defaultIfEmpty("")
+                                .flatMap(body -> Mono.error(new IntegrationUnavailableException(
+                                        SOURCE,
+                                        resolveHttpErrorMessage(response.statusCode(), body)
+                                )))
+                )
+                .bodyToMono(String.class)
+                .timeout(REQUEST_TIMEOUT)
+                .switchIfEmpty(Mono.just(""))
+                .blockOptional()
+                .orElse("");
     }
 
-    private JsonNode getHostsFallback(Throwable throwable) {
-        return cachedFallback("hosts", throwable);
+    private String resolveHttpErrorMessage(HttpStatusCode statusCode, String body) {
+        int status = statusCode.value();
+        if (body != null && !body.isBlank()) {
+            return IntegrationClientSupport.returnedHttp(SOURCE_LABEL, status, body);
+        }
+        return IntegrationClientSupport.returnedHttp(SOURCE_LABEL, status, "Zabbix API");
     }
+    private RuntimeException mapCircuitBreakerException(String apiTarget, Throwable throwable) {
+        if (throwable instanceof CallNotPermittedException) {
 
-    private JsonNode getHostByIdFallback(String hostId, Throwable throwable) {
-        return cachedFallback("host-by-id-" + hostId, throwable);
-    }
+            return new IntegrationUnavailableException(
+                    SOURCE,
+                    "Circuit breaker open for " + SOURCE_LABEL + " " + apiTarget,
+                    throwable
+            );
+        }
 
-    private JsonNode getRecentProblemsFallback(Throwable throwable) {
-        return cachedFallback("recent-problems", throwable);
-    }
+        if (throwable instanceof IntegrationUnavailableException e) {
+            return e;
+        }
 
-    private JsonNode getRecentProblemsByHostFallback(String hostId, Throwable throwable) {
-        return cachedFallback("recent-problems-by-host-" + hostId, throwable);
-    }
+        if (throwable instanceof IntegrationTimeoutException e) {
+            return e;
+        }
 
-    private JsonNode getTriggerByIdFallback(String triggerId, Throwable throwable) {
-        return cachedFallback("trigger-by-id-" + triggerId, throwable);
-    }
+        if (throwable instanceof IntegrationResponseException e) {
+            return e;
+        }
 
-    private String getVersionFallback(Throwable throwable) {
-        String reason = fallbackReason(throwable);
-        return integrationCacheService.getSnapshot(SOURCE, "version", String.class)
-                .map(snapshot -> {
-                    availabilityService.markDegraded(SOURCE, reason);
-                    log.warn(LOG_PREFIX + "Serving Redis fallback snapshot 'version'");
-                    return snapshot;
-                })
-                .orElseThrow(() -> {
-                    markUnavailable(reason);
-                    return new IntegrationUnavailableException(
-                            SOURCE,
-                            reason,
-                            throwable instanceof Exception exception ? exception : null
-                    );
-                });
-    }
-
-    private JsonNode getItemsByHostFallback(String hostId, Throwable throwable) {
-        return cachedFallback("items-by-host-" + hostId, throwable);
-    }
-
-    private JsonNode getItemsByHostsFallback(List<String> hostIds, Throwable throwable) {
-        return cachedFallback("items-by-hosts-" + hashItems(hostIds), throwable);
-    }
-
-    private JsonNode getItemHistoryFallback(String itemId, int valueType, long from, long to, Throwable throwable) {
-        return cachedFallback("history-" + itemId + "-vt-" + valueType + "-from-" + from + "-to-" + to, throwable);
-    }
-
-    private JsonNode getHistoryBatchFallback(List<String> itemIds, int valueType, long from, long to, Throwable throwable) {
-        return cachedFallback(
-                "history-batch-vt-" + valueType + "-from-" + from + "-to-" + to + "-items-" + hashItems(itemIds),
+        return new IntegrationUnavailableException(
+                SOURCE,
+                "Unexpected error while calling Zabbix (" + apiTarget + ")",
                 throwable
         );
     }
-
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getHostsFallback(Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_HOSTS, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getHostByIdFallback(String hostId, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_HOST_BY_ID, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getRecentProblemsFallback(Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_RECENT_PROBLEMS, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getRecentProblemsByHostFallback(String hostId, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_RECENT_PROBLEMS_BY_HOST, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getTriggerByIdFallback(String triggerId, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_TRIGGER_BY_ID, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private String getVersionFallback(Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_VERSION_API, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getItemsByHostFallback(String hostId, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_ITEMS_BY_HOST, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getItemsByHostsFallback(List<String> hostIds, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_ITEMS_BY_HOSTS, throwable);
+    }
+    @SuppressWarnings("unused")
+    private JsonNode getItemHistoryFallback(String itemId, int valueType, long from, long to, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_HISTORY, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
+    private JsonNode getHistoryBatchFallback(List<String> itemIds, int valueType, long from, long to, Throwable throwable) {
+        throw mapCircuitBreakerException(CONTEXT_HISTORY_BATCH, throwable);
+    }
+    @SuppressWarnings("unused")
+    // Parameter required by Resilience4j fallback signature
     private JsonNode getLastItemValueFallback(String itemId, int valueType, Throwable throwable) {
-        return cachedFallback("last-item-value-" + itemId + "-vt-" + valueType, throwable);
-    }
-
-    private JsonNode cachedFallback(String snapshotKey, Throwable throwable) {
-        String reason = fallbackReason(throwable);
-        return integrationCacheService.getSnapshot(SOURCE, snapshotKey, JsonNode.class)
-                .map(snapshot -> {
-                    availabilityService.markDegraded(SOURCE, reason);
-                    log.warn(LOG_PREFIX + "Serving Redis fallback snapshot '{}'", snapshotKey);
-                    return snapshot;
-                })
-                .orElseThrow(() -> {
-                    markUnavailable(reason);
-                    return new IntegrationUnavailableException(
-                            SOURCE,
-                            reason,
-                            throwable instanceof Exception exception ? exception : null
-                    );
-                });
-    }
-
-    private String fallbackReason(Throwable throwable) {
-        return throwable != null && throwable.getMessage() != null && !throwable.getMessage().isBlank()
-                ? throwable.getMessage()
-                : "Zabbix live API failure";
-    }
-
-    private String hashItems(List<String> values) {
-        if (values == null || values.isEmpty()) {
-            return "none";
-        }
-        return Integer.toHexString(String.join(",", values).hashCode());
-    }
-
-    private void markUnavailable(String message) {
-        availabilityService.markUnavailable(SOURCE, message);
+        throw mapCircuitBreakerException(CONTEXT_LAST_ITEM_VALUE, throwable);
     }
 }

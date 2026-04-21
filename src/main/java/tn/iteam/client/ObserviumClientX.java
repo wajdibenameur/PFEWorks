@@ -4,27 +4,25 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import io.github.resilience4j.retry.annotation.Retry;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClientException;
-import org.springframework.web.client.RestTemplate;
-import tn.iteam.cache.IntegrationCacheService;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientException;
+import reactor.core.publisher.Mono;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
-import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.util.IntegrationClientSupport;
+
+import java.time.Duration;
 
 @Slf4j
 @Component
@@ -50,28 +48,21 @@ public class ObserviumClientX {
     private static final String TIMEOUT_LOG_TEMPLATE = "Observium timeout/unreachable on {}: {}";
     private static final String INVALID_JSON_LOG_TEMPLATE = "Observium invalid JSON on {}: {}";
     private static final String TRANSPORT_ERROR_LOG_TEMPLATE = "Observium transport error on {}: {}";
-    private static final String DEVICES_SNAPSHOT_KEY = "devices";
-    private static final String ALERTS_SNAPSHOT_KEY = "alerts";
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
 
-    private final RestTemplate restTemplate;
+    private final WebClient webClient;
     private final ObjectMapper objectMapper;
-    private final IntegrationCacheService integrationCacheService;
-    private final SourceAvailabilityService availabilityService;
     private final String baseUrl;
     private final String token;
 
     public ObserviumClientX(
-            RestTemplate restTemplate,
+            WebClient webClient,
             ObjectMapper objectMapper,
-            IntegrationCacheService integrationCacheService,
-            SourceAvailabilityService availabilityService,
             @Value("${observium.url}") String baseUrl,
             @Value("${observium.token}") String token
     ) {
-        this.restTemplate = restTemplate;
+        this.webClient = webClient;
         this.objectMapper = objectMapper;
-        this.integrationCacheService = integrationCacheService;
-        this.availabilityService = availabilityService;
         this.baseUrl = baseUrl;
         this.token = token;
     }
@@ -83,10 +74,10 @@ public class ObserviumClientX {
         return headers;
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getDevicesFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getDevicesFallback")
     public ApiResponse<JsonNode> getDevices() {
-        JsonNode data = callApiLive(DEVICES_ENDPOINT, IntegrationClientSupport.DEVICES_FIELD, true, DEVICES_SNAPSHOT_KEY);
+        JsonNode data = callApiLive(DEVICES_ENDPOINT, IntegrationClientSupport.DEVICES_FIELD, true);
         return ApiResponse.<JsonNode>builder()
                 .success(true)
                 .source(SOURCE)
@@ -95,10 +86,10 @@ public class ObserviumClientX {
                 .build();
     }
 
-    @Retry(name = RESILIENCE_NAME, fallbackMethod = "getAlertsFallback")
+    @Retry(name = RESILIENCE_NAME)
     @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "getAlertsFallback")
     public ApiResponse<JsonNode> getAlerts() {
-        JsonNode data = callApiLive(ALERTS_ENDPOINT, IntegrationClientSupport.ALERTS_FIELD, false, ALERTS_SNAPSHOT_KEY);
+        JsonNode data = callApiLive(ALERTS_ENDPOINT, IntegrationClientSupport.ALERTS_FIELD, false);
         return ApiResponse.<JsonNode>builder()
                 .success(true)
                 .source(SOURCE)
@@ -107,22 +98,69 @@ public class ObserviumClientX {
                 .build();
     }
 
-    private JsonNode callApiLive(String endpoint, String responseField, boolean allowObjectCollection, String snapshotKey) {
-        String url = baseUrl + endpoint;
+    private ApiResponse<JsonNode> getDevicesFallback(Throwable throwable) {
+        throw mapCircuitBreakerException("devices API", throwable);
+    }
 
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.GET,
-                    new HttpEntity<>(createHeaders()),
-                    String.class
+    private ApiResponse<JsonNode> getAlertsFallback(Throwable throwable) {
+        throw mapCircuitBreakerException("alerts API", throwable);
+    }
+
+    private RuntimeException mapCircuitBreakerException(String apiTarget, Throwable throwable) {
+        if (throwable instanceof CallNotPermittedException) {
+            log.warn("Observium circuit breaker OPEN on {}: {}", apiTarget, throwable.getMessage());
+            return new IntegrationUnavailableException(
+                    SOURCE,
+                    "Circuit breaker open for Observium " + apiTarget,
+                    throwable
             );
+        }
 
-            if (response.getBody() == null) {
+        if (throwable instanceof IntegrationUnavailableException e) {
+            return e;
+        }
+
+        if (throwable instanceof IntegrationTimeoutException e) {
+            return e;
+        }
+
+        if (throwable instanceof IntegrationResponseException e) {
+            return e;
+        }
+
+        return new IntegrationUnavailableException(
+                SOURCE,
+                "Observium unavailable on " + apiTarget,
+                throwable
+        );
+    }
+
+    private JsonNode callApiLive(String endpoint, String responseField, boolean allowObjectCollection) {
+        try {
+            String responseBody = webClient.get()
+                    .uri(baseUrl + endpoint)
+                    .headers(headers -> headers.addAll(createHeaders()))
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .onStatus(HttpStatusCode::isError, response ->
+                            response.bodyToMono(String.class)
+                                    .defaultIfEmpty("")
+                                    .flatMap(body -> Mono.error(new IntegrationUnavailableException(
+                                            SOURCE,
+                                            "Observium error: " + body
+                                    )))
+                    )
+                    .bodyToMono(String.class)
+                    .timeout(REQUEST_TIMEOUT)
+                    .switchIfEmpty(Mono.just(""))
+                    .blockOptional()
+                    .orElse("");
+
+            if (responseBody == null) {
                 throw new IntegrationResponseException(SOURCE, EMPTY_RESPONSE_PREFIX + endpoint);
             }
 
-            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode root = objectMapper.readTree(responseBody);
 
             if (root == null || root.isNull()) {
                 throw new IntegrationResponseException(SOURCE, NULL_JSON_ROOT_TEMPLATE.formatted(endpoint));
@@ -136,30 +174,20 @@ public class ObserviumClientX {
             }
 
             if (data.isArray()) {
-                integrationCacheService.saveSnapshot(SOURCE, snapshotKey, data);
-                markAvailable();
                 return data;
             }
 
             if ((allowObjectCollection || IntegrationClientSupport.ALERTS_FIELD.equals(responseField)) && data.isObject()) {
-                JsonNode normalized = normalizeObjectCollection(data);
-                integrationCacheService.saveSnapshot(SOURCE, snapshotKey, normalized);
-                markAvailable();
-                return normalized;
+                return normalizeObjectCollection(data);
             }
 
             log.warn(NOT_ARRAY_LOG_TEMPLATE, responseField, endpoint, data.getNodeType());
             throw new IntegrationResponseException(SOURCE, NOT_ARRAY_TEMPLATE.formatted(responseField, endpoint));
 
-        } catch (HttpStatusCodeException ex) {
-            int statusCode = ex.getStatusCode().value();
-            log.warn(HTTP_ERROR_LOG_TEMPLATE, endpoint, statusCode);
-            throw new IntegrationUnavailableException(
-                    SOURCE,
-                    IntegrationClientSupport.returnedHttp(SOURCE_LABEL, statusCode, endpoint),
-                    ex
-            );
-        } catch (ResourceAccessException ex) {
+        } catch (IntegrationUnavailableException ex) {
+            log.warn(TRANSPORT_ERROR_LOG_TEMPLATE, endpoint, ex.getMessage());
+            throw ex;
+        } catch (WebClientException ex) {
             log.warn(TIMEOUT_LOG_TEMPLATE, endpoint, ex.getMessage());
             throw new IntegrationTimeoutException(SOURCE, IntegrationClientSupport.timeout(SOURCE_LABEL, endpoint), ex);
         } catch (IntegrationResponseException ex) {
@@ -171,56 +199,7 @@ public class ObserviumClientX {
                     IntegrationClientSupport.invalidJsonResponse(SOURCE_LABEL, endpoint),
                     ex
             );
-        } catch (RestClientException ex) {
-            log.warn(TRANSPORT_ERROR_LOG_TEMPLATE, endpoint, ex.getMessage());
-            throw new IntegrationUnavailableException(
-                    SOURCE,
-                    IntegrationClientSupport.unreachable(SOURCE_LABEL, endpoint),
-                    ex
-            );
         }
-    }
-
-    private ApiResponse<JsonNode> getDevicesFallback(Throwable throwable) {
-        return cachedFallbackResponse(DEVICES_SNAPSHOT_KEY, DEVICES_SUCCESS_MESSAGE, throwable);
-    }
-
-    private ApiResponse<JsonNode> getAlertsFallback(Throwable throwable) {
-        return cachedFallbackResponse(ALERTS_SNAPSHOT_KEY, ALERTS_SUCCESS_MESSAGE, throwable);
-    }
-
-    private void markAvailable() {
-        availabilityService.markAvailable(SOURCE);
-    }
-
-    private ApiResponse<JsonNode> cachedFallbackResponse(String snapshotKey, String successMessage, Throwable throwable) {
-        String reason = throwable != null && throwable.getMessage() != null && !throwable.getMessage().isBlank()
-                ? throwable.getMessage()
-                : "Observium live API failure";
-
-        return integrationCacheService.getSnapshot(SOURCE, snapshotKey, JsonNode.class)
-                .map(snapshot -> {
-                    availabilityService.markDegraded(SOURCE, reason);
-                    log.warn("Observium live API failed, serving Redis fallback snapshot '{}'", snapshotKey);
-                    return ApiResponse.<JsonNode>builder()
-                            .success(true)
-                            .source(SOURCE)
-                            .message(successMessage)
-                            .data(snapshot)
-                            .build();
-                })
-                .orElseThrow(() -> {
-                    markUnavailable(reason);
-                    return new IntegrationUnavailableException(
-                            SOURCE,
-                            reason,
-                            throwable instanceof Exception exception ? exception : null
-                    );
-                });
-    }
-
-    private void markUnavailable(String reason) {
-        availabilityService.markUnavailable(SOURCE, reason);
     }
 
     private String extractStatus(JsonNode root) {

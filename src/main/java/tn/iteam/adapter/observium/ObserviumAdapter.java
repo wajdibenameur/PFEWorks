@@ -6,20 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import tn.iteam.client.ObserviumClientX;
 import tn.iteam.domain.ApiResponse;
-import tn.iteam.domain.ObserviumProblem;
+import tn.iteam.dto.ObserviumMetricDTO;
 import tn.iteam.dto.ObserviumProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.exception.IntegrationDataUnavailableException;
 import tn.iteam.mapper.ObserviumMapper;
-import tn.iteam.monitoring.MonitoringSourceType;
-import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
-import tn.iteam.repository.ObserviumProblemRepository;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.time.Instant;
 
 @Slf4j
 @Component
@@ -28,8 +23,6 @@ public class ObserviumAdapter {
 
     private final ObserviumClientX observiumClient;
     private final ObserviumMapper observiumMapper;
-    private final ObserviumProblemRepository problemRepository;
-    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
 
     private boolean isValid(ApiResponse<JsonNode> response) {
         return response != null
@@ -68,116 +61,29 @@ public class ObserviumAdapter {
         return dtos;
     }
 
-    public List<ObserviumProblemDTO> fetchProblemsAndSave() {
-        log.info("Fetching + saving Observium problems");
-        ApiResponse<JsonNode> response = observiumClient.getAlerts();
+    public List<ObserviumMetricDTO> fetchMetrics() {
+        List<ServiceStatusDTO> statuses = fetchAll();
+        long now = Instant.now().getEpochSecond();
+        List<ObserviumMetricDTO> metrics = new ArrayList<>();
 
-        List<ObserviumProblemDTO> dtos = new ArrayList<>();
-        List<UnifiedMonitoringProblemDTO> monitoringProblems = new ArrayList<>();
+        for (ServiceStatusDTO status : statuses) {
+            String hostName = status.getName() != null && !status.getName().isBlank() ? status.getName() : "UNKNOWN";
+            String hostId = status.getIp() != null && !status.getIp().isBlank() && !"IP_UNKNOWN".equalsIgnoreCase(status.getIp())
+                    ? status.getIp()
+                    : hostName;
 
-        if (!isValid(response)) {
-            log.warn("Alerts API failed: {}", response.getMessage());
-            return dtos;
+            metrics.add(ObserviumMetricDTO.builder()
+                    .hostId(hostId)
+                    .hostName(hostName)
+                    .itemId("device-status")
+                    .metricKey("observium.device.status")
+                    .value("UP".equalsIgnoreCase(status.getStatus()) ? 1.0 : 0.0)
+                    .timestamp(now)
+                    .ip(status.getIp())
+                    .port(status.getPort())
+                    .build());
         }
 
-        for (JsonNode node : response.getData()) {
-            ObserviumProblemDTO dto = observiumMapper.mapAlertToDTO(node);
-            dtos.add(dto);
-            monitoringProblems.add(toUnifiedProblem(dto));
-        }
-
-        List<ObserviumProblem> entities = buildEntitiesToSave(dtos);
-        entities.addAll(buildResolvedEntitiesToSave(dtos));
-
-        if (!entities.isEmpty()) {
-            problemRepository.saveAll(entities);
-            log.info("{} problems saved", entities.size());
-        }
-
-        monitoringWebSocketPublisher.publishProblems(monitoringProblems);
-
-        return dtos;
-    }
-
-    private List<ObserviumProblem> buildEntitiesToSave(List<ObserviumProblemDTO> dtos) {
-        Map<String, ObserviumProblemDTO> activeByProblemId = new LinkedHashMap<>();
-
-        for (ObserviumProblemDTO dto : dtos) {
-            if (dto.isActive() && dto.getProblemId() != null && !dto.getProblemId().isBlank()) {
-                activeByProblemId.put(dto.getProblemId(), dto);
-            }
-        }
-
-        if (activeByProblemId.isEmpty()) {
-            return List.of();
-        }
-
-        Map<String, ObserviumProblem> existingByProblemId = new LinkedHashMap<>();
-        for (ObserviumProblem existing : problemRepository.findByProblemIdIn(activeByProblemId.keySet())) {
-            existingByProblemId.put(existing.getProblemId(), existing);
-        }
-
-        List<ObserviumProblem> entities = new ArrayList<>();
-        for (ObserviumProblemDTO dto : activeByProblemId.values()) {
-            ObserviumProblem entity = existingByProblemId.getOrDefault(dto.getProblemId(), new ObserviumProblem());
-            entity.setProblemId(dto.getProblemId());
-            entity.setHostId(dto.getHostId());
-            entity.setDevice(dto.getHost());
-            entity.setDescription(dto.getDescription());
-            entity.setSeverity(dto.getSeverity());
-            entity.setActive(true);
-            entity.setSource(dto.getSource());
-            entity.setEventId(dto.getEventId());
-            entities.add(entity);
-        }
-
-        return entities;
-    }
-
-    private List<ObserviumProblem> buildResolvedEntitiesToSave(List<ObserviumProblemDTO> dtos) {
-        Map<String, ObserviumProblemDTO> byProblemId = new LinkedHashMap<>();
-
-        for (ObserviumProblemDTO dto : dtos) {
-            if (dto.getProblemId() != null && !dto.getProblemId().isBlank()) {
-                byProblemId.put(dto.getProblemId(), dto);
-            }
-        }
-
-        List<ObserviumProblem> resolvedEntities = new ArrayList<>();
-        for (ObserviumProblem existing : problemRepository.findBySourceAndActiveTrue("OBSERVIUM")) {
-            ObserviumProblemDTO dto = byProblemId.get(existing.getProblemId());
-            if (dto != null) {
-                existing.setHostId(dto.getHostId());
-                existing.setDevice(dto.getHost());
-                existing.setDescription(dto.getDescription());
-                existing.setSeverity(dto.getSeverity());
-                existing.setActive(dto.isActive());
-                existing.setSource(dto.getSource());
-                existing.setEventId(dto.getEventId());
-            } else {
-                existing.setActive(false);
-            }
-            resolvedEntities.add(existing);
-        }
-
-        return resolvedEntities;
-    }
-
-    private UnifiedMonitoringProblemDTO toUnifiedProblem(ObserviumProblemDTO dto) {
-        String hostName = dto.getHost() != null && !dto.getHost().isBlank() ? dto.getHost() : "UNKNOWN";
-        String hostId = dto.getHostId() != null ? dto.getHostId() : hostName;
-
-        return UnifiedMonitoringProblemDTO.builder()
-                .id(MonitoringSourceType.OBSERVIUM + ":" + dto.getProblemId())
-                .source(MonitoringSourceType.OBSERVIUM)
-                .problemId(dto.getProblemId())
-                .eventId(dto.getEventId())
-                .hostId(hostId)
-                .hostName(hostName)
-                .description(dto.getDescription())
-                .severity(dto.getSeverity())
-                .active(dto.isActive())
-                .status(dto.isActive() ? "ACTIVE" : "RESOLVED")
-                .build();
+        return metrics;
     }
 }
