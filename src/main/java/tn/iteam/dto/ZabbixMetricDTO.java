@@ -11,7 +11,12 @@ public class ZabbixMetricDTO {
     private String hostId;
     private String hostName;
     private String itemId;
+    private String metricName;
     private String metricKey;
+    private String source;
+    private Integer valueType;
+    private String status;
+    private String units;
     private Double value;
     private Long timestamp;
     private String ip;

@@ -32,7 +32,21 @@ public class ZabbixMetric extends BaseEntity {
     private String itemId;
 
     @Column(nullable = false)
+    private String metricName;
+
+    @Column(nullable = false)
     private String metricKey;
+
+    @Column(nullable = false)
+    private String source = "Zabbix";
+
+    @Column(nullable = false)
+    private Integer valueType;
+
+    @Column(nullable = false)
+    private String status;
+
+    private String units;
 
     @Column(nullable = false)
     private Double value;

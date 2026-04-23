@@ -21,4 +21,11 @@ public interface ZabbixMetricRepository extends JpaRepository<ZabbixMetric, Long
 
     @Query("select m from ZabbixMetric m where m.hostId in :hostIds and m.timestamp >= :start order by m.hostId asc, m.timestamp asc")
     List<ZabbixMetric> findRecentMetricsForHosts(Collection<String> hostIds, Long start);
+
+    List<ZabbixMetric> findAllByHostIdInAndItemIdInAndTimestampIn(
+            Collection<String> hostIds,
+            Collection<String> itemIds,
+            Collection<Long> timestamps
+    );
+
 }

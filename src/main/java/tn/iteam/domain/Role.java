@@ -3,8 +3,8 @@ package tn.iteam.domain;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
-import tn.iteam.Enums.Permission;
-import tn.iteam.Enums.RoleName;
+import tn.iteam.enums.Permission;
+import tn.iteam.enums.RoleName;
 
 import java.util.List;
 

@@ -30,11 +30,14 @@ import java.util.Set;
 public class ZabbixProblemServiceImpl implements ZabbixProblemService {
 
     private static final Logger log = LoggerFactory.getLogger(ZabbixProblemServiceImpl.class);
-    private static final List<String> EXPOSED_SEVERITIES = List.of("4", "5");
     private static final String FETCHING_ACTIVE_PROBLEMS_MESSAGE = "Fetching active Zabbix problems";
     private static final String DUPLICATE_PROBLEM_LOG_TEMPLATE = "Duplicate problemId={} found in DB: {} rows";
     private static final String UNEXPECTED_ERROR_MESSAGE = "Unexpected error fetching Zabbix problems";
-    private static final String SYNCHRONIZATION_FAILED_TEMPLATE = "Zabbix problems synchronization failed: {}";
+    private static final String SYNCHRONIZATION_FAILED_TEMPLATE = "{} problems synchronization failed: {}";
+    private static final String RECEIVED_PROBLEMS_LOG_TEMPLATE = "Received {} problems from Zabbix API";
+    private static final String MAPPED_PROBLEMS_LOG_TEMPLATE = "Mapped {} problems, skipped {} invalid rows";
+    private static final String PERSISTED_PROBLEMS_LOG_TEMPLATE = "Persisted {} rows into zabbix_problem";
+    private static final String SKIPPED_PROBLEM_LOG_TEMPLATE = "Skipped problem eventId={} because hostId is null or invalid";
 
     private final ZabbixAdapter zabbixAdapter;
     private final ZabbixProblemMapper mapper;
@@ -46,7 +49,7 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
 
     @Override
     public List<ZabbixProblemDTO> getPersistedFilteredActiveProblems() {
-        return repository.findByActiveTrueAndSeverityIn(EXPOSED_SEVERITIES).stream()
+        return repository.findByActiveTrue().stream()
                 .map(mapper::toDTO)
                 .toList();
     }
@@ -88,18 +91,27 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                     List<ZabbixProblemDTO> dtos = hosts == null
                             ? zabbixAdapter.fetchProblems()
                             : zabbixAdapter.fetchProblems(hosts);
+                    log.info(RECEIVED_PROBLEMS_LOG_TEMPLATE, dtos.size());
                     List<ZabbixProblem> entitiesToSave = new ArrayList<>();
                     Set<String> liveProblemIds = new HashSet<>();
+                    int skippedInvalidRows = 0;
 
                     for (ZabbixProblemDTO dto : dtos) {
                         ZabbixProblemDTO sanitized = problemSanitizer.sanitize(dto, log);
                         if (sanitized == null) {
+                            skippedInvalidRows++;
                             continue;
                         }
 
                         liveProblemIds.add(sanitized.getProblemId());
 
                         ZabbixProblem entity = mapper.toEntity(sanitized);
+                        if (entity.getHostId() == null) {
+                            skippedInvalidRows++;
+                            log.warn(SKIPPED_PROBLEM_LOG_TEMPLATE, sanitized.getEventId());
+                            continue;
+                        }
+
                         List<ZabbixProblem> existingList = repository.findAllByProblemId(entity.getProblemId()).stream()
                                 .sorted(Comparator.comparing(ZabbixProblem::getId))
                                 .toList();
@@ -143,8 +155,17 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                         entitiesToSave.add(persistedActive);
                     }
 
+                    log.info(MAPPED_PROBLEMS_LOG_TEMPLATE, entitiesToSave.size(), skippedInvalidRows);
+
+                    if (entitiesToSave.isEmpty()) {
+                        log.warn(PERSISTED_PROBLEMS_LOG_TEMPLATE, 0);
+                        return dtos;
+                    }
+
                     List<ZabbixProblem> saved = repository.saveAll(entitiesToSave);
+                    repository.flush();
                     dataQualityService.logProblemQualitySummary(saved);
+                    log.info(PERSISTED_PROBLEMS_LOG_TEMPLATE, saved.size());
                     log.info("Saved {} Zabbix problems, active in live feed={}", saved.size(), liveProblemIds.size());
                     return dtos;
                 }

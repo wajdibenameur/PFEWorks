@@ -6,6 +6,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import tn.iteam.monitoring.MonitoringSourceType;
 
+import java.time.LocalDateTime;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -20,4 +22,5 @@ public class UnifiedMonitoringHostDTO {
     private String protocol;
     private String status;
     private String category;
+    private LocalDateTime lastCheck;
 }
