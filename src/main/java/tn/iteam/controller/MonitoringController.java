@@ -3,9 +3,11 @@ package tn.iteam.controller;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import reactor.core.publisher.Mono;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.SourceAvailabilityDTO;
-import tn.iteam.integration.*;
+import tn.iteam.integration.IntegrationServiceRegistry;
+import tn.iteam.integration.ZkBioIntegrationOperations;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
@@ -13,8 +15,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.service.SourceAvailabilityService;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
-import tn.iteam.websocket.ZkBioWebSocketPublisher;
+import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
 import java.util.List;
 
@@ -23,14 +24,11 @@ import java.util.List;
 @RequiredArgsConstructor
 public class MonitoringController {
 
-    private final CameraIntegrationService cameraIntegrationService;
     private final MonitoringAggregationService aggregationService;
     private final SourceAvailabilityService sourceAvailabilityService;
-    private final ZabbixIntegrationService zabbixIntegrationService;
-    private final ObserviumIntegrationService observiumIntegrationService;
-    private final IntegrationService zkBioIntegrationService;
-    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
-    private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
+    private final IntegrationServiceRegistry integrationServiceRegistry;
+    private final ZkBioIntegrationOperations zkBioIntegrationOperations;
+    private final MonitoringSnapshotPublicationService snapshotPublicationService;
 
     @GetMapping("/problems")
     public UnifiedMonitoringResponse<List<UnifiedMonitoringProblemDTO>> getProblems() {
@@ -54,13 +52,17 @@ public class MonitoringController {
 
     @PostMapping("/collect")
     public ResponseEntity<ApiResponse<Void>> collectAll() {
-        zabbixIntegrationService.refresh();
-        observiumIntegrationService.refresh();
-        zkBioIntegrationService.refresh();
-        zkBioIntegrationService.refreshAttendance();
-        cameraIntegrationService.refresh();
-        publishUnifiedSnapshots();
-        publishZkBioSnapshots();
+        integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX).refresh();
+        integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refresh();
+        integrationServiceRegistry.getRequired(MonitoringSourceType.ZKBIO).refresh();
+        zkBioIntegrationOperations.refreshAttendance();
+        integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refresh();
+        snapshotPublicationService.publishMonitoringSnapshots(List.of(
+                MonitoringSourceType.ZABBIX,
+                MonitoringSourceType.OBSERVIUM,
+                MonitoringSourceType.ZKBIO
+        ));
+        snapshotPublicationService.publishZkBioSnapshots();
 
         return ResponseEntity.ok(
                 ApiResponse.<Void>builder()
@@ -72,61 +74,41 @@ public class MonitoringController {
     }
 
     @PostMapping("/collect/zabbix")
-    public ResponseEntity<ApiResponse<Void>> collectZabbix() {
-        zabbixIntegrationService.refresh();
-        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
-        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
-
-        return ResponseEntity.ok(
-                ApiResponse.<Void>builder()
-                        .success(true)
-                        .message("ZABBIX COLLECTED")
-                        .source("SYSTEM")
-                        .build()
-        );
+    public Mono<ResponseEntity<ApiResponse<Void>>> collectZabbix() {
+        return integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX).refreshAsync()
+                .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.ZABBIX)))
+                .thenReturn(ResponseEntity.ok(
+                        ApiResponse.<Void>builder()
+                                .success(true)
+                                .message("ZABBIX COLLECTED")
+                                .source("SYSTEM")
+                                .build()
+                ));
     }
 
     @PostMapping("/collect/observium")
-    public ResponseEntity<ApiResponse<Void>> collectObservium() {
-        observiumIntegrationService.refresh();
-        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-
-        return ResponseEntity.ok(
-                ApiResponse.<Void>builder()
-                        .success(true)
-                        .message("OBSERVIUM COLLECTED")
-                        .source("SYSTEM")
-                        .build()
-        );
+    public Mono<ResponseEntity<ApiResponse<Void>>> collectObservium() {
+        return integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshAsync()
+                .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.OBSERVIUM)))
+                .thenReturn(ResponseEntity.ok(
+                        ApiResponse.<Void>builder()
+                                .success(true)
+                                .message("OBSERVIUM COLLECTED")
+                                .source("SYSTEM")
+                                .build()
+                ));
     }
 
     @PostMapping("/collect/camera")
-    public ResponseEntity<ApiResponse<Void>> collectCamera() {
-        cameraIntegrationService.refresh();
-
-        return ResponseEntity.ok(
-                ApiResponse.<Void>builder()
-                        .success(true)
-                        .message("CAMERA COLLECTED")
-                        .source("SYSTEM")
-                        .build()
-        );
-    }
-
-    private void publishUnifiedSnapshots() {
-        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
-        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
-        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-        monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZKBIO);
-        monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZKBIO);
-    }
-
-    private void publishZkBioSnapshots() {
-        zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
-        zkBioWebSocketPublisher.publishDevicesFromSnapshot();
-        zkBioWebSocketPublisher.publishStatusFromSnapshot();
+    public Mono<ResponseEntity<ApiResponse<Void>>> collectCamera() {
+        return integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
+                .thenReturn(ResponseEntity.ok(
+                        ApiResponse.<Void>builder()
+                                .success(true)
+                                .message("CAMERA COLLECTED")
+                                .source("SYSTEM")
+                                .build()
+                ));
     }
 
 }

@@ -8,28 +8,31 @@ import org.springframework.stereotype.Service;
 import tn.iteam.adapter.zabbix.ZabbixClient;
 import tn.iteam.domain.MonitoredHost;
 import tn.iteam.repository.MonitoredHostRepository;
+import tn.iteam.util.MonitoringConstants;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 @Service
 @RequiredArgsConstructor
 public class ZabbixSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(ZabbixSyncService.class);
+    private static final long CACHE_TTL_MS = 30_000L;
 
     private final ZabbixClient client;
     private final MonitoredHostRepository monitoredHostRepository;
 
-    private Map<String, MonitoredHost> cache;
-    private long lastLoad = 0;
+    private volatile Map<String, MonitoredHost> cache;
+    private volatile long lastLoad = 0;
 
     public Map<String, MonitoredHost> loadHostMap() {
-        if (cache != null && (System.currentTimeMillis() - lastLoad < 30000)) {
+        if (cache != null && (System.currentTimeMillis() - lastLoad < CACHE_TTL_MS)) {
             return cache;
         }
 
-        JsonNode hosts = client.getHosts();
+        JsonNode hosts = await(client.getHosts());
         return loadHostMap(hosts);
     }
 
@@ -42,39 +45,37 @@ public class ZabbixSyncService {
 
         for (JsonNode h : hosts) {
             String hostId = h.path("hostid").asText();
-            String name = h.path("host").asText();
-            String ip = "IP_UNKNOWN";
+            String name = normalizeText(h.path("host").asText());
+            String ip = null;
             Integer port = null;
 
             if (h.has("interfaces") && h.get("interfaces").size() > 0) {
                 for (JsonNode iface : h.get("interfaces")) {
                     if (iface.path("main").asInt(0) == 1) {
-                        ip = iface.path("ip").asText("IP_UNKNOWN");
+                        ip = normalizeIp(iface.path("ip").asText(null));
                         port = iface.path("port").isMissingNode() ? null : iface.path("port").asInt();
                     }
                 }
             }
 
-            MonitoredHost host = MonitoredHost.builder()
-                    .hostId(hostId)
-                    .name(name)
-                    .ip(ip)
-                    .port(port)
-                    .source("ZABBIX")
-                    .build();
+            final String resolvedName = name;
+            final String resolvedIp = ip;
+            final Integer resolvedPort = port;
 
-            final String finalName = name;
-            final String finalIp = ip;
-            final Integer finalPort = port;
-
-            monitoredHostRepository.findFirstByHostIdAndSource(hostId, "ZABBIX")
+            MonitoredHost host = monitoredHostRepository.findFirstByHostIdAndSource(hostId, MonitoringConstants.SOURCE_ZABBIX)
                     .map(existing -> {
-                        existing.setName(finalName);
-                        existing.setIp(finalIp);
-                        existing.setPort(finalPort);
+                        existing.setName(resolvedName != null ? resolvedName : existing.getName());
+                        existing.setIp(resolvedIp != null ? resolvedIp : normalizeIp(existing.getIp()));
+                        existing.setPort(resolvedPort != null ? resolvedPort : existing.getPort());
                         return monitoredHostRepository.save(existing);
                     })
-                    .orElseGet(() -> monitoredHostRepository.save(host));
+                    .orElseGet(() -> monitoredHostRepository.save(MonitoredHost.builder()
+                            .hostId(hostId)
+                            .name(resolvedName != null ? resolvedName : hostId)
+                            .ip(resolvedIp)
+                            .port(resolvedPort)
+                            .source(MonitoringConstants.SOURCE_ZABBIX)
+                            .build()));
 
             map.put(hostId, host);
         }
@@ -84,5 +85,33 @@ public class ZabbixSyncService {
 
         log.info("Loaded {} hosts from Zabbix", map.size());
         return cache;
+    }
+
+    private <T> T await(reactor.core.publisher.Mono<T> mono) {
+        try {
+            return mono.toFuture().join();
+        } catch (CompletionException ex) {
+            Throwable cause = ex.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw ex;
+        }
+    }
+
+    private String normalizeIp(String value) {
+        String normalized = normalizeText(value);
+        if (normalized == null || MonitoringConstants.IP_UNKNOWN.equalsIgnoreCase(normalized)) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) {
+            return null;
+        }
+        String normalized = value.trim();
+        return normalized.isEmpty() ? null : normalized;
     }
 }

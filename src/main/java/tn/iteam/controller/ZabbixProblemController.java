@@ -10,9 +10,6 @@ import tn.iteam.monitoring.service.MonitoringAggregationService;
 
 import java.util.List;
 
-@RestController
-@RequestMapping("/api/zabbix")
-@RequiredArgsConstructor
 /**
  * Temporary compatibility controller for legacy frontend calls.
  *
@@ -22,6 +19,10 @@ import java.util.List;
  * When the frontend fully migrates to {@code /api/monitoring/*}, this controller
  * can be moved to {@code depl}.
  */
+@Deprecated(since = "2026-04-22", forRemoval = false)
+@RestController
+@RequestMapping("/api/zabbix")
+@RequiredArgsConstructor
 public class ZabbixProblemController {
 
     private final MonitoringAggregationService aggregationService;

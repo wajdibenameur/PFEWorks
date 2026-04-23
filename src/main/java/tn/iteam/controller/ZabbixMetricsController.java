@@ -10,9 +10,6 @@ import tn.iteam.monitoring.service.MonitoringAggregationService;
 
 import java.util.List;
 
-@RestController
-@RequestMapping("/api/zabbix/metrics")
-@RequiredArgsConstructor
 /**
  * Temporary compatibility controller for legacy frontend calls.
  *
@@ -22,6 +19,10 @@ import java.util.List;
  * When the frontend fully migrates to {@code /api/monitoring/*}, this controller
  * can be moved to {@code depl}.
  */
+@Deprecated(since = "2026-04-22", forRemoval = false)
+@RestController
+@RequestMapping("/api/zabbix/metrics")
+@RequiredArgsConstructor
 public class ZabbixMetricsController {
 
     private final MonitoringAggregationService aggregationService;
@@ -33,7 +34,12 @@ public class ZabbixMetricsController {
                         .hostId(metric.getHostId())
                         .hostName(metric.getHostName())
                         .itemId(metric.getItemId())
+                        .metricName(metric.getMetricName())
                         .metricKey(metric.getMetricKey())
+                        .source(metric.getSource() != null ? metric.getSource().name() : null)
+                        .valueType(metric.getValueType())
+                        .status(metric.getStatus())
+                        .units(metric.getUnits())
                         .value(metric.getValue())
                         .timestamp(metric.getTimestamp())
                         .ip(metric.getIp())

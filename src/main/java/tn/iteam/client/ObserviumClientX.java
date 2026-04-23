@@ -23,6 +23,7 @@ import tn.iteam.exception.IntegrationUnavailableException;
 import tn.iteam.util.IntegrationClientSupport;
 
 import java.time.Duration;
+import java.util.Locale;
 
 @Slf4j
 @Component
@@ -37,6 +38,8 @@ public class ObserviumClientX {
     private static final String DEVICES_SUCCESS_MESSAGE = "Devices fetched successfully";
     private static final String ALERTS_SUCCESS_MESSAGE = "Alerts fetched successfully";
     private static final String EMPTY_RESPONSE_PREFIX = "Empty response from Observium: ";
+    private static final String HTML_RESPONSE_TEMPLATE =
+            "Observium returned HTML instead of JSON on %s (likely wrong URL or token authentication)";
     private static final String NULL_JSON_ROOT_TEMPLATE = "Observium returned a null JSON root for %s";
     private static final String MISSING_FIELD_TEMPLATE = "Observium response missing '%s' field for %s (status=%s)";
     private static final String NOT_ARRAY_TEMPLATE = "Observium response field '%s' is not an array for %s";
@@ -70,7 +73,9 @@ public class ObserviumClientX {
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set(X_AUTH_TOKEN, token);
+        if (token != null && !token.isBlank()) {
+            headers.set(X_AUTH_TOKEN, token.trim());
+        }
         return headers;
     }
 
@@ -137,8 +142,9 @@ public class ObserviumClientX {
 
     private JsonNode callApiLive(String endpoint, String responseField, boolean allowObjectCollection) {
         try {
+            String resolvedUrl = buildApiUrl(endpoint);
             String responseBody = webClient.get()
-                    .uri(baseUrl + endpoint)
+                    .uri(resolvedUrl)
                     .headers(headers -> headers.addAll(createHeaders()))
                     .accept(MediaType.APPLICATION_JSON)
                     .retrieve()
@@ -158,6 +164,13 @@ public class ObserviumClientX {
 
             if (responseBody == null) {
                 throw new IntegrationResponseException(SOURCE, EMPTY_RESPONSE_PREFIX + endpoint);
+            }
+
+            if (responseBody.trim().startsWith("<")) {
+                throw new IntegrationResponseException(
+                        SOURCE,
+                        HTML_RESPONSE_TEMPLATE.formatted(endpoint)
+                );
             }
 
             JsonNode root = objectMapper.readTree(responseBody);
@@ -200,6 +213,42 @@ public class ObserviumClientX {
                     ex
             );
         }
+    }
+
+    private String buildApiUrl(String endpoint) {
+        String normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+        String normalizedEndpoint = normalizeEndpoint(endpoint);
+        String resolvedPath = normalizedBaseUrl.endsWith("/api/v0")
+                ? normalizedBaseUrl + normalizedEndpoint.substring("/api/v0".length())
+                : normalizedBaseUrl + normalizedEndpoint;
+
+        String trimmedToken = token != null ? token.trim() : "";
+        if (trimmedToken.isBlank()) {
+            log.warn("Observium token is blank; calling {} without token query parameter", endpoint);
+            return resolvedPath;
+        }
+
+        String separator = resolvedPath.contains("?") ? "&" : "?";
+        return resolvedPath + separator + "token=" + trimmedToken;
+    }
+
+    private String normalizeBaseUrl(String rawBaseUrl) {
+        String normalized = rawBaseUrl == null ? "" : rawBaseUrl.trim();
+        while (normalized.endsWith("/")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalized;
+    }
+
+    private String normalizeEndpoint(String rawEndpoint) {
+        String normalized = rawEndpoint == null ? "" : rawEndpoint.trim();
+        if (!normalized.startsWith("/")) {
+            normalized = "/" + normalized;
+        }
+        if (!normalized.toLowerCase(Locale.ROOT).startsWith("/api/")) {
+            normalized = "/api/v0" + normalized;
+        }
+        return normalized;
     }
 
     private String extractStatus(JsonNode root) {

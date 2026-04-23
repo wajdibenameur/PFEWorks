@@ -90,10 +90,26 @@ public class ZkBioAdapter {
     public List<ZkBioMetricDTO> fetchMetrics() {
         long now = Instant.now().getEpochSecond();
         List<ZkBioMetricDTO> metrics = new ArrayList<>();
-        JsonNode devices = zkBioClient.getDevices();
         ServiceStatusDTO server = baseServerStatus();
 
-        int deviceCount = devices != null && devices.isArray() ? devices.size() : 0;
+        JsonNode devices;
+        try {
+            devices = zkBioClient.getDevices();
+        } catch (IntegrationException e) {
+            log.warn("ZKBio metrics unavailable: {}", e.getMessage());
+            return List.of();
+        } catch (Exception e) {
+            log.error("Unexpected error while fetching ZKBio metrics", e);
+            return List.of();
+        }
+
+        if (devices == null || !devices.isArray()) {
+            log.warn("ZKBio devices API unavailable or invalid, skipping metrics persistence");
+            return List.of();
+        }
+
+        int deviceCount = devices.size();
+
         metrics.add(ZkBioMetricDTO.builder()
                 .hostId(SERVER_HOST_ID)
                 .hostName(SERVER_NAME)

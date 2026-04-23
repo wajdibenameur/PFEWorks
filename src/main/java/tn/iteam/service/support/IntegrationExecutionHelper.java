@@ -25,11 +25,11 @@ public class IntegrationExecutionHelper {
         } catch (IntegrationException ex) {
             availabilityService.markUnavailable(source, ex.getMessage());
             log.warn(warnMessageTemplate, label, ex.getMessage());
-            return fallback;
+            throw ex;
         } catch (RuntimeException ex) {
             availabilityService.markUnavailable(source, ex.getMessage());
-            log.error(unexpectedErrorMessage, ex);
-            return fallback;
+            log.error("{} [{}]", unexpectedErrorMessage, label, ex);
+            throw ex;
         }
     }
 
@@ -48,9 +48,11 @@ public class IntegrationExecutionHelper {
         } catch (IntegrationException ex) {
             availabilityService.markUnavailable(source, ex.getMessage());
             log.warn(warnMessageTemplate, label, ex.getMessage());
+            throw ex;
         } catch (RuntimeException ex) {
             availabilityService.markUnavailable(source, ex.getMessage());
             log.error(unexpectedErrorMessage.formatted(label), ex);
+            throw ex;
         }
     }
 
