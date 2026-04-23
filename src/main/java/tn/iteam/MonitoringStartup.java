@@ -1,14 +1,16 @@
 package tn.iteam;
 
-import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Component;
-import tn.iteam.integration.CameraIntegrationService;
-import tn.iteam.integration.IntegrationService;
+import tn.iteam.integration.IntegrationServiceRegistry;
+import tn.iteam.integration.ZkBioIntegrationOperations;
 import tn.iteam.monitoring.MonitoringSourceType;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
-import tn.iteam.websocket.ZkBioWebSocketPublisher;
+import tn.iteam.service.support.MonitoringSnapshotPublicationService;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Single bootstrap entry point for monitoring warmup.
@@ -21,59 +23,54 @@ import tn.iteam.websocket.ZkBioWebSocketPublisher;
 @Slf4j
 @Component
 public class MonitoringStartup {
+    private final AtomicBoolean warmupStarted = new AtomicBoolean(false);
 
-    private final IntegrationService zabbixIntegrationService;
-    private final IntegrationService observiumIntegrationService;
-    private final IntegrationService zkBioIntegrationService;
-    private final CameraIntegrationService cameraIntegrationService;
-    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
-    private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
+    private final IntegrationServiceRegistry integrationServiceRegistry;
+    private final ZkBioIntegrationOperations zkBioIntegrationOperations;
+    private final MonitoringSnapshotPublicationService snapshotPublicationService;
 
     public MonitoringStartup(
-            @Qualifier("zabbixIntegrationService") IntegrationService zabbixIntegrationService,
-            @Qualifier("observiumIntegrationService") IntegrationService observiumIntegrationService,
-            @Qualifier("zkBioIntegrationService") IntegrationService zkBioIntegrationService,
-            CameraIntegrationService cameraIntegrationService,
-            MonitoringWebSocketPublisher monitoringWebSocketPublisher,
-            ZkBioWebSocketPublisher zkBioWebSocketPublisher
+            IntegrationServiceRegistry integrationServiceRegistry,
+            ZkBioIntegrationOperations zkBioIntegrationOperations,
+            MonitoringSnapshotPublicationService snapshotPublicationService
     ) {
-        this.zabbixIntegrationService = zabbixIntegrationService;
-        this.observiumIntegrationService = observiumIntegrationService;
-        this.zkBioIntegrationService = zkBioIntegrationService;
-        this.cameraIntegrationService = cameraIntegrationService;
-        this.monitoringWebSocketPublisher = monitoringWebSocketPublisher;
-        this.zkBioWebSocketPublisher = zkBioWebSocketPublisher;
+        this.integrationServiceRegistry = integrationServiceRegistry;
+        this.zkBioIntegrationOperations = zkBioIntegrationOperations;
+        this.snapshotPublicationService = snapshotPublicationService;
     }
 
-    @PostConstruct
+    @Async
+    @EventListener(ApplicationReadyEvent.class)
     public void warmupInitialSnapshots() {
-        refreshSafely("Zabbix", () -> {
-            zabbixIntegrationService.refresh();
-            monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
-            monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
-        });
-        refreshSafely("Observium", () -> {
-            observiumIntegrationService.refresh();
-            monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-            monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.OBSERVIUM);
-        });
-        refreshSafely("ZKBio", () -> {
-            zkBioIntegrationService.refresh();
-            zkBioIntegrationService.refreshAttendance();
-            monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZKBIO);
-            monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZKBIO);
-            zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
-            zkBioWebSocketPublisher.publishDevicesFromSnapshot();
-            zkBioWebSocketPublisher.publishStatusFromSnapshot();
-        });
-        refreshSafely("Camera", cameraIntegrationService::refresh);
+        if (!warmupStarted.compareAndSet(false, true)) {
+            log.debug("Monitoring warmup already started; skipping duplicate trigger.");
+            return;
+        }
+
+        log.info("Application is ready; starting monitoring warmup in the background.");
+
+        refreshSafely("Zabbix", integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)
+                .refreshAsync()
+                .doOnSuccess(unused -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.ZABBIX)));
+        refreshSafely("Observium", integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)
+                .refreshAsync()
+                .doOnSuccess(unused -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.OBSERVIUM)));
+        refreshSafely("ZKBio", zkBioIntegrationOperations.refreshAsync()
+                .then(zkBioIntegrationOperations.refreshAttendanceAsync())
+                .doOnSuccess(unused -> {
+                    snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.ZKBIO);
+                    snapshotPublicationService.publishZkBioSnapshots();
+                }));
+        refreshSafely("Camera", integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync());
+
+        log.info("Monitoring warmup completed.");
     }
 
-    private void refreshSafely(String source, Runnable action) {
-        try {
-            action.run();
-        } catch (Exception exception) {
-            log.warn("Startup refresh for {} failed: {}", source, exception.getMessage());
-        }
+    private void refreshSafely(String source, reactor.core.publisher.Mono<Void> action) {
+        action.subscribe(
+                unused -> {
+                },
+                throwable -> log.warn("Startup refresh for {} failed: {}", source, throwable.getMessage())
+        );
     }
 }

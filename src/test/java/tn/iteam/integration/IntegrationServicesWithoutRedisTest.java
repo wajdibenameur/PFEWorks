@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import reactor.core.publisher.Mono;
 import org.springframework.test.util.ReflectionTestUtils;
 import tn.iteam.adapter.camera.CameraAdapter;
 import tn.iteam.adapter.observium.ObserviumAdapter;
@@ -21,12 +22,20 @@ import tn.iteam.mapper.ObserviumMonitoringMapper;
 import tn.iteam.mapper.ZabbixMonitoringMapper;
 import tn.iteam.mapper.ZkBioMonitoringMapper;
 import tn.iteam.monitoring.MonitoringSourceType;
+import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.snapshot.InMemorySnapshotStore;
+import tn.iteam.repository.ObserviumMetricRepository;
+import tn.iteam.repository.ObserviumProblemRepository;
+import tn.iteam.repository.ZkBioMetricRepository;
+import tn.iteam.repository.ZkBioProblemRepository;
+import tn.iteam.service.MonitoredHostPersistenceService;
+import tn.iteam.service.MonitoredHostSnapshotService;
 import tn.iteam.service.ObserviumPersistenceService;
 import tn.iteam.service.ServiceStatusPersistenceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZabbixMetricsService;
 import tn.iteam.service.ZabbixProblemService;
+import tn.iteam.service.ZabbixSyncService;
 import tn.iteam.service.ZkBioPersistenceService;
 import tn.iteam.service.ZkBioServiceInterface;
 import tn.iteam.websocket.MonitoringWebSocketPublisher;
@@ -82,6 +91,27 @@ class IntegrationServicesWithoutRedisTest {
     @Mock
     private CameraAdapter cameraAdapter;
 
+    @Mock
+    private MonitoredHostPersistenceService monitoredHostPersistenceService;
+
+    @Mock
+    private MonitoredHostSnapshotService monitoredHostSnapshotService;
+
+    @Mock
+    private ZabbixSyncService zabbixSyncService;
+
+    @Mock
+    private ObserviumProblemRepository observiumProblemRepository;
+
+    @Mock
+    private ObserviumMetricRepository observiumMetricRepository;
+
+    @Mock
+    private ZkBioProblemRepository zkBioProblemRepository;
+
+    @Mock
+    private ZkBioMetricRepository zkBioMetricRepository;
+
     @Test
     void zabbixIntegrationRefreshStoresAllSnapshotsInMemory() {
         InMemorySnapshotStore snapshotStore = new InMemorySnapshotStore();
@@ -92,14 +122,18 @@ class IntegrationServicesWithoutRedisTest {
                 zabbixProblemService,
                 zabbixMetricsService,
                 snapshotStore,
-                sourceAvailabilityService
+                sourceAvailabilityService,
+                monitoredHostSnapshotService,
+                zabbixSyncService
         );
 
         when(zabbixAdapter.fetchAll()).thenReturn(List.of(serviceStatus("zbx-host", "10.0.0.1")));
         when(zabbixProblemService.synchronizeActiveProblemsFromZabbix()).thenReturn(List.of(zabbixProblem("p1")));
-        when(zabbixMetricsService.fetchAndSaveMetrics()).thenReturn(List.of(zabbixMetric("1001")));
+        when(zabbixMetricsService.fetchAndSaveMetrics()).thenReturn(Mono.just(List.of(zabbixMetric("1001"))));
+        when(monitoredHostSnapshotService.loadHosts(MonitoringSourceType.ZABBIX))
+                .thenReturn(List.of(unifiedHost("ZABBIX", "zbx-1", "zbx-host", "10.0.0.1", 8080)));
 
-        service.refresh();
+        service.refreshAsync().block();
 
         assertThat(snapshotStore.get("hosts", "ZABBIX")).isPresent();
         assertThat(snapshotStore.get("problems", "ZABBIX")).isPresent();
@@ -116,14 +150,20 @@ class IntegrationServicesWithoutRedisTest {
                 observiumPersistenceService,
                 serviceStatusPersistenceService,
                 snapshotStore,
-                sourceAvailabilityService
+                sourceAvailabilityService,
+                monitoredHostPersistenceService,
+                monitoredHostSnapshotService,
+                observiumProblemRepository,
+                observiumMetricRepository
         );
 
         when(observiumAdapter.fetchAll()).thenReturn(List.of(serviceStatus("obs-host", "10.0.0.2")));
         when(observiumAdapter.fetchProblems()).thenReturn(List.of(observiumProblem("obs-p1")));
         when(observiumAdapter.fetchMetrics()).thenReturn(List.of(observiumMetric("obs-m1")));
+        when(monitoredHostSnapshotService.loadHosts(MonitoringSourceType.OBSERVIUM))
+                .thenReturn(List.of(unifiedHost("OBSERVIUM", "10.0.0.2", "obs-host", "10.0.0.2", 8080)));
 
-        service.refresh();
+        service.refreshAsync().block();
 
         assertThat(snapshotStore.get("hosts", "OBSERVIUM")).isPresent();
         assertThat(snapshotStore.get("problems", "OBSERVIUM")).isPresent();
@@ -143,7 +183,11 @@ class IntegrationServicesWithoutRedisTest {
                 snapshotStore,
                 sourceAvailabilityService,
                 monitoringWebSocketPublisher,
-                zkBioWebSocketPublisher
+                zkBioWebSocketPublisher,
+                monitoredHostPersistenceService,
+                monitoredHostSnapshotService,
+                zkBioProblemRepository,
+                zkBioMetricRepository
         );
 
         when(zkBioAdapter.fetchAll()).thenReturn(List.of(serviceStatus("zk-host", "10.0.0.3")));
@@ -151,6 +195,8 @@ class IntegrationServicesWithoutRedisTest {
         when(zkBioAdapter.fetchMetrics()).thenReturn(List.of(zkBioMetric("zk-m1")));
         when(zkBioService.getServerStatus()).thenReturn(serviceStatus("zk-server", "10.0.0.30"));
         when(zkBioService.fetchDevices()).thenReturn(List.of(serviceStatus("device-1", "10.0.0.31")));
+        when(monitoredHostSnapshotService.loadHosts(MonitoringSourceType.ZKBIO))
+                .thenReturn(List.of(unifiedHost("ZKBIO", "10.0.0.3", "zk-host", "10.0.0.3", 8088)));
         when(zkBioService.fetchAttendanceLogs()).thenReturn(List.of(
                 ZkBioAttendanceDTO.builder()
                         .userId("u1")
@@ -160,7 +206,7 @@ class IntegrationServicesWithoutRedisTest {
                         .build()
         ));
 
-        service.refreshAllAndPublish();
+        service.refreshAllAndPublishAsync().block();
 
         assertThat(snapshotStore.get("hosts", "ZKBIO")).isPresent();
         assertThat(snapshotStore.get("problems", "ZKBIO")).isPresent();
@@ -184,10 +230,11 @@ class IntegrationServicesWithoutRedisTest {
                 snapshotStore
         );
         ReflectionTestUtils.setField(service, "cameraSubnet", "192.168.11");
+        ReflectionTestUtils.setField(service, "cameraPorts", "37777,554");
 
-        when(cameraAdapter.fetchAll("192.168.11")).thenReturn(List.of(serviceStatus("camera-1", "10.0.0.40")));
+        when(cameraAdapter.fetchAll(List.of("192.168.11"), List.of(37777, 554))).thenReturn(List.of(serviceStatus("camera-1", "10.0.0.40")));
 
-        service.refresh();
+        service.refreshAsync().block();
 
         assertThat(snapshotStore.get("hosts", "CAMERA")).isPresent();
         verify(serviceStatusPersistenceService).saveAll(any());
@@ -280,6 +327,26 @@ class IntegrationServicesWithoutRedisTest {
                 .timestamp(600L)
                 .ip("10.0.0.3")
                 .port(8088)
+                .build();
+    }
+
+    private UnifiedMonitoringHostDTO unifiedHost(
+            String source,
+            String hostId,
+            String name,
+            String ip,
+            Integer port
+    ) {
+        return UnifiedMonitoringHostDTO.builder()
+                .id(source + ":" + hostId)
+                .source(MonitoringSourceType.valueOf(source))
+                .hostId(hostId)
+                .name(name)
+                .ip(ip)
+                .port(port)
+                .protocol("HTTP")
+                .status("UP")
+                .category("SERVER")
                 .build();
     }
 }

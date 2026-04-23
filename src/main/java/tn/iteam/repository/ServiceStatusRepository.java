@@ -4,6 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import tn.iteam.domain.ServiceStatus;
 
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -15,5 +16,6 @@ public interface ServiceStatusRepository
 
     Optional<ServiceStatus> findBySourceAndNameAndIp(
             String source, String name, String ip);
-}
 
+    List<ServiceStatus> findBySourceOrderByIpAscPortAsc(String source);
+}

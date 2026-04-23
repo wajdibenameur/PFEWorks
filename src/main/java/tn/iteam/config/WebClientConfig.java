@@ -33,11 +33,17 @@ public class WebClientConfig {
             @Value("${integration.webclient.read-timeout-ms:10000}") long readTimeoutMs,
             @Value("${integration.webclient.write-timeout-ms:10000}") long writeTimeoutMs
     ) {
-        HttpClient httpClient = buildHttpClient(connectTimeoutMs, responseTimeoutMs, readTimeoutMs, writeTimeoutMs);
+        return buildWebClient(connectTimeoutMs, responseTimeoutMs, readTimeoutMs, writeTimeoutMs);
+    }
 
-        return WebClient.builder()
-                .clientConnector(new ReactorClientHttpConnector(httpClient))
-                .build();
+    @Bean("zabbixMetricsWebClient")
+    public WebClient zabbixMetricsWebClient(
+            @Value("${integration.webclient.connect-timeout-ms:5000}") int connectTimeoutMs,
+            @Value("${zabbix.metrics.webclient.response-timeout-ms:20000}") long responseTimeoutMs,
+            @Value("${zabbix.metrics.webclient.read-timeout-ms:20000}") long readTimeoutMs,
+            @Value("${integration.webclient.write-timeout-ms:10000}") long writeTimeoutMs
+    ) {
+        return buildWebClient(connectTimeoutMs, responseTimeoutMs, readTimeoutMs, writeTimeoutMs);
     }
 
     @Bean("zkbioUnsafeTlsWebClientForInternalUseOnly")
@@ -69,6 +75,22 @@ public class WebClientConfig {
                 .doOnConnected(connection -> connection
                         .addHandlerLast(new ReadTimeoutHandler(readTimeoutMs, TimeUnit.MILLISECONDS))
                         .addHandlerLast(new WriteTimeoutHandler(writeTimeoutMs, TimeUnit.MILLISECONDS)));
+    }
+
+    private WebClient buildWebClient(
+            int connectTimeoutMs,
+            long responseTimeoutMs,
+            long readTimeoutMs,
+            long writeTimeoutMs
+    ) {
+        HttpClient httpClient = buildHttpClient(connectTimeoutMs, responseTimeoutMs, readTimeoutMs, writeTimeoutMs);
+
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(httpClient))
+                .codecs(configurer ->
+                        configurer.defaultCodecs().maxInMemorySize(10 * 1024 * 1024)
+                )
+                .build();
     }
 
     private SslContext buildInsecureSslContext() {

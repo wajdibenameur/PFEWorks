@@ -1,5 +1,4 @@
-package tn.iteam.Enums;
-
+package tn.iteam.enums;
 
 public enum Permission {
     VIEW_DASHBOARD,

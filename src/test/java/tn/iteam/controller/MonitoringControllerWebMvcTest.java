@@ -7,18 +7,15 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-import tn.iteam.integration.CameraIntegrationService;
-import tn.iteam.integration.ObserviumIntegrationService;
-import tn.iteam.integration.ZabbixIntegrationService;
-import tn.iteam.integration.ZkBioIntegrationService;
+import tn.iteam.integration.IntegrationServiceRegistry;
+import tn.iteam.integration.ZkBioIntegrationOperations;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.service.SourceAvailabilityService;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
-import tn.iteam.websocket.ZkBioWebSocketPublisher;
+import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
 import java.util.List;
 import java.util.Map;
@@ -35,40 +32,28 @@ class MonitoringControllerWebMvcTest {
     private MockMvc mockMvc;
 
     @Mock
-    private CameraIntegrationService cameraIntegrationService;
-
-    @Mock
     private MonitoringAggregationService aggregationService;
 
     @Mock
     private SourceAvailabilityService sourceAvailabilityService;
 
     @Mock
-    private ZabbixIntegrationService zabbixIntegrationService;
+    private IntegrationServiceRegistry integrationServiceRegistry;
 
     @Mock
-    private ObserviumIntegrationService observiumIntegrationService;
+    private ZkBioIntegrationOperations zkBioIntegrationService;
 
     @Mock
-    private ZkBioIntegrationService zkBioIntegrationService;
-
-    @Mock
-    private MonitoringWebSocketPublisher monitoringWebSocketPublisher;
-
-    @Mock
-    private ZkBioWebSocketPublisher zkBioWebSocketPublisher;
+    private MonitoringSnapshotPublicationService snapshotPublicationService;
 
     @BeforeEach
     void setUp() {
         MonitoringController controller = new MonitoringController(
-                cameraIntegrationService,
                 aggregationService,
                 sourceAvailabilityService,
-                zabbixIntegrationService,
-                observiumIntegrationService,
+                integrationServiceRegistry,
                 zkBioIntegrationService,
-                monitoringWebSocketPublisher,
-                zkBioWebSocketPublisher
+                snapshotPublicationService
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
