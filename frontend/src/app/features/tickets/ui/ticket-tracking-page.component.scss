@@ -1,0 +1,207 @@
+.workspace {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero,
+.panel {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.hero {
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: #0f766e;
+}
+
+.hero h1,
+.panel-header h2,
+.panel-header h3 {
+  margin: 0;
+}
+
+.hero p:last-child,
+.panel-header small,
+.detail-card span {
+  color: #64748b;
+}
+
+.ghost-link,
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  background: #0f766e;
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+button.danger {
+  background: #b91c1c;
+}
+
+.tracking-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.85fr) minmax(0, 2fr);
+  gap: 1.5rem;
+}
+
+.panel {
+  padding: 1.25rem;
+}
+
+.ticket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ticket-list li {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.ticket-list li.active {
+  border-color: rgba(15, 118, 110, 0.32);
+  background: rgba(240, 253, 250, 0.95);
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.32rem 0.7rem;
+  background: rgba(15, 118, 110, 0.12);
+  color: #115e59;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.details-grid,
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.actions-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.detail-card,
+.action-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  padding: 1rem;
+  background: rgba(248, 250, 252, 0.82);
+}
+
+.action-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+select,
+textarea,
+input {
+  width: 100%;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+}
+
+.interventions-panel {
+  margin-top: 1rem;
+  padding: 1rem;
+}
+
+.intervention-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.intervention-form textarea {
+  grid-column: 1 / -1;
+}
+
+.intervention-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.intervention-list li {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  padding: 0.85rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.intervention-list p,
+.detail-card p {
+  margin: 0.35rem 0 0;
+}
+
+.empty,
+.error-banner {
+  color: #64748b;
+}
+
+.error-banner {
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  background: rgba(254, 242, 242, 0.92);
+  color: #7f1d1d;
+}
+
+@media (max-width: 1200px) {
+  .tracking-grid,
+  .details-grid,
+  .actions-grid,
+  .intervention-form {
+    grid-template-columns: 1fr;
+  }
+
+  .hero {
+    display: grid;
+  }
+}

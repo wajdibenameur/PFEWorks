@@ -1,0 +1,110 @@
+.workspace {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.hero,
+.form-panel {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+}
+
+.hero {
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.78rem;
+  color: #0f766e;
+}
+
+.hero h1 {
+  margin: 0;
+}
+
+.hero p:last-child {
+  margin-bottom: 0;
+  color: #475569;
+}
+
+.ghost-link,
+button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1rem;
+  background: #0f766e;
+  color: #fff;
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.form-panel {
+  padding: 1.25rem;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+label {
+  display: grid;
+  gap: 0.35rem;
+}
+
+label span,
+.empty {
+  color: #64748b;
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+input,
+select,
+textarea {
+  border-radius: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+}
+
+.checkbox {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.error-banner {
+  border-radius: 1rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  background: rgba(254, 242, 242, 0.92);
+  color: #7f1d1d;
+}
+
+@media (max-width: 960px) {
+  .hero,
+  .form-grid {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+}

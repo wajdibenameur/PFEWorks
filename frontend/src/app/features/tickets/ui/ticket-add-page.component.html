@@ -1,0 +1,91 @@
+<main class="workspace">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Ticket Manager</p>
+      <h1>Create Ticket</h1>
+      <p>Create a manual ticket with optional monitoring context and assign a creator from the seeded users.</p>
+    </div>
+    <a routerLink="/tickets/list" class="ghost-link">Back to List</a>
+  </section>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">{{ message }}</section>
+  }
+
+  <section class="form-panel">
+    @if (isLoading()) {
+      <p class="empty">Loading ticket users...</p>
+    } @else {
+      <div class="form-grid">
+        <label>
+          <span>Title</span>
+          <input [ngModel]="title()" (ngModelChange)="title.set($event)" />
+        </label>
+
+        <label>
+          <span>Priority</span>
+          <select [ngModel]="priority()" (ngModelChange)="priority.set($event)">
+            @for (option of priorityOptions; track option) {
+              <option [value]="option">{{ option }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="wide">
+          <span>Description</span>
+          <textarea rows="5" [ngModel]="description()" (ngModelChange)="description.set($event)"></textarea>
+        </label>
+
+        <label>
+          <span>Creator</span>
+          <select [ngModel]="creatorId()" (ngModelChange)="parseUserId($event)">
+            <option [ngValue]="null">Select creator</option>
+            @for (user of users(); track user.id) {
+              <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
+            }
+          </select>
+        </label>
+
+        <label>
+          <span>Monitoring Source</span>
+          <select [ngModel]="monitoringSource()" (ngModelChange)="monitoringSource.set($event)">
+            <option value="">Manual</option>
+            @for (source of sourceOptions; track source) {
+              <option [value]="source">{{ source }}</option>
+            }
+          </select>
+        </label>
+
+        <label>
+          <span>External Problem ID</span>
+          <input [ngModel]="externalProblemId()" (ngModelChange)="externalProblemId.set($event)" />
+        </label>
+
+        <label>
+          <span>Resource Reference</span>
+          <input [ngModel]="resourceRef()" (ngModelChange)="resourceRef.set($event)" />
+        </label>
+
+        <label>
+          <span>Host ID</span>
+          <input [ngModel]="hostId()" (ngModelChange)="hostId.set($event)" />
+        </label>
+
+        <label class="checkbox">
+          <input
+            type="checkbox"
+            [ngModel]="externalProblem()"
+            (ngModelChange)="externalProblem.set($event)"
+          />
+          <span>Linked to an external monitoring incident</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" (click)="submit()" [disabled]="isSubmitting()">
+          {{ isSubmitting() ? 'Creating...' : 'Create Ticket' }}
+        </button>
+      </div>
+    }
+  </section>
+</main>

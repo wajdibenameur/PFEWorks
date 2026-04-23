@@ -1,0 +1,94 @@
+<main class="workspace">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Ticket Manager</p>
+      <h1>Tickets List</h1>
+      <p>Operational view of all tickets with lightweight filtering by status, priority, and source.</p>
+    </div>
+    <a routerLink="/tickets/add" class="primary-link">Create Ticket</a>
+  </section>
+
+  <section class="filters">
+    <label>
+      <span>Status</span>
+      <select [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event); refresh()">
+        <option value="">All</option>
+        @for (status of statusOptions; track status) {
+          <option [value]="status">{{ status }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      <span>Priority</span>
+      <select [ngModel]="priorityFilter()" (ngModelChange)="priorityFilter.set($event); refresh()">
+        <option value="">All</option>
+        @for (priority of priorityOptions; track priority) {
+          <option [value]="priority">{{ priority }}</option>
+        }
+      </select>
+    </label>
+
+    <label>
+      <span>Source</span>
+      <select [ngModel]="sourceFilter()" (ngModelChange)="sourceFilter.set($event); refresh()">
+        <option value="">All</option>
+        @for (source of sourceOptions; track source) {
+          <option [value]="source">{{ source }}</option>
+        }
+      </select>
+    </label>
+
+    <button type="button" (click)="refresh()">Refresh</button>
+  </section>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">{{ message }}</section>
+  }
+
+  <section class="panel">
+    <header class="panel-header">
+      <div>
+        <h2>Open Inventory</h2>
+        <small>{{ totalElements() }} ticket{{ totalElements() > 1 ? 's' : '' }} returned by the backend</small>
+      </div>
+    </header>
+
+    @if (isLoading()) {
+      <p class="empty">Loading tickets...</p>
+    } @else if (!tickets().length) {
+      <p class="empty">No ticket matches the current filters.</p>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Priority</th>
+              <th>Source</th>
+              <th>Assigned To</th>
+              <th>Created By</th>
+              <th>Created At</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (ticket of tickets(); track ticket.id) {
+              <tr (click)="openTicket(ticket)">
+                <td>#{{ ticket.id }}</td>
+                <td>{{ ticket.title ?? 'Untitled ticket' }}</td>
+                <td><span class="badge">{{ ticket.status ?? 'UNKNOWN' }}</span></td>
+                <td>{{ ticket.priority ?? 'N/A' }}</td>
+                <td>{{ ticket.monitoringSource ?? (ticket.externalProblem ? 'EXTERNAL' : 'MANUAL') }}</td>
+                <td>{{ ticket.assignedTo?.username ?? 'Unassigned' }}</td>
+                <td>{{ ticket.createdBy?.username ?? 'Unknown' }}</td>
+                <td>{{ ticket.creationDate ? (ticket.creationDate | date: 'short') : 'N/A' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</main>

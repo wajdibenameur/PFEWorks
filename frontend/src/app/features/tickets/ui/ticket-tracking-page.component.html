@@ -1,0 +1,206 @@
+<main class="workspace">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Ticket Manager</p>
+      <h1>Ticket Tracking</h1>
+      <p>Track a ticket end to end: assignment, status, interventions, validation, and rejection.</p>
+    </div>
+    <div class="hero-actions">
+      <a routerLink="/tickets/list" class="ghost-link">Back to List</a>
+      <button type="button" (click)="refresh()">Refresh</button>
+    </div>
+  </section>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">{{ message }}</section>
+  }
+
+  <section class="tracking-grid">
+    <article class="panel ticket-selector">
+      <header class="panel-header">
+        <div>
+          <h2>Ticket Queue</h2>
+          <small>{{ tickets().length }} ticket{{ tickets().length > 1 ? 's' : '' }}</small>
+        </div>
+      </header>
+
+      @if (isLoading()) {
+        <p class="empty">Loading ticket queue...</p>
+      } @else if (!tickets().length) {
+        <p class="empty">No ticket available for tracking.</p>
+      } @else {
+        <ul class="ticket-list">
+          @for (ticket of tickets(); track ticket.id) {
+            <li [class.active]="selectedTicket()?.id === ticket.id" (click)="selectTicket(ticket)">
+              <strong>#{{ ticket.id }} {{ ticket.title }}</strong>
+              <span>{{ ticket.status ?? 'UNKNOWN' }} • {{ ticket.priority ?? 'N/A' }}</span>
+            </li>
+          }
+        </ul>
+      }
+    </article>
+
+    <article class="panel ticket-detail">
+      @if (!hasSelection()) {
+        <p class="empty">Select a ticket from the queue to inspect and update it.</p>
+      } @else {
+        <header class="panel-header">
+          <div>
+            <h2>#{{ selectedTicket()!.id }} — {{ selectedTicket()!.title }}</h2>
+            <small>
+              {{ selectedTicket()!.monitoringSource ?? (selectedTicket()!.externalProblem ? 'EXTERNAL' : 'MANUAL') }}
+              • {{ priorityLabel(selectedTicket()) }}
+            </small>
+          </div>
+          <span class="badge">{{ statusBadge(selectedTicket()) }}</span>
+        </header>
+
+        <section class="details-grid">
+          <div class="detail-card">
+            <span>Description</span>
+            <p>{{ selectedTicket()!.description ?? 'No description' }}</p>
+          </div>
+          <div class="detail-card">
+            <span>Creator</span>
+            <p>{{ selectedTicket()!.createdBy?.username ?? 'Unknown' }}</p>
+          </div>
+          <div class="detail-card">
+            <span>Assigned To</span>
+            <p>{{ selectedTicket()!.assignedTo?.username ?? 'Unassigned' }}</p>
+          </div>
+          <div class="detail-card">
+            <span>External Link</span>
+            <p>
+              {{
+                selectedTicket()!.externalProblemId ??
+                  selectedTicket()!.resourceRef ??
+                  'No monitoring link stored'
+              }}
+            </p>
+          </div>
+        </section>
+
+        <section class="actions-grid">
+          <div class="action-card">
+            <h3>Status</h3>
+            <select [ngModel]="statusDraft()" (ngModelChange)="statusDraft.set($event)">
+              @for (status of statusOptions; track status) {
+                <option [value]="status">{{ status }}</option>
+              }
+            </select>
+            <textarea
+              rows="3"
+              placeholder="Optional resolution context"
+              [ngModel]="resolutionDraft()"
+              (ngModelChange)="resolutionDraft.set($event)"
+            ></textarea>
+            <button type="button" (click)="updateStatus()" [disabled]="isMutating()">Update Status</button>
+          </div>
+
+          <div class="action-card">
+            <h3>Assign</h3>
+            <select [ngModel]="assignUserId()" (ngModelChange)="parseAssignUser($event)">
+              <option [ngValue]="null">Select assignee</option>
+              @for (user of users(); track user.id) {
+                <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
+              }
+            </select>
+            <button type="button" (click)="assign()" [disabled]="isMutating() || !assignUserId()">Assign Ticket</button>
+          </div>
+
+          <div class="action-card">
+            <h3>Validation</h3>
+            <select [ngModel]="adminId()" (ngModelChange)="parseAdminUser($event)">
+              <option [ngValue]="null">Select validator</option>
+              @for (user of users(); track user.id) {
+                <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
+              }
+            </select>
+            <textarea
+              rows="3"
+              placeholder="Rejection reason if needed"
+              [ngModel]="rejectReason()"
+              (ngModelChange)="rejectReason.set($event)"
+            ></textarea>
+            <div class="inline-actions">
+              <button type="button" (click)="validateTicket()" [disabled]="isMutating() || !adminId()">Validate</button>
+              <button
+                type="button"
+                class="danger"
+                (click)="rejectTicket()"
+                [disabled]="isMutating() || !adminId() || !rejectReason().trim()"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel interventions-panel">
+          <header class="panel-header">
+            <div>
+              <h3>Interventions</h3>
+              <small>{{ selectedTicket()!.interventions.length }} intervention{{ selectedTicket()!.interventions.length > 1 ? 's' : '' }}</small>
+            </div>
+          </header>
+
+          <div class="intervention-form">
+            <select
+              [ngModel]="interventionUserId()"
+              (ngModelChange)="parseInterventionUser($event)"
+            >
+              <option [ngValue]="null">Select operator</option>
+              @for (user of users(); track user.id) {
+                <option [ngValue]="user.id">{{ user.username }}</option>
+              }
+            </select>
+            <input
+              placeholder="Action"
+              [ngModel]="interventionAction()"
+              (ngModelChange)="interventionAction.set($event)"
+            />
+            <textarea
+              rows="3"
+              placeholder="Comment"
+              [ngModel]="interventionComment()"
+              (ngModelChange)="interventionComment.set($event)"
+            ></textarea>
+            <input
+              placeholder="Result (optional)"
+              [ngModel]="interventionResult()"
+              (ngModelChange)="interventionResult.set($event)"
+            />
+            <button
+              type="button"
+              (click)="addIntervention()"
+              [disabled]="isMutating() || !interventionUserId() || !interventionComment().trim()"
+            >
+              Add Intervention
+            </button>
+          </div>
+
+          @if (!selectedTicket()!.interventions.length) {
+            <p class="empty">No intervention has been recorded yet.</p>
+          } @else {
+            <ul class="intervention-list">
+              @for (intervention of selectedTicket()!.interventions; track intervention.id) {
+                <li>
+                  <div>
+                    <strong>{{ intervention.action ?? 'COMMENT' }}</strong>
+                    <p>{{ intervention.comment ?? 'No comment' }}</p>
+                    <small>
+                      {{ intervention.performedBy?.username ?? 'Unknown user' }}
+                      •
+                      {{ intervention.timestamp ? (intervention.timestamp | date: 'short') : 'Unknown date' }}
+                    </small>
+                  </div>
+                  <span>{{ intervention.result ?? 'Pending result' }}</span>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+      }
+    </article>
+  </section>
+</main>
