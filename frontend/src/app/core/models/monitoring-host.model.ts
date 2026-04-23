@@ -8,4 +8,5 @@ export interface MonitoringHost {
   protocol: string | null;
   status: string | null;
   category: string | null;
+  lastCheck: string | null;
 }

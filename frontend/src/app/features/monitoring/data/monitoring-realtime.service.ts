@@ -36,30 +36,16 @@ export class MonitoringRealtimeService {
     );
   }
 
-  // Temporary compatibility aliases kept while some consumers still use the
-  // older Zabbix-first vocabulary for unified monitoring streams.
-  problems$(): Observable<ZabbixProblem[]> {
-    return this.monitoringProblemsForZabbix$();
-  }
-
-  zabbixProblems$(): Observable<ZabbixProblem[]> {
-    return this.monitoringProblemsForZabbix$();
-  }
-
-  metrics$(): Observable<ZabbixMetric[]> {
-    return this.monitoringMetricsForZabbix$();
-  }
-
-  zabbixMetrics$(): Observable<ZabbixMetric[]> {
-    return this.monitoringMetricsForZabbix$();
-  }
-
   monitoringProblems$(): Observable<MonitoringProblem[]> {
     return this.stomp.subscribe<MonitoringProblem[]>('/topic/monitoring/problems');
   }
 
   monitoringMetrics$(): Observable<UnifiedMonitoringMetric[]> {
     return this.stomp.subscribe<UnifiedMonitoringMetric[]>('/topic/monitoring/metrics');
+  }
+
+  monitoringSources$(): Observable<SourceAvailability> {
+    return this.stomp.subscribe<SourceAvailability>('/topic/monitoring/sources');
   }
 
   observiumMetrics$(): Observable<ObserviumMetric[]> {
@@ -80,10 +66,6 @@ export class MonitoringRealtimeService {
           .map((metric) => this.toZkBioMetric(metric))
       )
     );
-  }
-
-  sourceAvailability$(): Observable<SourceAvailability> {
-    return this.stomp.subscribe<SourceAvailability>('/topic/monitoring/sources');
   }
 
   zkbioProblems$(): Observable<ZkBioProblem[]> {

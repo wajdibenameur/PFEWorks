@@ -4,7 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, input, signal } from '@an
 export interface GlobalAssetVm {
   id: string;
   hostname: string;
-  address: string;
+  lastCheck: string | null;
   ip: string;
   source: string;
   category: string;
@@ -41,7 +41,7 @@ export class AssetInventoryTableComponent {
         return true;
       }
 
-      const fingerprint = `${asset.hostname} ${asset.address} ${asset.ip} ${asset.source}`.toLowerCase();
+      const fingerprint = `${asset.hostname} ${asset.lastCheck ?? ''} ${asset.ip} ${asset.source}`.toLowerCase();
       return fingerprint.includes(filterText);
     });
   });

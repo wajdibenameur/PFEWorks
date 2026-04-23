@@ -1,13 +1,13 @@
 <article class="panel">
   <header class="panel-header">
     <h2>Monitored Assets Inventory</h2>
-    <small>Hostnames, addresses, IPs, status, source, category</small>
+    <small>Hostnames, last checks, IPs, status, source, category</small>
   </header>
 
   <div class="filters">
     <input
       type="text"
-      placeholder="Search hostname, address, IP, source..."
+      placeholder="Search hostname, last check, IP, source..."
       (input)="updateFilterText($event)"
     />
 
@@ -36,7 +36,7 @@
         <thead>
           <tr>
             <th>Hostname</th>
-            <th>Address</th>
+            <th>Last Check</th>
             <th>IP</th>
             <th>Source</th>
             <th>Category</th>
@@ -48,7 +48,7 @@
           @for (asset of filteredAssets(); track asset.id) {
             <tr>
               <td>{{ asset.hostname }}</td>
-              <td>{{ asset.address }}</td>
+              <td>{{ asset.lastCheck ? (asset.lastCheck | date:'medium') : '--' }}</td>
               <td>{{ asset.ip }}</td>
               <td>{{ asset.source }}</td>
               <td>{{ asset.category }}</td>

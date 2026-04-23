@@ -1,7 +1,7 @@
 <article class="panel">
   <header class="panel-header">
     <h2>Problem and Alert Summary</h2>
-    <small>Built from active Zabbix problems</small>
+    <small>Dashboard problems count only severity 4 and 5 alerts from unified monitoring</small>
   </header>
 
   <div class="severity-grid">
@@ -15,7 +15,7 @@
 
   <h3 class="sub-title">Most affected hosts</h3>
   @if (!topAlertHosts().length) {
-    <p class="empty">No active alert host currently returned.</p>
+    <p class="empty">No host currently has a severity 4 or 5 problem.</p>
   } @else {
     <ul class="host-list">
       @for (host of topAlertHosts(); track host.id) {

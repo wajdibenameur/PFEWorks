@@ -5,7 +5,7 @@ export type MonitoringSource = 'ZABBIX' | 'OBSERVIUM' | 'CAMERA' | 'ZKBIO';
 export interface GlobalAssetVm {
   id: string;
   hostname: string;
-  address: string;
+  lastCheck: string | null;
   ip: string;
   port: number | null;
   source: MonitoringSource;

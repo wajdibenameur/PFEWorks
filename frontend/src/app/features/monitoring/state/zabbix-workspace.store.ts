@@ -6,7 +6,9 @@ import { CollectionTarget } from '../../../core/models/collection-target.model';
 import { DashboardAnomaly } from '../../../core/models/dashboard-anomaly.model';
 import { DashboardOverview } from '../../../core/models/dashboard-overview.model';
 import { DashboardPrediction } from '../../../core/models/dashboard-prediction.model';
+import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
+import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
 import { ZabbixMetric } from '../../../core/models/zabbix-metric.model';
 import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
 import { MonitoringApiService } from '../data/monitoring-api.service';
@@ -431,20 +433,20 @@ export class ZabbixWorkspaceStore {
     this.errorMessage.set(null);
 
     forkJoin({
-      problems: this.api.getZabbixMonitoringProblems().pipe(
+      problemsResponse: this.api.getMonitoringProblemsResponse().pipe(
         catchError((error) => {
           this.errorMessage.set(
             extractApiErrorMessage(error, 'Unable to load active Zabbix problems.')
           );
-          return of([]);
+          return of({ data: [] as MonitoringProblem[], degraded: true, freshness: {}, coverage: {} });
         })
       ),
-      metrics: this.api.getZabbixMonitoringMetrics().pipe(
+      metricsResponse: this.api.getMonitoringMetricsResponse().pipe(
         catchError((error) => {
           this.errorMessage.set(
             extractApiErrorMessage(error, 'Unable to load Zabbix metrics snapshot.')
           );
-          return of([]);
+          return of({ data: [] as UnifiedMonitoringMetric[], degraded: true, freshness: {}, coverage: {} });
         })
       ),
       predictions: this.api.getPredictions().pipe(
@@ -480,9 +482,9 @@ export class ZabbixWorkspaceStore {
         })
       )
     }).subscribe({
-      next: ({ problems, metrics, predictions, anomalies, sourceHealth, overview }) => {
-        this.problems.set(this.mergeProblems([], problems));
-        this.metrics.set(this.mergeMetrics([], metrics));
+      next: ({ problemsResponse, metricsResponse, predictions, anomalies, sourceHealth, overview }) => {
+        this.problems.set(this.mergeProblems([], this.toZabbixProblems(problemsResponse.data)));
+        this.metrics.set(this.mergeMetrics([], this.toZabbixMetrics(metricsResponse.data)));
         this.predictions.set(predictions);
         this.anomalies.set(anomalies);
         this.sourceAvailability.set(sourceHealth);
@@ -524,7 +526,7 @@ export class ZabbixWorkspaceStore {
       }
     });
 
-    this.realtime.sourceAvailability$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringSources$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         this.sourceAvailability.set(
           this.mergeSourceAvailability(this.sourceAvailability(), incoming)
@@ -624,6 +626,43 @@ export class ZabbixWorkspaceStore {
 
   private stringValue(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value : null;
+  }
+
+  private toZabbixProblems(problems: MonitoringProblem[]): ZabbixProblem[] {
+    return problems
+      .filter((problem) => problem.source === 'ZABBIX')
+      .map((problem) => ({
+        problemId: problem.problemId ?? problem.id,
+        host: problem.hostName ?? problem.hostId ?? 'UNKNOWN',
+        port: problem.port ?? null,
+        hostId: problem.hostId ?? null,
+        description: problem.description ?? 'No description',
+        severity: problem.severity ?? 'UNKNOWN',
+        active: problem.active,
+        source: problem.source,
+        eventId: problem.eventId ?? 0,
+        ip: problem.ip ?? null,
+        startedAt: problem.startedAt ?? null,
+        startedAtFormatted: problem.startedAtFormatted ?? null,
+        resolvedAt: problem.resolvedAt ?? null,
+        resolvedAtFormatted: problem.resolvedAtFormatted ?? null,
+        status: problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED')
+      }));
+  }
+
+  private toZabbixMetrics(metrics: UnifiedMonitoringMetric[]): ZabbixMetric[] {
+    return metrics
+      .filter((metric) => metric.source === 'ZABBIX')
+      .map((metric) => ({
+        hostId: metric.hostId,
+        hostName: metric.hostName,
+        itemId: metric.itemId,
+        metricKey: metric.metricKey,
+        value: metric.value ?? 0,
+        timestamp: metric.timestamp ?? 0,
+        ip: metric.ip,
+        port: metric.port
+      }));
   }
 
   private mergeProblems(existing: ZabbixProblem[], incoming: ZabbixProblem[]): ZabbixProblem[] {

@@ -286,7 +286,7 @@ export class MonitoringZkBioPageComponent implements OnInit {
       }
     });
 
-    this.realtime.sourceAvailability$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.realtime.monitoringSources$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
         if (incoming.source.toUpperCase() !== 'ZKBIO') {
           return;
