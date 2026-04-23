@@ -3,10 +3,11 @@ package tn.iteam.repository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
-import tn.iteam.Enums.TicketStatus;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import tn.iteam.enums.TicketStatus;
 import tn.iteam.domain.Ticket;
 
-public interface TicketRepository extends JpaRepository<Ticket, Long> {
+public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecificationExecutor<Ticket> {
 
     Page<Ticket> findByStatus(TicketStatus status, Pageable pageable);
 

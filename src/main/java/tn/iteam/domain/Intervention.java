@@ -7,14 +7,20 @@ import java.time.LocalDateTime;
 
 @Entity
 @Getter
-@Setter@Builder
+@Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class Intervention extends BaseEntity {
 
     private String action;
+
+    @Column(length = 4000)
     private String comment;
+
     private LocalDateTime timestamp;
+
+    @Column(length = 2000)
     private String result;
 
     @ManyToOne(fetch = FetchType.LAZY)

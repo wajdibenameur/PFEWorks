@@ -2,12 +2,13 @@ package tn.iteam.domain;
 
 import jakarta.persistence.*;
 import lombok.*;
-import tn.iteam.Enums.TicketStatus;
+import tn.iteam.enums.TicketStatus;
 
+import java.util.ArrayList;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import tn.iteam.Enums.Priority;
+import tn.iteam.enums.Priority;
 @Entity
 @Table(name = "tickets")
 @Getter
@@ -17,8 +18,12 @@ import tn.iteam.Enums.Priority;
 @AllArgsConstructor
 public class Ticket extends BaseEntity {
 
+    @Column(nullable = false)
     private String title;
+
     private Long hostId;
+
+    @Column(length = 4000)
     private String description;
 
     private LocalDateTime creationDate;
@@ -31,7 +36,15 @@ public class Ticket extends BaseEntity {
 
     private Boolean externalProblem; // Zabbix ou manuel
 
+    private String monitoringSource;
+
+    private String externalProblemId;
+
+    private String resourceRef;
+
+    @Column(length = 4000)
     private String resolution;
+
     @Builder.Default
     private Boolean archived = false;
 
@@ -47,8 +60,10 @@ public class Ticket extends BaseEntity {
     @JoinColumn(name = "validated_by_id")
     private User validatedBy;
 
-    @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL)
-    private List<Intervention> interventions;
+    @Builder.Default
+    @OneToMany(mappedBy = "ticket", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("timestamp DESC")
+    private List<Intervention> interventions = new ArrayList<>();
 
 
 }
