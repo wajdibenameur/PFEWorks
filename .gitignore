@@ -54,12 +54,12 @@ Backend/nbproject/
 .idea/
 .vscode/
 
-frontend/node_modules
-frontend/.env
-frontend/dist
-frontend/build
-frontend/.codex-audit/
+FrontEndF/node_modules
+FrontEndF/.env
+FrontEndF/dist
+FrontEndF/build
 
+FrontEndF/velson_template/
 PFERTC/artifacts/logs/
 PFERTC/artifacts/metrics/
 PFERTC/artifacts/models/
@@ -86,10 +86,10 @@ Backend/src/UML/
 *.env
 !.env.example
 /auth-service/.env
-/frontend/.env
+/FrontEndF/.env
 /docker/.env.example
 
 auth-service/target/
 Backend/target/
 
-auth-service\src\main\resources
+auth-service\src\main\resources/
