@@ -1,0 +1,54 @@
+package tn.iteam.enums;
+
+public enum Permission {
+
+    // Dashboard
+    VIEW_DASHBOARD,
+    VIEW_METRICS,
+    VIEW_ALERTS,
+    VIEW_LOGS,
+    EXPORT_DASHBOARD,
+    REFRESH_DASHBOARD,
+    MANAGE_DASHBOARD,
+
+    // Hosts
+    VIEW_HOSTS,
+    MANAGE_HOSTS,
+    EDIT_HOST,
+    DELETE_HOST,
+
+    // Tickets
+    VIEW_TICKETS,
+    VIEW_ALL_TICKETS,
+    VIEW_ASSIGNED_TICKETS,
+    CREATE_TICKET,
+    EDIT_TICKET,
+    DELETE_TICKET,
+    ASSIGN_TICKET,
+    VALIDATE_TICKET,
+
+    // Comments
+    ADD_COMMENT,
+    EDIT_COMMENT,
+    DELETE_COMMENT,
+
+    // Users
+    VIEW_USERS,
+    EDIT_USER,
+    DELETE_USER,
+    ACTIVATE_USER,
+    DEACTIVATE_USER,
+    MANAGE_USERS,
+
+    // Roles
+    VIEW_ROLES,
+    MANAGE_ROLES,
+    
+    // Assignation roles
+    ASSIGN_ROLE_TO_USER,
+    REMOVE_ROLE_FROM_USER,
+    
+    // Permissions
+    VIEW_PERMISSIONS,
+    MANAGE_PERMISSIONS
+}
