@@ -1,0 +1,80 @@
+<aside
+  class="sidebar"
+  [class.collapsed]="collapsed()"
+  [class.drawer]="overlayMode()"
+  [class.drawer-open]="drawerOpen()"
+>
+  @if (overlayMode()) {
+    <button type="button" class="close-btn" (click)="closeRequested.emit()">Close</button>
+  }
+  <div class="brand-block">
+    <div class="brand-mark">MF</div>
+    @if (!collapsed()) {
+      <div class="brand-copy">
+        <strong>MonitorFlow</strong>
+        <span>Hybrid Console</span>
+      </div>
+    }
+  </div>
+  <nav>
+    <ul>
+      @for (item of visibleItems(); track item.label; let index = $index) {
+        @if (!collapsed() && startsSection(index, item.section)) {
+          <li class="section-row">{{ item.section }}</li>
+        }
+        <li class="nav-item">
+          @if (item.route) {
+            <a
+              class="nav-link"
+              [routerLink]="item.route"
+              routerLinkActive="active"
+              [routerLinkActiveOptions]="{ exact: true }"
+            >
+              <span class="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path [attr.d]="iconPath(item.icon)"></path>
+                </svg>
+              </span>
+              @if (collapsed()) {
+                <span class="nav-short">{{ initials(item.label) }}</span>
+              } @else {
+                <span class="nav-text">{{ item.label }}</span>
+              }
+            </a>
+          } @else {
+            <span class="section-title">
+              <span class="nav-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path [attr.d]="iconPath(item.icon)"></path>
+                </svg>
+              </span>
+              <span class="nav-text">{{ item.label }}</span>
+            </span>
+          }
+
+          @if (item.children?.length) {
+            <ul class="sub-nav">
+              @for (child of item.children; track child.label) {
+                <li>
+                  <a
+                    class="sub-link"
+                    [routerLink]="child.route"
+                    routerLinkActive="active"
+                    [routerLinkActiveOptions]="{ exact: true }"
+                  >
+                    <span class="sub-dot"></span>
+                    @if (collapsed()) {
+                      <span class="nav-short">{{ initials(child.label) }}</span>
+                    } @else {
+                      <span>{{ child.label }}</span>
+                    }
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </li>
+      }
+    </ul>
+  </nav>
+</aside>

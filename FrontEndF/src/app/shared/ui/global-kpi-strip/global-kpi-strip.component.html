@@ -1,0 +1,18 @@
+<section class="kpi-grid">
+  <article class="kpi-card">
+    <h3>Total Monitored Assets</h3>
+    <p>{{ kpi().totalMonitoredAssets }}</p>
+  </article>
+  <article class="kpi-card alert">
+    <h3>Total Down Assets</h3>
+    <p>{{ kpi().totalDownAssets }}</p>
+  </article>
+  <article class="kpi-card">
+    <h3>Servers (Total / Down)</h3>
+    <p>{{ kpi().serversTotal }} / {{ kpi().serversDown }}</p>
+  </article>
+  <article class="kpi-card">
+    <h3>Printers (Total / Down)</h3>
+    <p>{{ kpi().printersTotal }} / {{ kpi().printersDown }}</p>
+  </article>
+</section>

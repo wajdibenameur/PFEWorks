@@ -1,0 +1,32 @@
+<section class="hero">
+  <div>
+    <p class="eyebrow">Global Monitoring</p>
+    <h1>Infrastructure Overview</h1>
+    <p class="subtitle">
+      Unified dashboard using currently exposed backend monitoring endpoints.
+    </p>
+    <p class="meta">
+      @if (lastRefresh(); as dateValue) {
+        Last refresh: {{ dateValue | date: 'medium' }}
+      } @else {
+        No successful refresh yet
+      }
+    </p>
+  </div>
+
+  <div class="actions">
+    <button type="button" class="btn secondary" (click)="refreshClicked.emit()">
+      Refresh Overview
+    </button>
+
+    @for (action of actions(); track action.target) {
+      <button type="button" class="btn primary" (click)="collectClicked.emit(action.target)">
+        {{ action.label }}
+      </button>
+    }
+  </div>
+</section>
+
+@if (isLoading()) {
+  <p class="loading-state">Refreshing monitoring data...</p>
+}

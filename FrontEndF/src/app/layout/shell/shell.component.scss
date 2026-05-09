@@ -1,0 +1,70 @@
+.shell {
+  background:
+    radial-gradient(circle at top left, rgba(188, 225, 255, 0.38), transparent 24%),
+    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+  color: #102542;
+  min-height: 100vh;
+  position: relative;
+  --sidebar-width: 280px;
+}
+
+.shell.sidebar-collapsed {
+  --sidebar-width: 92px;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  min-height: calc(100vh - 64px);
+  align-items: stretch;
+  width: 100%;
+}
+
+.shell.sidebar-collapsed .body {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  padding: 1.25rem 1.25rem 2rem;
+  width: 100%;
+}
+
+.content > * {
+  width: 100%;
+}
+
+app-sidebar {
+  width: 100%;
+}
+
+.backdrop {
+  background: rgba(15, 23, 42, 0.4);
+  display: none;
+  inset: 64px 0 0 0;
+  position: fixed;
+  z-index: 30;
+}
+
+@media (max-width: 1200px) {
+  .body {
+    grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .content {
+    order: 2;
+    padding: 1rem;
+  }
+
+  .shell.drawer-open .backdrop {
+    display: block;
+  }
+}

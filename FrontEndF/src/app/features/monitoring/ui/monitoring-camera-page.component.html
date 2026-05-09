@@ -1,0 +1,217 @@
+<main class="workspace">
+  <app-collection-control-bar
+    [actions]="collectionActions"
+    [isLoading]="isLoading()"
+    [lastRefresh]="lastRefresh()"
+    (refreshClicked)="refresh()"
+    (collectClicked)="triggerCollection($event)"
+  ></app-collection-control-bar>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">
+      {{ message }}
+    </section>
+  }
+
+  <section class="hero-panel">
+    <div class="hero-copy">
+      <p class="eyebrow">Monitoring Source</p>
+      <h1>Camera Monitoring Workspace</h1>
+      <p>
+        Persisted camera inventory built from backend scans on subnet <strong>192.168.11.x</strong>
+        with discovery around standard media and device control ports.
+      </p>
+
+      <div class="hero-meta">
+        <article class="hero-meta-card">
+          <span>Source Scope</span>
+          <strong>CAMERA</strong>
+          <small>Discovery, reachability and persisted inventory</small>
+        </article>
+        <article class="hero-meta-card">
+          <span>Default Ports</span>
+          <strong>37777 / 554</strong>
+          <small>Control and RTSP oriented scan targets</small>
+        </article>
+        <article class="hero-meta-card">
+          <span>Inventory Mode</span>
+          <strong>{{ summary().persisted }}/{{ summary().total }}</strong>
+          <small>Devices already stored in your monitoring database</small>
+        </article>
+      </div>
+    </div>
+
+    <div class="status-panel" [class.unavailable]="sourceAvailability()?.available === false">
+      <div class="status-panel__header">
+        <span class="status-dot" [class.down]="sourceAvailability()?.available === false"></span>
+        <strong>{{ sourceAvailability()?.status ?? 'UNKNOWN' }}</strong>
+      </div>
+      <p>
+        {{
+          sourceAvailability()?.message ??
+            sourceAvailability()?.lastError ??
+            'Waiting for camera source status.'
+        }}
+      </p>
+      <dl class="status-facts">
+        <div>
+          <dt>Reachable Devices</dt>
+          <dd>{{ summary().reachable }}</dd>
+        </div>
+        <div>
+          <dt>Unique Protocols</dt>
+          <dd>{{ summary().protocols }}</dd>
+        </div>
+        <div>
+          <dt>Last Refresh</dt>
+          <dd>{{ lastRefresh() ? lastRefresh()!.toLocaleTimeString() : 'Pending' }}</dd>
+        </div>
+      </dl>
+      <small>Source: CAMERA - Inventory comes from persisted database records</small>
+    </div>
+  </section>
+
+  @if (sourceAvailability()?.status === 'UNAVAILABLE') {
+    <section class="source-alert-banner">
+      <div class="source-alert-banner__icon" aria-hidden="true">!</div>
+      <div class="source-alert-banner__content">
+        <strong>Camera scan source unavailable</strong>
+        <p>
+          {{
+            sourceAvailability()?.message ??
+              sourceAvailability()?.lastError ??
+              'Camera network scan is currently unavailable.'
+          }}
+        </p>
+      </div>
+    </section>
+  }
+
+  <section class="kpi-grid">
+    <article class="kpi-card">
+      <span>Detected Cameras</span>
+      <strong>{{ summary().total }}</strong>
+      <small>Persisted or newly rediscovered endpoints</small>
+    </article>
+    <article class="kpi-card success">
+      <span>Reachable</span>
+      <strong>{{ summary().reachable }}</strong>
+      <small>Devices responding during latest backend checks</small>
+    </article>
+    <article class="kpi-card">
+      <span>Saved in DB</span>
+      <strong>{{ summary().persisted }}</strong>
+      <small>Inventory entries already synchronized in storage</small>
+    </article>
+    <article class="kpi-card">
+      <span>Protocols</span>
+      <strong>{{ summary().protocols }}</strong>
+      <small>Unique camera communication profiles detected</small>
+    </article>
+  </section>
+
+  <section class="content-grid">
+    <section class="panel">
+      <header class="panel-header">
+        <div>
+          <p class="panel-kicker">Asset Inventory</p>
+          <h2>Detected Camera Inventory</h2>
+          <small>{{ summary().total }} persisted camera records returned by the backend</small>
+        </div>
+      </header>
+
+      @if (isLoading() && !hasDevices()) {
+        <p class="empty">Loading camera inventory...</p>
+      } @else if (!hasDevices()) {
+        <p class="empty">
+          No camera has been detected yet. Use <strong>Scanner Camera</strong> to launch a backend scan
+          on subnet <strong>192.168.11.x</strong>.
+        </p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Device</th>
+                <th>IP</th>
+                <th>Port</th>
+                <th>Protocol</th>
+                <th>Status</th>
+                <th>Last Scan</th>
+                <th>Persistence</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (device of cameraDevices(); track trackByDevice($index, device)) {
+                <tr>
+                  <td>
+                    <div class="device-cell">
+                      <strong>{{ device.name ?? 'Camera' }}</strong>
+                      <small>{{ device.ip ?? 'UNKNOWN' }}:{{ device.port ?? 'N/A' }}</small>
+                    </div>
+                  </td>
+                  <td>{{ device.ip ?? 'UNKNOWN' }}</td>
+                  <td>{{ device.port ?? 'N/A' }}</td>
+                  <td>
+                    <span class="protocol-chip">{{ protocolLabel(device) }}</span>
+                  </td>
+                  <td>
+                    <span class="badge" [class.down]="!device.reachable">
+                      {{ statusLabel(device) }}
+                    </span>
+                  </td>
+                  <td>{{ scanTimestampLabel(device) }}</td>
+                  <td>{{ persistenceLabel(device) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <aside class="insight-column">
+      <section class="panel panel-compact">
+        <header class="panel-header">
+          <div>
+            <p class="panel-kicker">Decision Support</p>
+            <h2>Operational Reading</h2>
+          </div>
+        </header>
+
+        <div class="insight-list">
+          <article class="insight-card">
+            <span>Coverage</span>
+            <strong>{{ summary().reachable }}/{{ summary().total }}</strong>
+            <p>Reachable endpoints compared with the persisted camera estate.</p>
+          </article>
+          <article class="insight-card">
+            <span>Persistence Sync</span>
+            <strong>{{ summary().persisted }}</strong>
+            <p>Devices currently available inside the backend camera inventory.</p>
+          </article>
+          <article class="insight-card">
+            <span>Protocol Diversity</span>
+            <strong>{{ summary().protocols }}</strong>
+            <p>Communication variants seen across the scanned device set.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel panel-compact">
+        <header class="panel-header">
+          <div>
+            <p class="panel-kicker">Operator Notes</p>
+            <h2>Recommended Actions</h2>
+          </div>
+        </header>
+
+        <ul class="action-list">
+          <li>Relaunch a scan after adding new camera endpoints to the subnet.</li>
+          <li>Review unreachable devices first when the source stays available but assets remain down.</li>
+          <li>Use persisted inventory as the reference list for integration with dashboards and alerts.</li>
+        </ul>
+      </section>
+    </aside>
+  </section>
+</main>

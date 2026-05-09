@@ -1,0 +1,173 @@
+<main class="edit-profile">
+  <div class="container">
+    <h1>Éditer mon profil</h1>
+
+    @if (isLoading()) {
+      <div class="loading">
+        <p>Chargement du profil...</p>
+      </div>
+    } @else {
+      @if (successMessage(); as message) {
+        <div class="alert alert-success">{{ message }}</div>
+      }
+
+      @if (errorMessage(); as message) {
+        <div class="alert alert-error">{{ message }}</div>
+      }
+
+      <form [formGroup]="profileForm" class="profile-form">
+        <!-- Avatar Section -->
+        <div class="avatar-section">
+          <div class="avatar-display">
+            @if (previewUrl()) {
+              <img [src]="previewUrl()" [alt]="profileForm.get('firstName')?.value" class="avatar" />
+            } @else {
+              <div class="avatar-placeholder">Photo de profil</div>
+            }
+          </div>
+          <div class="avatar-actions">
+            <label for="avatar-input" class="btn-upload">
+              Changer la photo
+              <input
+                type="file"
+                id="avatar-input"
+                accept="image/*"
+                (change)="onFileSelected($event)"
+                hidden
+              />
+            </label>
+          </div>
+        </div>
+
+        <!-- Personal Information -->
+        <div class="form-section">
+          <h2>Informations personnelles</h2>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="firstName">Prénom</label>
+              <input
+                type="text"
+                id="firstName"
+                formControlName="firstName"
+                placeholder="Votre prénom"
+              />
+              @if (profileForm.get('firstName')?.hasError('required')) {
+                <span class="error">Le prénom est requis</span>
+              }
+              @if (profileForm.get('firstName')?.hasError('minlength')) {
+                <span class="error">Le prénom doit contenir au moins 2 caractères</span>
+              }
+            </div>
+
+            <div class="form-group">
+              <label for="lastName">Nom</label>
+              <input
+                type="text"
+                id="lastName"
+                formControlName="lastName"
+                placeholder="Votre nom"
+              />
+              @if (profileForm.get('lastName')?.hasError('required')) {
+                <span class="error">Le nom est requis</span>
+              }
+              @if (profileForm.get('lastName')?.hasError('minlength')) {
+                <span class="error">Le nom doit contenir au moins 2 caractères</span>
+              }
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input
+              type="email"
+              id="email"
+              formControlName="email"
+              placeholder="votre.email@example.com"
+            />
+            @if (profileForm.get('email')?.hasError('required')) {
+              <span class="error">L'email est requis</span>
+            }
+            @if (profileForm.get('email')?.hasError('email')) {
+              <span class="error">Veuillez entrer un email valide</span>
+            }
+          </div>
+
+          <div class="form-group">
+            <label for="phone">Téléphone</label>
+            <input
+              type="tel"
+              id="phone"
+              formControlName="phone"
+              placeholder="+33 6 12 34 56 78"
+            />
+          </div>
+        </div>
+
+        <!-- Address Information -->
+        <div class="form-section">
+          <h2>Adresse</h2>
+
+          <div class="form-group">
+            <label for="address">Adresse</label>
+            <input
+              type="text"
+              id="address"
+              formControlName="address"
+              placeholder="123 rue de l'exemple"
+            />
+            @if (profileForm.get('address')?.hasError('required')) {
+              <span class="error">L'adresse est requise</span>
+            }
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="city">Ville</label>
+              <input
+                type="text"
+                id="city"
+                formControlName="city"
+                placeholder="Paris"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="zipCode">Code postal</label>
+              <input
+                type="text"
+                id="zipCode"
+                formControlName="zipCode"
+                placeholder="75001"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="form-actions">
+          <button
+            type="button"
+            (click)="cancel()"
+            class="btn btn-secondary"
+            [disabled]="isSaving()"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            (click)="saveProfile()"
+            class="btn btn-primary"
+            [disabled]="isSaving() || profileForm.invalid"
+          >
+            @if (isSaving()) {
+              Enregistrement en cours...
+            } @else {
+              Enregistrer les modifications
+            }
+          </button>
+        </div>
+      </form>
+    }
+  </div>
+</main>

@@ -1,0 +1,56 @@
+.placeholder {
+  background: radial-gradient(circle at top, rgba(14, 165, 233, 0.14), transparent 45%),
+    rgba(12, 20, 34, 0.9);
+  border: 1px solid #23344f;
+  border-radius: 18px;
+  padding: 2.2rem;
+  text-align: center;
+}
+
+.icon {
+  background: rgba(14, 165, 233, 0.2);
+  border-radius: 16px;
+  color: #7dd3fc;
+  display: inline-flex;
+  font-size: 1.2rem;
+  margin-bottom: 0.7rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.placeholder h1 {
+  margin: 0 0 0.6rem;
+}
+
+.placeholder p {
+  color: #a4b6d4;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.6rem;
+  justify-content: center;
+  margin-top: 1.2rem;
+}
+
+.actions button {
+  background: #1f2f47;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #dbe5f6;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.45rem 1rem;
+}
+
+.actions .ghost {
+  background: transparent;
+  border-color: #2b3d5c;
+}
+
+@media (max-width: 600px) {
+  .actions {
+    flex-direction: column;
+  }
+}

@@ -1,0 +1,111 @@
+.user-panel {
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  border-left: 1px solid #dce4f2;
+  min-height: 100%;
+  padding: 1.2rem 1rem;
+  width: 240px;
+}
+
+.user-card {
+  background: linear-gradient(135deg, #0f172a, #164e63);
+  border: 1px solid #23344f;
+  border-radius: 18px;
+  color: #fff;
+  padding: 0.8rem;
+}
+
+.user-card h3 {
+  font-size: 0.85rem;
+  margin: 0 0 0.5rem;
+}
+
+.username {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.role,
+.status {
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.78rem;
+  margin: 0.15rem 0 0;
+}
+
+.connection,
+.quick-info {
+  margin-top: 1rem;
+}
+
+.connection h4,
+.quick-info h4 {
+  font-size: 0.8rem;
+  margin: 0 0 0.4rem;
+}
+
+.pill {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+}
+
+.status-connected {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+}
+
+.status-connecting {
+  background: rgba(59, 130, 246, 0.2);
+  color: #bfdbfe;
+}
+
+.status-disconnected,
+.status-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fecaca;
+}
+
+.quick-cards {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.quick-card {
+  background: #f8fafc;
+  border: 1px solid #dce4f2;
+  border-radius: 14px;
+  padding: 0.5rem;
+}
+
+.quick-card p {
+  color: #9eb0cf;
+  font-size: 0.72rem;
+  margin: 0;
+}
+
+.quick-card strong {
+  font-size: 0.84rem;
+  color: #0f172a;
+}
+
+.logout {
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  margin-top: 1.2rem;
+  padding: 0.4rem 0.85rem;
+  width: 100%;
+}
+
+@media (max-width: 900px) {
+  .user-panel {
+    border-left: none;
+    border-top: 1px solid #1c2a40;
+    width: 100%;
+  }
+}
