@@ -1,80 +1,95 @@
 # =====================
 # CONFIG (DO NOT COMMIT SECRETS)
 # =====================
-src/main/resources/application.properties
-src/main/resources/application.yml
+Backend/src/main/resources/application.properties
+Backend/src/main/resources/application.yml
 
 # =====================
 # LOGS
 # =====================
-/logs/
+Backend/logs/
 *.log
 *.gz
 
 # =====================
 # BUILD OUTPUT
 # =====================
-target/
-build/
-dist/
-nbdist/
-nbbuild/
+Backend/target/
+Backend/build/
+Backend/dist/
+Backend/nbdist/
+Backend/nbbuild/
 
 # =====================
 # MAVEN
 # =====================
-.mvn/wrapper/maven-wrapper.jar
-
+Backend/.mvn/wrapper/maven-wrapper.jar
+Backend/target/
 # =====================
 # IDE - IntelliJ / Eclipse / STS
 # =====================
-.idea/
-*.iml
-*.iws
-*.ipr
-.vscode/
+Backend/.idea/
+Backend/*.iml
+Backend/*.iws
+Backend/*.ipr
+Backend/.vscode/
 
-.classpath
-.project
-.settings/
-.springBeans
-.apt_generated
-.github/
+Backend/.classpath
+Backend/.project
+Backend/.settings/
+Backend/.springBeans
+Backend/.apt_generated
+Backend/.github/
 
 # =====================
 # NETBEANS
 # =====================
-/nbproject/
+Backend/nbproject/
 
 # =====================
 # DOCS
 # =====================
 *.docx
 
-
+.idea/
+.vscode/
 
 frontend/node_modules
 frontend/.env
 frontend/dist
 frontend/build
-
+frontend/.codex-audit/
 
 PFERTC/artifacts/logs/
 PFERTC/artifacts/metrics/
 PFERTC/artifacts/models/
 
 docs/
-src/main/java/depl
-src/main/java/depl/mintty.exe.stackdump
-main/resources/
-/main/
+Backend/src/main/java/depl
+Backend/src/main/java/depl/mintty.exe.stackdump
+Backend/main/resources/
+Backend//main/
 
-mintty.exe.stackdump
-*.stackdump
-src/main/resources/sql/
+Backend/mintty.exe.stackdump
+Backend/*.stackdump
+Backend/src/main/resources/sql/
 
-/depl/
+depl/
 /codex-idea2/
 /codex-memory2/
 /docs/
 /suivi-pfe2/
+Backend/src/UML/
+
+# ENV / SECRETS
+.env
+*.env
+!.env.example
+/auth-service/.env
+/frontend/.env
+/docker/.env.example
+
+auth-service/target/
+Backend/target/
+
+auth-service\src\main\resources
