@@ -1,0 +1,84 @@
+<main class="admin-panel">
+  <section class="hero-card">
+    <div>
+      <p class="eyebrow">Control Center</p>
+      <h1>Admin Panel</h1>
+      <p>Govern source activation, user permissions, and operational readiness from one place.</p>
+    </div>
+    <div class="hero-actions">
+      @if (canManagePermissions()) {
+        <button type="button" class="ghost-btn">Export Audit</button>
+      }
+      @if (canManageUsers()) {
+        <button type="button" class="primary-btn">Add Source</button>
+      }
+    </div>
+  </section>
+
+  <section class="overview-grid">
+    <article class="panel feature-card">
+      <h2>Roles & Permissions</h2>
+      <p>Control Superadmin, Admin, Support, and Viewer capabilities.</p>
+      <ul>
+        <li>Assign or revoke access by role</li>
+        <li>Restrict visibility by monitoring source</li>
+        <li>Prepare approval flows for sensitive actions</li>
+      </ul>
+    </article>
+
+    <article class="panel feature-card">
+      <h2>Active Sessions</h2>
+      <p>Track currently connected operators and operational rooms.</p>
+      <div class="session-grid">
+        <div><span>Available Sources</span><strong>{{ connectedCount() }}</strong></div>
+        <div><span>Degraded</span><strong>{{ degradedCount() }}</strong></div>
+        <div><span>Unavailable</span><strong>{{ unavailableCount() }}</strong></div>
+        <div><span>Total Sources</span><strong>{{ sourceRows().length }}</strong></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="panel">
+    <header class="panel-header">
+      <div>
+        <h2>Monitoring Sources Governance</h2>
+        <small>Status, ownership, and latest backend refresh</small>
+      </div>
+    </header>
+
+    @if (errorMessage(); as message) {
+      <p class="feedback error">{{ message }}</p>
+    } @else if (isLoading()) {
+      <p class="feedback">Loading source health...</p>
+    } @else if (!sourceRows().length) {
+      <p class="feedback">No source health data available.</p>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Available</th>
+              <th>Last Event</th>
+              <th>Message</th>
+              <th>Last Error</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of sourceRows(); track row.source) {
+              <tr>
+                <td>{{ row.source }}</td>
+                <td><span class="badge status-{{ (row.status || 'UNKNOWN').toLowerCase() }}">{{ row.status || 'UNKNOWN' }}</span></td>
+                <td>{{ row.available ? 'YES' : 'NO' }}</td>
+                <td>{{ syncLabel(row) }}</td>
+                <td>{{ row.message || 'No message' }}</td>
+                <td>{{ row.lastError || 'No error' }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</main>

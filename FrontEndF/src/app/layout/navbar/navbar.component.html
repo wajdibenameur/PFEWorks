@@ -1,0 +1,43 @@
+<header class="navbar">
+  <div class="brand">
+    <button type="button" class="menu-btn" (click)="toggleSidebar.emit()">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <span class="logo">MF</span>
+    <div class="brand-copy">
+      <p class="title">MonitorFlow</p>
+      <p class="subtitle">Velzon shell + Material monitoring</p>
+    </div>
+  </div>
+
+  <div class="actions">
+    <span class="status-pill" [class]="'status-' + connectionLabel()">{{ connectionStatus() }}</span>
+    <button type="button" class="action-btn ghost">Live Sources</button>
+    <button type="button" class="action-btn">Refresh</button>
+    <div class="profile-wrap">
+      <button type="button" class="profile-btn" (click)="toggleProfileMenu($event)">
+        <span class="avatar">{{ initials() }}</span>
+        <span class="profile-copy">
+          <strong>{{ displayName() }}</strong>
+          <small>{{ primaryRole() }}</small>
+        </span>
+      </button>
+
+      @if (profileMenuOpen()) {
+        <div class="profile-menu">
+          <div class="profile-menu-head">
+            <span class="avatar large">{{ initials() }}</span>
+            <div>
+              <strong>{{ displayName() }}</strong>
+              <small>{{ primaryRole() }}</small>
+            </div>
+          </div>
+          <button type="button" class="menu-item" (click)="goToProfile()">Edit profile</button>
+          <button type="button" class="menu-item danger" (click)="logout()">Logout</button>
+        </div>
+      }
+    </div>
+  </div>
+</header>

@@ -1,0 +1,265 @@
+.navbar {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #dce7f5;
+  display: flex;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 0.8rem 1.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 35;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 0.9rem;
+}
+
+.menu-btn {
+  background: #f8fbff;
+  border: 1px solid #d7e3f2;
+  border-radius: 14px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 0.55rem 0.65rem;
+}
+
+.menu-btn span {
+  background: #34506f;
+  border-radius: 999px;
+  display: block;
+  height: 2px;
+  width: 16px;
+}
+
+.logo {
+  align-items: center;
+  background: linear-gradient(140deg, #1595c2, #17b26a);
+  border-radius: 14px;
+  color: #ffffff;
+  display: inline-flex;
+  font-weight: 800;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.brand-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.title {
+  color: #16253d;
+  font-size: 1.45rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.subtitle {
+  color: #6482a3;
+  font-size: 0.84rem;
+  margin: 0.1rem 0 0;
+}
+
+.actions {
+  align-items: center;
+  display: flex;
+  gap: 0.7rem;
+  position: relative;
+}
+
+.status-pill {
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.45rem 0.75rem;
+}
+
+.status-connected {
+  background: #dff9e7;
+  color: #179c57;
+}
+
+.status-connecting {
+  background: #e2efff;
+  color: #2b78d0;
+}
+
+.status-disconnected,
+.status-error {
+  background: #fee6e2;
+  color: #d64545;
+}
+
+.action-btn {
+  background: linear-gradient(135deg, #16213e, #0f2c50);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0.62rem 1rem;
+}
+
+.action-btn.ghost {
+  background: #eff8ef;
+  border-color: #d3ebd7;
+  color: #157347;
+}
+
+.profile-wrap {
+  position: relative;
+}
+
+.profile-btn {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d7e3f2;
+  border-radius: 999px;
+  cursor: pointer;
+  display: flex;
+  gap: 0.7rem;
+  padding: 0.35rem 0.45rem 0.35rem 0.35rem;
+}
+
+.avatar {
+  align-items: center;
+  background: linear-gradient(135deg, #1595c2, #17b26a);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 800;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.avatar.large {
+  font-size: 0.95rem;
+  height: 48px;
+  width: 48px;
+}
+
+.profile-copy {
+  display: grid;
+  text-align: left;
+}
+
+.profile-copy strong {
+  color: #16253d;
+  font-size: 0.86rem;
+  line-height: 1.1;
+}
+
+.profile-copy small {
+  color: #6d86a4;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.profile-menu {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #dce7f5;
+  border-radius: 20px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.14);
+  min-width: 220px;
+  padding: 0.8rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.55rem);
+}
+
+.profile-menu-head {
+  align-items: center;
+  border-bottom: 1px solid #edf3fa;
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+  padding-bottom: 0.75rem;
+}
+
+.profile-menu-head strong,
+.profile-menu-head small {
+  display: block;
+}
+
+.profile-menu-head strong {
+  color: #16253d;
+}
+
+.profile-menu-head small {
+  color: #6d86a4;
+}
+
+.menu-item {
+  background: transparent;
+  border: 0;
+  border-radius: 12px;
+  color: #284666;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  width: 100%;
+}
+
+.menu-item:hover {
+  background: #f1f7ff;
+}
+
+.menu-item.danger {
+  color: #b63d3d;
+}
+
+.menu-item.danger:hover {
+  background: #fff1f1;
+}
+
+@media (max-width: 900px) {
+  .navbar {
+    padding: 0.8rem 1rem;
+  }
+
+  .title {
+    font-size: 1.12rem;
+  }
+
+  .subtitle,
+  .profile-copy,
+  .status-pill,
+  .action-btn.ghost {
+    display: none;
+  }
+
+  .actions {
+    gap: 0.45rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .brand {
+    gap: 0.65rem;
+  }
+
+  .logo {
+    height: 38px;
+    width: 38px;
+  }
+
+  .action-btn {
+    font-size: 0.78rem;
+    padding: 0.55rem 0.8rem;
+  }
+}

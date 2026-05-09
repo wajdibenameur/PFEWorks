@@ -1,0 +1,51 @@
+services:
+
+  # ── MySQL (shared: business data + Keycloak DB) ──────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: pfe-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pfedb}
+      MYSQL_USER: ${MYSQL_USER:-pfeuser}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pfepassword}
+    ports:
+      - "${MYSQL_PORT:-3360}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init-mysql.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "${MYSQL_USER:-pfeuser}", "-p${MYSQL_PASSWORD:-pfepassword}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── Keycloak ─────────────────────────────────────────────────────────────────
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.4
+    container_name: pfe-keycloak
+    command: start-dev
+    environment:
+      KC_DB: mysql
+      KC_DB_URL: jdbc:mysql://mysql:3306/${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${MYSQL_USER:-pfeuser}
+      KC_DB_PASSWORD: ${MYSQL_PASSWORD:-pfepassword}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HTTP_PORT: ${KEYCLOAK_INTERNAL_PORT:-8080}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+    ports:
+      - "${KEYCLOAK_PORT:-8091}:${KEYCLOAK_INTERNAL_PORT:-8080}"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/health/ready || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  mysql_data:

@@ -1,0 +1,34 @@
+:host {
+  display: block;
+  color: #0f172a;
+}
+
+.dashboard {
+  display: grid;
+  gap: 0.95rem;
+  margin: 0;
+  max-width: 100%;
+  width: 100%;
+  padding: 1.6rem 1.1rem 2.4rem;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 0.95rem;
+  grid-template-columns: 1.1fr 1fr;
+}
+
+.error-banner {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 16px;
+  color: #b91c1c;
+  font-size: 0.84rem;
+  padding: 0.7rem 0.85rem;
+}
+
+@media (max-width: 1050px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+}

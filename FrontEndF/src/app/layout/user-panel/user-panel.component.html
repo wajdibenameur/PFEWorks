@@ -1,0 +1,33 @@
+<aside class="user-panel">
+  <div class="user-card">
+    <h3>Operator</h3>
+    <p class="username">{{ displayUser().username }}</p>
+    <p class="role">{{ displayRole() }}</p>
+    <p class="status">{{ authStatus() }}</p>
+  </div>
+
+  <div class="connection">
+    <h4>Connection</h4>
+    <span class="pill" [class]="statusClass()">{{ connectionStatus() }}</span>
+  </div>
+
+  <div class="quick-info">
+    <h4>Quick Info</h4>
+    <div class="quick-cards">
+      <div class="quick-card">
+        <p>Session</p>
+        <strong>{{ currentUser() ? 'Open' : 'Closed' }}</strong>
+      </div>
+      <div class="quick-card">
+        <p>Role Count</p>
+        <strong>{{ currentUser()?.roles?.length ?? 0 }}</strong>
+      </div>
+      <div class="quick-card">
+        <p>Workspace</p>
+        <strong>Hybrid</strong>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" class="logout" (click)="logout()">Logout</button>
+</aside>

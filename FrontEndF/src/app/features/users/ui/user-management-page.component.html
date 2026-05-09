@@ -1,0 +1,327 @@
+<main class="admin-workspace">
+  <section class="hero-card">
+    <div>
+      <p class="eyebrow">Admin Workspace</p>
+      <h1>Gestion des utilisateurs, roles et permissions</h1>
+      <p>
+        Les comptes et roles viennent de Keycloak via auth-service. Les permissions personnalisees sont pilotees
+        localement par le Backend monitoring.
+      </p>
+    </div>
+    @if (permissionsLoaded() && canManageUsers()) {
+      <button type="button" class="primary-btn" (click)="openCreateDrawer()">Nouvel utilisateur</button>
+    }
+  </section>
+
+  <section class="stats-grid">
+    <article class="stat-card">
+      <span>Tous les utilisateurs</span>
+      <strong>{{ users().length }}</strong>
+    </article>
+    <article class="stat-card success">
+      <span>Actifs</span>
+      <strong>{{ activeCount() }}</strong>
+    </article>
+    <article class="stat-card warning">
+      <span>Inactifs</span>
+      <strong>{{ inactiveCount() }}</strong>
+    </article>
+    <article class="stat-card">
+      <span>Roles admin</span>
+      <strong>{{ adminCount() }}</strong>
+    </article>
+  </section>
+
+  @if (successMessage(); as message) {
+    <p class="feedback success">{{ message }}</p>
+  }
+
+  @if (errorMessage(); as message) {
+    <p class="feedback error">{{ message }}</p>
+  }
+
+  <section class="content-grid">
+    <section class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Liste des utilisateurs</h2>
+          <small>Keycloak pour users/roles, Backend pour permissions personnalisees</small>
+        </div>
+        <div class="filters">
+          <label>
+            <span>Role</span>
+            <select [value]="roleFilter()" (change)="roleFilter.set($any($event.target).value)">
+              <option value="ALL">Tous</option>
+              @for (role of roles(); track role.name) {
+                <option [value]="role.name">{{ role.label }}</option>
+              }
+            </select>
+          </label>
+          <label>
+            <span>Statut</span>
+            <select [value]="statusFilter()" (change)="statusFilter.set($any($event.target).value)">
+              <option value="ALL">Tous</option>
+              <option value="ACTIVE">Actif</option>
+              <option value="INACTIVE">Inactif</option>
+            </select>
+          </label>
+        </div>
+      </header>
+
+      @if (isLoading()) {
+        <p class="feedback">Chargement des utilisateurs...</p>
+      } @else if (permissionsLoaded() && !canViewUsers()) {
+        <p class="feedback error">Cette page requiert VIEW_USERS.</p>
+      } @else if (!filteredUsers().length) {
+        <p class="feedback">Aucun utilisateur ne correspond aux filtres actuels.</p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Utilisateur</th>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Permissions effectives</th>
+                <th>Statut</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (user of filteredUsers(); track user.id) {
+                <tr>
+                  <td>
+                    <div class="user-cell">
+                      <strong>{{ displayName(user) }}</strong>
+                      <small>{{ user.username }} • {{ localSyncState(user) }}</small>
+                    </div>
+                  </td>
+                  <td><span class="badge neutral">{{ primaryRole(user) }}</span></td>
+                  <td>{{ user.email }}</td>
+                  <td>
+                    <div class="permission-stack">
+                      <div class="chip-row">
+                        @for (permission of user.effectivePermissions.slice(0, 4); track permission) {
+                          <span class="permission-chip">{{ permission }}</span>
+                        }
+                        @if (user.effectivePermissions.length > 4) {
+                          <span class="permission-chip more-chip">+{{ user.effectivePermissions.length - 4 }}</span>
+                        }
+                      </div>
+                      <small>
+                        +{{ user.extraPermissions.length }} / -{{ user.revokedPermissions.length }}
+                      </small>
+                    </div>
+                  </td>
+                  <td>
+                    <span class="badge" [class.status-active]="user.enabled" [class.status-inactive]="!user.enabled">
+                      {{ userStatus(user) }}
+                    </span>
+                  </td>
+                  <td>
+                    <div class="action-row">
+                      @if (permissionsLoaded() && canManageUsers()) {
+                        <button type="button" class="ghost-btn" (click)="openEditDrawer(user)">Modifier</button>
+                        <button
+                          type="button"
+                          class="ghost-btn"
+                          [class.warning-btn]="user.enabled"
+                          [class.success-btn]="!user.enabled"
+                          (click)="toggleUserStatus(user)"
+                        >
+                          {{ user.enabled ? 'Desactiver' : 'Activer' }}
+                        </button>
+                      }
+                      @if (!permissionsLoaded()) {
+                        <button type="button" class="ghost-btn" disabled>
+                          Verification permissions...
+                        </button>
+                      } @else if (canManagePermissions()) {
+                        <button
+                          type="button"
+                          class="ghost-btn info-btn"
+                          [disabled]="!user.localUserId"
+                          (click)="openPermissionsDrawer(user)"
+                        >
+                          Gerer permissions
+                        </button>
+                      }
+                    </div>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </section>
+
+    <aside class="side-stack">
+      <section class="panel panel-compact">
+        <header class="panel-header">
+          <div>
+            <h2>Catalogue des roles</h2>
+            <small>Roles applicatifs reconnus par Keycloak et le frontend</small>
+          </div>
+        </header>
+
+        <div class="role-list">
+          @for (role of roles(); track role.name) {
+            <article class="role-card">
+              <strong>{{ role.label }}</strong>
+              <span>{{ role.name }}</span>
+              <p>{{ role.description }}</p>
+            </article>
+          }
+        </div>
+      </section>
+
+      @if (permissionDrawerOpen() && selectedPermissionUser(); as permissionUser) {
+        <section class="panel panel-compact">
+          <header class="panel-header">
+            <div>
+              <h2>Permissions de {{ permissionUser.username }}</h2>
+              <small>Visible uniquement pour les comptes avec MANAGE_PERMISSIONS</small>
+            </div>
+            <button type="button" class="ghost-btn" (click)="closePermissionsDrawer()">Fermer</button>
+          </header>
+
+          <div class="permission-panel">
+            <article class="permission-group">
+              <strong>Permissions heritees du role</strong>
+              <div class="chip-row">
+                @for (permission of permissionUser.rolePermissions; track permission) {
+                  <span class="permission-chip inherited">{{ permission }}</span>
+                }
+              </div>
+            </article>
+
+            <article class="permission-group">
+              <strong>Permissions effectives</strong>
+              <div class="chip-row">
+                @for (permission of permissionUser.effectivePermissions; track permission) {
+                  <span class="permission-chip effective">{{ permission }}</span>
+                }
+              </div>
+            </article>
+
+            <article class="permission-group">
+              <strong>Permissions ajoutees</strong>
+              <div class="chip-row">
+                @for (permission of permissionUser.extraPermissions; track permission) {
+                  <button type="button" class="permission-chip extra removable" (click)="removeGrantedPermission(permission)">
+                    {{ permission }} ×
+                  </button>
+                }
+                @if (!permissionUser.extraPermissions.length) {
+                  <small>Aucune permission ajoutee.</small>
+                }
+              </div>
+            </article>
+
+            <article class="permission-group">
+              <strong>Permissions retirees</strong>
+              <div class="chip-row">
+                @for (permission of permissionUser.revokedPermissions; track permission) {
+                  <button type="button" class="permission-chip revoked removable" (click)="removeRevokedPermission(permission)">
+                    {{ permission }} ×
+                  </button>
+                }
+                @if (!permissionUser.revokedPermissions.length) {
+                  <small>Aucune permission retiree.</small>
+                }
+              </div>
+            </article>
+
+            <div class="permission-actions">
+              <label>
+                <span>Ajouter permission</span>
+                <select [value]="selectedGrantPermission()" (change)="selectedGrantPermission.set($any($event.target).value)">
+                  @for (permission of permissionChoices(); track permission) {
+                    <option [value]="permission">{{ permission }}</option>
+                  }
+                </select>
+                <button type="button" class="primary-btn" [disabled]="isPermissionsSaving()" (click)="grantSelectedPermission()">
+                  Ajouter permission
+                </button>
+              </label>
+
+              <label>
+                <span>Retirer permission</span>
+                <select [value]="selectedRevokePermission()" (change)="selectedRevokePermission.set($any($event.target).value)">
+                  @for (permission of permissionChoices(); track permission) {
+                    <option [value]="permission">{{ permission }}</option>
+                  }
+                </select>
+                <button type="button" class="ghost-btn warning-btn" [disabled]="isPermissionsSaving()" (click)="revokeSelectedPermission()">
+                  Retirer permission
+                </button>
+              </label>
+            </div>
+          </div>
+        </section>
+      }
+
+      @if (drawerOpen()) {
+        <section class="panel panel-compact">
+          <header class="panel-header">
+            <div>
+              <h2>{{ drawerTitle() }}</h2>
+              <small>Formulaire branche a auth-service et reserve aux comptes avec MANAGE_USERS</small>
+            </div>
+            <button type="button" class="ghost-btn" (click)="closeDrawer()">Fermer</button>
+          </header>
+
+          <form class="editor-form" [formGroup]="userForm" (ngSubmit)="submitForm()">
+            <label>
+              <span>Username</span>
+              <input type="text" formControlName="username" placeholder="monitor-admin" />
+            </label>
+
+            <label>
+              <span>Email</span>
+              <input type="email" formControlName="email" placeholder="admin@company.tn" />
+            </label>
+
+            <div class="split-grid">
+              <label>
+                <span>Prenom</span>
+                <input type="text" formControlName="firstName" placeholder="Ali" />
+              </label>
+              <label>
+                <span>Nom</span>
+                <input type="text" formControlName="lastName" placeholder="Ben Salah" />
+              </label>
+            </div>
+
+            <label>
+              <span>Role</span>
+              <select formControlName="role">
+                @for (role of roles(); track role.name) {
+                  <option [value]="role.name">{{ role.label }}</option>
+                }
+              </select>
+              <small>{{ roleDescription(userForm.controls.role.value) }}</small>
+            </label>
+
+            <label>
+              <span>Mot de passe {{ editorMode() === 'edit' ? '(laisser vide pour conserver)' : '' }}</span>
+              <input type="password" formControlName="password" placeholder="********" />
+            </label>
+
+            <label class="toggle-row">
+              <input type="checkbox" formControlName="enabled" />
+              <span>Compte actif des la sauvegarde</span>
+            </label>
+
+            <div class="form-actions">
+              <button type="submit" class="primary-btn" [disabled]="isSaving()">
+                {{ isSaving() ? 'Enregistrement...' : submitLabel() }}
+              </button>
+            </div>
+          </form>
+        </section>
+      }
+    </aside>
+  </section>
+</main>

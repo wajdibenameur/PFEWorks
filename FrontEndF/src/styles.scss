@@ -1,0 +1,35 @@
+/* You can add global styles to this file, and also import other style files */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family:
+    "Trebuchet MS",
+    "Segoe UI",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  line-height: 1.4;
+  background: #eff3f8;
+  color: #16253d;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
