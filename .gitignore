@@ -85,11 +85,11 @@ Backend/src/UML/
 .env
 *.env
 !.env.example
-/auth-service/.env
+Backend/.env
 /FrontEndF/.env
 /docker/.env.example
 
-auth-service/target/
 Backend/target/
 
-auth-service\src\main\resources/
+__pycache__/
+*.pyc
