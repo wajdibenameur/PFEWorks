@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account Update</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6fb;font-family:Segoe UI,Arial,sans-serif;color:#12243a;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #dce7f5;">
+          <tr>
+            <td style="padding:18px 20px;background:#0f2c50;color:#ffffff;">
+              <h1 style="margin:0;font-size:18px;font-weight:700;">MonitorFlow Account Update</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:22px 20px;">
+              <p style="margin:0 0 8px 0;font-size:12px;color:#617998;" th:text="${state}">STATE</p>
+              <h2 style="margin:0 0 10px 0;font-size:20px;color:#0f2c50;">Hello <span th:text="${username}">user</span>,</h2>
+              <p style="margin:0 0 14px 0;font-size:15px;line-height:1.5;color:#294562;" th:text="${summary}">
+                Account summary
+              </p>
+              <p th:if="${roleName != null and !#strings.isEmpty(roleName)}" style="margin:0 0 16px 0;color:#355573;font-size:14px;">
+                Assigned role: <strong th:text="${roleName}">ROLE</strong>
+              </p>
+              <p style="margin:0;">
+                <a th:href="${loginUrl}" style="display:inline-block;background:#0f2c50;color:#ffffff;text-decoration:none;border-radius:10px;padding:10px 14px;font-size:14px;font-weight:600;">
+                  Open MonitorFlow
+                </a>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+
