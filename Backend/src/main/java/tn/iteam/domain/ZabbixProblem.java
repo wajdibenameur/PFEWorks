@@ -6,9 +6,11 @@ import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -32,12 +34,14 @@ public class ZabbixProblem extends BaseEntity {
     private String severity;
 
     @Column(nullable = false)
-    private Boolean active;
+    @Builder.Default
+    private Boolean active = Boolean.FALSE;
 
     private String ip;
 
     private Integer port;
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "Zabbix";
 
@@ -51,5 +55,6 @@ public class ZabbixProblem extends BaseEntity {
     private Long resolvedAt;
 
     @Column(nullable = false)
-    private String status;
+    @Builder.Default
+    private String status = "UNKNOWN";
 }

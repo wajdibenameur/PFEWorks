@@ -30,7 +30,7 @@ public class ZkBioController {
     private final ZkBioIntegrationOperations zkBioIntegrationService;
 
     @GetMapping("/status")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Consulter le statut du serveur ZKBio", description = "Retourne l'état global du serveur ZKBio.")
     public ServiceStatusDTO getServerStatus() {
         log.info("GET /api/zkbio/status");
@@ -38,7 +38,7 @@ public class ZkBioController {
     }
 
     @GetMapping("/devices")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Lister les équipements ZKBio", description = "Retourne les équipements détectés ou supervisés dans ZKBio.")
     public List<ServiceStatusDTO> getDevices() {
         log.info("GET /api/zkbio/devices");
@@ -46,7 +46,7 @@ public class ZkBioController {
     }
 
     @GetMapping("/problems")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Lister les incidents ZKBio", description = "Retourne les incidents ou alertes remontés par ZKBio.")
     public List<ZkBioProblemDTO> getProblems() {
         log.info("GET /api/zkbio/problems");
@@ -54,7 +54,7 @@ public class ZkBioController {
     }
 
     @GetMapping("/attendance")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Lister les pointages", description = "Retourne les journaux de présence disponibles dans ZKBio.")
     public List<ZkBioAttendanceDTO> getAttendanceLogs() {
         log.info("GET /api/zkbio/attendance");
@@ -62,7 +62,7 @@ public class ZkBioController {
     }
 
     @GetMapping("/attendance/range")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Lister les pointages sur une période", description = "Retourne les journaux de présence entre deux timestamps Unix.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Pointages récupérés avec succès"),
@@ -93,7 +93,7 @@ public class ZkBioController {
     }
 
     @GetMapping("/users")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZKBIO)")
     @Operation(summary = "Lister les utilisateurs ZKBio", description = "Retourne les utilisateurs synchronisés depuis ZKBio.")
     public List<ZkBioAttendanceDTO> getUsers() {
         log.info("GET /api/zkbio/users");

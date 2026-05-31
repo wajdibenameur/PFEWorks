@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import tn.iteam.security.KeycloakJwtAuthenticationConverter;
 import tn.iteam.security.KeycloakRolePermissionService;
+import tn.iteam.websocket.WebSocketSessionMonitor;
 
 import java.time.Instant;
 import java.util.List;
@@ -85,11 +86,103 @@ class StompSecurityChannelInterceptorTest {
         interceptor.preSend(subscribeMessage, null);
     }
 
+    @Test
+    void zkbioTopicRequiresViewZkBioPermission() {
+        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
+        when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("VIEWER"));
+        StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
+
+        StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        connectAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> connectMessage = MessageBuilder.createMessage(new byte[0], connectAccessor.getMessageHeaders());
+        interceptor.preSend(connectMessage, null);
+
+        StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribeAccessor.setDestination("/topic/zkbio/problems");
+        subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
+
+        assertThatThrownBy(() -> interceptor.preSend(subscribeMessage, null))
+                .isInstanceOf(AccessDeniedException.class);
+    }
+
+    @Test
+    void zabbixTopicRequiresViewZabbixPermission() {
+        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
+        when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("SUPPORT"));
+        StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
+
+        StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        connectAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> connectMessage = MessageBuilder.createMessage(new byte[0], connectAccessor.getMessageHeaders());
+        interceptor.preSend(connectMessage, null);
+
+        StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribeAccessor.setDestination("/topic/zabbix/metrics");
+        subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
+
+        interceptor.preSend(subscribeMessage, null);
+    }
+
+    @Test
+    void observiumTopicRequiresViewObserviumPermission() {
+        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
+        when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("SUPPORT"));
+        StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
+
+        StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        connectAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> connectMessage = MessageBuilder.createMessage(new byte[0], connectAccessor.getMessageHeaders());
+        interceptor.preSend(connectMessage, null);
+
+        StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribeAccessor.setDestination("/topic/observium/summary");
+        subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
+
+        interceptor.preSend(subscribeMessage, null);
+    }
+
+    @Test
+    void subscribeWithExpiredJwtIsRejectedEvenWhenSessionAuthenticationExists() {
+        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
+        when(jwtDecoder.decode("token")).thenReturn(
+                new Jwt(
+                        "token",
+                        Instant.now().minusSeconds(3600),
+                        Instant.now().minusSeconds(10),
+                        Map.of("alg", "none"),
+                        Map.of(
+                                "sub", "subject-1",
+                                "preferred_username", "user1",
+                                "realm_access", Map.of("roles", List.of("ADMIN"))
+                        )
+                )
+        );
+        StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
+
+        StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        connectAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> connectMessage = MessageBuilder.createMessage(new byte[0], connectAccessor.getMessageHeaders());
+        interceptor.preSend(connectMessage, null);
+
+        StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
+        subscribeAccessor.setDestination("/topic/tickets");
+        subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
+        Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
+
+        assertThatThrownBy(() -> interceptor.preSend(subscribeMessage, null))
+                .isInstanceOf(AuthenticationCredentialsNotFoundException.class)
+                .hasMessageContaining("expired");
+    }
+
     private StompSecurityChannelInterceptor interceptorWithDecoder(JwtDecoder decoder) {
         return new StompSecurityChannelInterceptor(
                 decoder,
                 new KeycloakJwtAuthenticationConverter(new KeycloakRolePermissionService()),
-                new StompDestinationAuthorizationService()
+                new StompDestinationAuthorizationService(),
+                mock(WebSocketSessionMonitor.class)
         );
     }
 

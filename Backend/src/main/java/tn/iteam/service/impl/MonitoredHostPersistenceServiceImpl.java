@@ -13,11 +13,16 @@ import tn.iteam.util.MonitoringNormalizeUtils;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @ConditionalOnProperty(name = "app.db.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MonitoredHostPersistenceServiceImpl implements MonitoredHostPersistenceService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(MonitoredHostPersistenceServiceImpl.class);
+    private static final int PERSISTENCE_CHUNK_SIZE = 500;
 
     private final MonitoredHostRepository monitoredHostRepository;
 
@@ -27,6 +32,7 @@ public class MonitoredHostPersistenceServiceImpl implements MonitoredHostPersist
         if (source == null || source.isBlank() || statuses == null || statuses.isEmpty()) {
             return 0;
         }
+        long startedAt = System.currentTimeMillis();
 
         Map<String, ServiceStatusDTO> deduplicated = new LinkedHashMap<>();
         for (ServiceStatusDTO status : statuses) {
@@ -37,7 +43,13 @@ public class MonitoredHostPersistenceServiceImpl implements MonitoredHostPersist
             deduplicated.put(hostId, status);
         }
 
-        int saved = 0;
+        Map<String, MonitoredHost> existingByHostId = monitoredHostRepository.findBySourceAndHostIdIn(
+                        source,
+                        List.copyOf(deduplicated.keySet())
+                ).stream()
+                .collect(Collectors.toMap(MonitoredHost::getHostId, Function.identity(), (left, right) -> left));
+
+        List<MonitoredHost> entitiesToSave = new java.util.ArrayList<>(deduplicated.size());
         for (Map.Entry<String, ServiceStatusDTO> entry : deduplicated.entrySet()) {
             String hostId = entry.getKey();
             ServiceStatusDTO dto = entry.getValue();
@@ -46,20 +58,27 @@ public class MonitoredHostPersistenceServiceImpl implements MonitoredHostPersist
             String incomingIp = MonitoringNormalizeUtils.normalizeIp(dto.getIp());
             Integer incomingPort = dto.getPort();
 
-            MonitoredHost entity = monitoredHostRepository.findFirstByHostIdAndSource(hostId, source)
-                    .map(existing -> merge(existing, incomingName, incomingIp, incomingPort))
-                    .orElseGet(() -> MonitoredHost.builder()
-                            .hostId(hostId)
-                            .name(incomingName != null ? incomingName : hostId)
-                            .ip(incomingIp)
-                            .port(incomingPort)
-                            .source(source)
-                            .build());
-
-            monitoredHostRepository.save(entity);
-            saved++;
+            MonitoredHost existing = existingByHostId.get(hostId);
+            MonitoredHost entity = existing != null
+                    ? merge(existing, incomingName, incomingIp, incomingPort)
+                    : MonitoredHost.builder()
+                    .hostId(hostId)
+                    .name(incomingName != null ? incomingName : hostId)
+                    .ip(incomingIp)
+                    .port(incomingPort)
+                    .source(source)
+                    .build();
+            entitiesToSave.add(entity);
         }
 
+        int saved = 0;
+        for (int index = 0; index < entitiesToSave.size(); index += PERSISTENCE_CHUNK_SIZE) {
+            int end = Math.min(index + PERSISTENCE_CHUNK_SIZE, entitiesToSave.size());
+            saved += monitoredHostRepository.saveAll(entitiesToSave.subList(index, end)).size();
+        }
+
+        log.info("MonitoredHost batch persistence source={} rows={} durationMs={}",
+                source, saved, System.currentTimeMillis() - startedAt);
         return saved;
     }
 

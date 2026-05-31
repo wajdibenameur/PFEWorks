@@ -1,6 +1,4 @@
 services:
-
-  # ── MySQL (shared: business data + Keycloak DB) ──────────────────────────────
   mysql:
     image: mysql:8.0
     container_name: pfe-mysql
@@ -20,7 +18,6 @@ services:
       timeout: 5s
       retries: 10
 
-  # ── Keycloak ─────────────────────────────────────────────────────────────────
   keycloak:
     image: quay.io/keycloak/keycloak:24.0.4
     container_name: pfe-keycloak
@@ -35,6 +32,7 @@ services:
       KC_HTTP_PORT: ${KEYCLOAK_INTERNAL_PORT:-8080}
       KC_HOSTNAME_STRICT: "false"
       KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HEALTH_ENABLED: "true"
     ports:
       - "${KEYCLOAK_PORT:-8091}:${KEYCLOAK_INTERNAL_PORT:-8080}"
     depends_on:
@@ -47,5 +45,20 @@ services:
       retries: 10
       start_period: 60s
 
+  phpmyadmin:
+    image: phpmyadmin:5.2.3-apache
+    platform: linux/amd64
+    container_name: pfe-phpmyadmin
+    ports:
+      - "8088:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: ${MYSQL_USER:-pfeuser}
+      PMA_PASSWORD: ${MYSQL_PASSWORD:-pfepassword} 
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 volumes:
-  mysql_data:
+  mysql_data: {}

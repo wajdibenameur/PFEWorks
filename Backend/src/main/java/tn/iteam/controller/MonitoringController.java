@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Mono;
 import tn.iteam.domain.ApiResponse;
+import tn.iteam.dto.InterfaceDTO;
 import tn.iteam.dto.SourceAvailabilityDTO;
 import tn.iteam.integration.IntegrationServiceRegistry;
 import tn.iteam.integration.ZkBioRefreshOrchestrationService;
@@ -19,6 +20,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.service.ObserviumInterfaceService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
 import java.util.List;
@@ -34,6 +36,7 @@ public class MonitoringController {
     private final IntegrationServiceRegistry integrationServiceRegistry;
     private final ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
+    private final ObserviumInterfaceService observiumInterfaceService;
 
     @GetMapping("/problems")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ALERTS)")
@@ -66,13 +69,25 @@ public class MonitoringController {
     }
 
     @GetMapping("/sources/health")
-    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+    @PreAuthorize(
+            "hasAnyAuthority('VIEW_DASHBOARD','VIEW_ZABBIX','VIEW_OBSERVIUM','VIEW_CAMERA','VIEW_ZKBIO','VIEW_ACCESS_POINT')"
+    )
     @Operation(summary = "Consulter l'état des sources", description = "Retourne l'état de disponibilité de chaque source de supervision.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "État des sources récupéré avec succès")
     })
     public List<SourceAvailabilityDTO> getSourceHealth() {
         return sourceAvailabilityService.getAll();
+    }
+
+    @GetMapping("/interfaces")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_METRICS)")
+    @Operation(summary = "Lister les interfaces réseau SNMP", description = "Retourne les interfaces Observium SNMP avec état, compteurs et bande passante calculée.")
+    @ApiResponses({
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Interfaces récupérées avec succès")
+    })
+    public List<InterfaceDTO> getObserviumInterfaces() {
+        return observiumInterfaceService.getAllInterfaces();
     }
 
     @PostMapping("/collect")

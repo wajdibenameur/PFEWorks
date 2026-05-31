@@ -45,6 +45,34 @@ class KeycloakJwtAuthenticationConverterTest {
         assertThat(authorities).doesNotContain(Permission.CREATE_TICKET.name(), Permission.VALIDATE_TICKET.name());
     }
 
+    @Test
+    void resourceRolesAreReadOnlyFromConfiguredClient() {
+        KeycloakJwtAuthenticationConverter strictConverter =
+                new KeycloakJwtAuthenticationConverter(rolePermissionService, null, null, "auth-service");
+
+        Jwt jwt = new Jwt(
+                "token-value",
+                Instant.now(),
+                Instant.now().plusSeconds(3600),
+                Map.of("alg", "none"),
+                Map.of(
+                        "sub", "subject-123",
+                        "preferred_username", "super.user",
+                        "realm_access", Map.of("roles", List.of()),
+                        "resource_access", Map.of(
+                                "auth-service", Map.of("roles", List.of("VIEWER")),
+                                "other-client", Map.of("roles", List.of("SUPERADMIN"))
+                        )
+                )
+        );
+
+        Authentication authentication = strictConverter.convert(jwt);
+        Set<String> authorities = authorityNames(authentication);
+
+        assertThat(authorities).contains("ROLE_VIEWER");
+        assertThat(authorities).doesNotContain("ROLE_SUPERADMIN", Permission.DELETE_USER.name());
+    }
+
     private Jwt jwtWithRoles(String... roles) {
         return new Jwt(
                 "token-value",

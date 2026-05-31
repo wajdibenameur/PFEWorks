@@ -8,6 +8,7 @@ import java.util.List;
 public interface ZabbixProblemService {
 
     List<ZabbixProblemDTO> getPersistedFilteredActiveProblems();
+    List<ZabbixProblemDTO> getPersistedRecentProblems();
 
     List<ZabbixProblemDTO> synchronizeActiveProblems(List<ZabbixProblemDTO> problems);
 

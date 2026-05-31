@@ -1,6 +1,7 @@
 export type AssetCategory = 'SERVER' | 'PRINTER' | 'CAMERA' | 'ACCESS_CONTROL' | 'UNKNOWN';
 export type AssetStatus = 'UP' | 'DOWN' | 'UNKNOWN';
 export type MonitoringSource = 'ZABBIX' | 'OBSERVIUM' | 'CAMERA' | 'ZKBIO';
+export type RealtimeDataState = 'fresh' | 'unchanged' | 'stale' | 'disconnected' | 'offline';
 
 export interface GlobalAssetVm {
   id: string;
@@ -14,6 +15,9 @@ export interface GlobalAssetVm {
   hasActiveAlert: boolean;
   problemCount: number;
   lastMetricTimestamp: number | null;
+  realtimeState: RealtimeDataState;
+  realtimeLabel: string;
+  lastMetricLabel: string;
 }
 
 export interface GlobalKpiVm {

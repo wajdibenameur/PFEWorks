@@ -27,6 +27,40 @@
   padding: 0.7rem 0.85rem;
 }
 
+.realtime-banner {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dce4f2;
+  border-radius: 14px;
+  color: #334155;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.6rem 0.8rem;
+}
+
+.ws-state {
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 0.18rem 0.55rem;
+}
+
+.ws-connected {
+  background: rgba(16, 185, 129, 0.2);
+  color: #065f46;
+}
+
+.ws-reconnecting {
+  background: rgba(245, 158, 11, 0.2);
+  color: #92400e;
+}
+
+.ws-disconnected {
+  background: rgba(239, 68, 68, 0.2);
+  color: #991b1b;
+}
+
 @media (max-width: 1050px) {
   .overview-grid {
     grid-template-columns: 1fr;

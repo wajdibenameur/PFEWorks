@@ -1,8 +1,9 @@
 package tn.iteam.service.impl;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
 import tn.iteam.dto.SourceAvailabilityDTO;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
+import tn.iteam.events.SourceAvailabilityChangedEvent;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -14,7 +15,7 @@ class SourceAvailabilityServiceImplTest {
 
     @Test
     void markDegradedExposesDegradedStateAndPublishesIt() {
-        MonitoringWebSocketPublisher publisher = mock(MonitoringWebSocketPublisher.class);
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
         SourceAvailabilityServiceImpl service = new SourceAvailabilityServiceImpl(publisher);
 
         service.markDegraded("OBSERVIUM", "Redis snapshot in use");
@@ -27,16 +28,16 @@ class SourceAvailabilityServiceImplTest {
         assertThat(dto.getStatus()).isEqualTo("DEGRADED");
         assertThat(dto.isAvailable()).isFalse();
         assertThat(dto.getLastError()).isEqualTo("Redis snapshot in use");
-        verify(publisher).publishSourceAvailability(argThat(event ->
-                "OBSERVIUM".equals(event.getSource())
-                        && "DEGRADED".equals(event.getStatus())
-                        && "Redis snapshot in use".equals(event.getLastError())
+        verify(publisher).publishEvent(argThat((SourceAvailabilityChangedEvent event) ->
+                "OBSERVIUM".equals(event.payload().getSource())
+                        && "DEGRADED".equals(event.payload().getStatus())
+                        && "Redis snapshot in use".equals(event.payload().getLastError())
         ));
     }
 
     @Test
     void transitioningFromDegradedToAvailablePublishesBothStateChanges() {
-        MonitoringWebSocketPublisher publisher = mock(MonitoringWebSocketPublisher.class);
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
         SourceAvailabilityServiceImpl service = new SourceAvailabilityServiceImpl(publisher);
 
         service.markDegraded("ZKBIO", "Fallback snapshot");
@@ -49,8 +50,8 @@ class SourceAvailabilityServiceImplTest {
         assertThat(dto.getStatus()).isEqualTo("AVAILABLE");
         assertThat(dto.isAvailable()).isTrue();
         assertThat(dto.getLastError()).isNull();
-        verify(publisher, times(2)).publishSourceAvailability(argThat(event ->
-                "ZKBIO".equals(event.getSource())
+        verify(publisher, times(2)).publishEvent(argThat((SourceAvailabilityChangedEvent event) ->
+                "ZKBIO".equals(event.payload().getSource())
         ));
     }
 }

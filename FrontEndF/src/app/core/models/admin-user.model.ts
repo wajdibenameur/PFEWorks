@@ -4,7 +4,16 @@ export interface AdminUser {
   email: string;
   firstName: string | null;
   lastName: string | null;
+
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  zipCode: string | null;
+
+  position: string | null;
+
   enabled: boolean;
+  connected: boolean;
   roles: string[];
 }
 
@@ -20,8 +29,13 @@ export interface AdminCreateUserPayload {
   password: string;
   firstName: string | null;
   lastName: string | null;
+  phone: string | null;
+  position: string | null;
   role: string;
   enabled: boolean;
+  address?: string | null;
+  city?: string | null;
+  zipCode?: string | null;
 }
 
 export interface AdminUpdateUserPayload {
@@ -30,8 +44,13 @@ export interface AdminUpdateUserPayload {
   password?: string;
   firstName: string | null;
   lastName: string | null;
+  phone: string | null;
+  position: string | null;
   role: string;
   enabled: boolean;
+  address?: string | null;
+  city?: string | null;
+  zipCode?: string | null;
 }
 
 export interface LocalAdminUserView {
@@ -39,6 +58,7 @@ export interface LocalAdminUserView {
   username: string;
   email: string;
   role: string;
+  enabled?: boolean | null;
   rolePermissions: string[];
   extraPermissions: string[];
   revokedPermissions: string[];
@@ -53,6 +73,21 @@ export interface UserPermissionsView {
   extraPermissions: string[];
   revokedPermissions: string[];
   effectivePermissions: string[];
+}
+
+export interface SyncLocalUserPayload {
+  username: string;
+  email: string;
+  role: string;
+}
+
+export interface SyncAllLocalUsersResponse {
+  totalKeycloakUsers: number;
+  synchronizedUsers: number;
+  createdUsers: number;
+  updatedUsers: number;
+  skippedUsers: number;
+  failedUsers: number;
 }
 
 export interface MergedAdminUser extends AdminUser {

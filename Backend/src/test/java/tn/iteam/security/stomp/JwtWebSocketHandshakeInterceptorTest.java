@@ -2,6 +2,7 @@ package tn.iteam.security.stomp;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.ServletServerHttpRequest;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -16,27 +17,50 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class JwtWebSocketHandshakeInterceptorTest {
 
     @Test
-    void handshakeRejectsMissingToken() {
+    void handshakeAllowsMissingTokenAndDefersAuthenticationToStompConnect() {
         JwtDecoder jwtDecoder = mock(JwtDecoder.class);
         JwtWebSocketHandshakeInterceptor interceptor = new JwtWebSocketHandshakeInterceptor(jwtDecoder);
 
         ServletServerHttpRequest request = new ServletServerHttpRequest(new MockHttpServletRequest("GET", "/ws"));
         MockHttpServletResponse servletResponse = new MockHttpServletResponse();
         ServletServerHttpResponse response = new ServletServerHttpResponse(servletResponse);
+        Map<String, Object> attributes = new HashMap<>();
 
-        boolean accepted = interceptor.beforeHandshake(request, response, mock(WebSocketHandler.class), new HashMap<>());
+        boolean accepted = interceptor.beforeHandshake(request, response, mock(WebSocketHandler.class), attributes);
 
-        assertThat(accepted).isFalse();
-        assertThat(servletResponse.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED.value());
+        assertThat(accepted).isTrue();
+        assertThat(servletResponse.getStatus()).isEqualTo(HttpStatus.OK.value());
+        assertThat(attributes).doesNotContainKey(JwtWebSocketHandshakeInterceptor.JWT_ATTRIBUTE);
+        verifyNoInteractions(jwtDecoder);
     }
 
     @Test
-    void handshakeAcceptsAccessTokenQueryParameter() {
+    void handshakeIgnoresAccessTokenQueryParameter() {
+        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
+        JwtWebSocketHandshakeInterceptor interceptor = new JwtWebSocketHandshakeInterceptor(jwtDecoder);
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest("GET", "/ws");
+        servletRequest.setQueryString("access_token=abc123");
+        ServletServerHttpRequest request = new ServletServerHttpRequest(servletRequest);
+        MockHttpServletResponse servletResponse = new MockHttpServletResponse();
+        ServletServerHttpResponse response = new ServletServerHttpResponse(servletResponse);
+        Map<String, Object> attributes = new HashMap<>();
+
+        boolean accepted = interceptor.beforeHandshake(request, response, mock(WebSocketHandler.class), attributes);
+
+        assertThat(accepted).isTrue();
+        assertThat(servletResponse.getStatus()).isEqualTo(HttpStatus.OK.value());
+        assertThat(attributes).doesNotContainKey(JwtWebSocketHandshakeInterceptor.JWT_ATTRIBUTE);
+        verifyNoInteractions(jwtDecoder);
+    }
+
+    @Test
+    void handshakeAcceptsAuthorizationHeaderToken() {
         JwtDecoder jwtDecoder = mock(JwtDecoder.class);
         Jwt jwt = new Jwt(
                 "token",
@@ -49,7 +73,7 @@ class JwtWebSocketHandshakeInterceptorTest {
 
         JwtWebSocketHandshakeInterceptor interceptor = new JwtWebSocketHandshakeInterceptor(jwtDecoder);
         MockHttpServletRequest servletRequest = new MockHttpServletRequest("GET", "/ws");
-        servletRequest.setQueryString("access_token=abc123");
+        servletRequest.addHeader(HttpHeaders.AUTHORIZATION, "Bearer abc123");
         ServletServerHttpRequest request = new ServletServerHttpRequest(servletRequest);
         ServletServerHttpResponse response = new ServletServerHttpResponse(new MockHttpServletResponse());
         Map<String, Object> attributes = new HashMap<>();

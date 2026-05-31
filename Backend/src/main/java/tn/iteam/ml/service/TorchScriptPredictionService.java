@@ -44,15 +44,23 @@ public class TorchScriptPredictionService {
     private float[] stds;
     private Path resolvedModelPath;
     private boolean initialized;
+    private String disabledReason = "prediction_not_initialized";
 
     @PostConstruct
     void init() {
         disablePredictions();
 
         try {
+            if (Boolean.FALSE.equals(properties.enabled())) {
+                disabledReason = "prediction.enabled=false";
+                log.info("TorchScript prediction disabled by configuration: {}", disabledReason);
+                return;
+            }
+
             if (properties.modelPath() == null || properties.modelPath().isBlank()
                     || properties.metadataPath() == null || properties.metadataPath().isBlank()) {
-                log.warn("TorchScript prediction disabled: missing ml.torchscript.model-path or ml.torchscript.metadata-path");
+                disabledReason = "missing modelPath/metadataPath";
+                log.info("TorchScript prediction disabled: {}", disabledReason);
                 return;
             }
 
@@ -75,10 +83,12 @@ public class TorchScriptPredictionService {
                 }
             }
             initialized = true;
+            disabledReason = null;
             log.info("TorchScript prediction initialized from model={} metadata={}", resolvedModelPath, metadataPath);
         } catch (Exception exception) {
             disablePredictions();
-            log.warn("TorchScript prediction disabled: {}", exception.getMessage());
+            disabledReason = exception.getMessage();
+            log.info("TorchScript prediction disabled: {}", exception.getMessage());
         }
     }
 
@@ -135,12 +145,21 @@ public class TorchScriptPredictionService {
         return featureOrder == null ? List.of() : List.copyOf(featureOrder);
     }
 
+    public boolean isEnabled() {
+        return initialized;
+    }
+
+    public String getDisabledReason() {
+        return disabledReason != null ? disabledReason : "unknown";
+    }
+
     private void disablePredictions() {
         featureOrder = Collections.emptyList();
         means = new float[0];
         stds = new float[0];
         resolvedModelPath = null;
         initialized = false;
+        disabledReason = "prediction_not_initialized";
     }
 
     private Path resolveConfiguredPath(String configuredPath) throws IOException {

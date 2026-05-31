@@ -12,6 +12,8 @@ import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Periodic ZKBio refresh scheduler.
  *
@@ -27,48 +29,64 @@ public class ZkBioScheduler {
     private final ZkBioIntegrationOperations zkBioIntegrationService;
     private final SourceAvailabilityService sourceAvailabilityService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
+    private final AtomicBoolean monitoringJobRunning = new AtomicBoolean(false);
+    private final AtomicBoolean attendanceJobRunning = new AtomicBoolean(false);
 
     @Value("${zkbio.scheduler.retry-backoff-ms:60000}")
     private long retryBackoffMs = 60000L;
 
     @Scheduled(
-            fixedRateString = "${zkbio.scheduler.problems.rate:30000}",
+            fixedDelayString = "${zkbio.scheduler.problems.rate:30000}",
             initialDelayString = "${zkbio.scheduler.problems.initial-delay:30000}"
     )
     public void refreshProblemsAndMetrics() {
-        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), retryBackoffMs)) {
-            log.debug("Skipping ZKBio monitoring scheduler refresh because retry cooldown is active.");
+        if (!monitoringJobRunning.compareAndSet(false, true)) {
+            log.warn("ZKBio monitoring JOB SKIPPED already running");
             return;
         }
+        long startedAt = System.currentTimeMillis();
+        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), retryBackoffMs)) {
+            log.debug("Skipping ZKBio monitoring scheduler refresh because retry cooldown is active.");
+            monitoringJobRunning.set(false);
+            return;
+        }
+        log.info("ZKBio monitoring JOB START");
         zkBioIntegrationService.refreshAsync()
                 .then(Mono.fromRunnable(() ->
                         snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.ZKBIO)))
+                .doFinally(signalType -> monitoringJobRunning.set(false))
                 .subscribe(
-                        unused -> {
-                        },
+                        unused -> log.info("ZKBio monitoring JOB DONE durationMs={}", System.currentTimeMillis() - startedAt),
                         throwable -> log.warn(
-                                "ZKBio monitoring scheduler failed but application remains available: {}",
+                                "ZKBio monitoring JOB FAILED: {}",
                                 throwable != null && throwable.getMessage() != null ? throwable.getMessage() : "unknown cause"
                         )
                 );
     }
 
     @Scheduled(
-            fixedRateString = "${zkbio.scheduler.devices.rate:60000}",
+            fixedDelayString = "${zkbio.scheduler.devices.rate:60000}",
             initialDelayString = "${zkbio.scheduler.devices.initial-delay:60000}"
     )
     public void refreshAttendanceDevicesAndStatus() {
-        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), retryBackoffMs)) {
-            log.debug("Skipping ZKBio attendance scheduler refresh because retry cooldown is active.");
+        if (!attendanceJobRunning.compareAndSet(false, true)) {
+            log.warn("ZKBio attendance JOB SKIPPED already running");
             return;
         }
+        long startedAt = System.currentTimeMillis();
+        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), retryBackoffMs)) {
+            log.debug("Skipping ZKBio attendance scheduler refresh because retry cooldown is active.");
+            attendanceJobRunning.set(false);
+            return;
+        }
+        log.info("ZKBio attendance JOB START");
         zkBioIntegrationService.refreshAttendanceAsync()
                 .then(Mono.fromRunnable(snapshotPublicationService::publishZkBioSnapshots))
+                .doFinally(signalType -> attendanceJobRunning.set(false))
                 .subscribe(
-                        unused -> {
-                        },
+                        unused -> log.info("ZKBio attendance JOB DONE durationMs={}", System.currentTimeMillis() - startedAt),
                         throwable -> log.warn(
-                                "ZKBio attendance scheduler failed but application remains available: {}",
+                                "ZKBio attendance JOB FAILED: {}",
                                 throwable != null && throwable.getMessage() != null ? throwable.getMessage() : "unknown cause"
                         )
                 );

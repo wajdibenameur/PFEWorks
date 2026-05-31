@@ -26,7 +26,9 @@ import tn.iteam.scheduler.ObserviumHostsScheduler;
 import tn.iteam.scheduler.ObserviumScheduler;
 import tn.iteam.scheduler.ZabbixScheduler;
 import tn.iteam.scheduler.ZkBioScheduler;
+import tn.iteam.service.ObserviumInterfaceService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import tn.iteam.websocket.MonitoringWebSocketPublisher;
 import tn.iteam.websocket.ZkBioWebSocketPublisher;
@@ -85,6 +87,12 @@ class MonitoringRuntimeIsolationTest {
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+
+    @Mock
+    private MonitoringFreshnessService monitoringFreshnessService;
+
+    @Mock
+    private ObserviumInterfaceService observiumInterfaceService;
 
     @Test
     void startupWarmupSwallowsFailuresAndNeverTurnsIntoFatalError() {
@@ -201,8 +209,14 @@ class MonitoringRuntimeIsolationTest {
     @Test
     void publishersReadFromInMemorySnapshotStoreWithoutRedis() {
         InMemorySnapshotStore snapshotStore = new InMemorySnapshotStore();
-        MonitoringWebSocketPublisher monitoringPublisher = new MonitoringWebSocketPublisher(messagingTemplate, snapshotStore);
+        MonitoringWebSocketPublisher monitoringPublisher = new MonitoringWebSocketPublisher(messagingTemplate);
         ZkBioWebSocketPublisher zkBioPublisher = new ZkBioWebSocketPublisher(messagingTemplate, snapshotStore);
+        MonitoringSnapshotPublicationService publicationService = new MonitoringSnapshotPublicationService(
+                monitoringPublisher,
+                zkBioPublisher,
+                snapshotStore,
+                monitoringFreshnessService
+        );
 
         snapshotStore.save(
                 "problems",
@@ -238,8 +252,15 @@ class MonitoringRuntimeIsolationTest {
                 StoredSnapshot.of(Map.of("status", "UP"), false, Map.of("ZKBIO", "live"))
         );
 
-        monitoringPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZABBIX);
-        monitoringPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZABBIX);
+        when(monitoringFreshnessService.hasPublishDelta("problems", "ZABBIX", List.of(
+                UnifiedMonitoringProblemDTO.builder().id("ZABBIX:p1").problemId("p1").build()
+        ))).thenReturn(true);
+        when(monitoringFreshnessService.hasPublishDelta("metrics", "ZABBIX", List.of(
+                UnifiedMonitoringMetricDTO.builder().id("ZABBIX:m1").itemId("m1").build()
+        ))).thenReturn(true);
+
+        publicationService.publishProblemsSnapshot(MonitoringSourceType.ZABBIX);
+        publicationService.publishMetricsSnapshot(MonitoringSourceType.ZABBIX);
         zkBioPublisher.publishAttendanceFromSnapshot();
         zkBioPublisher.publishDevicesFromSnapshot();
         zkBioPublisher.publishStatusFromSnapshot();
@@ -262,7 +283,8 @@ class MonitoringRuntimeIsolationTest {
                 sourceAvailabilityService,
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
-                snapshotPublicationService
+                snapshotPublicationService,
+                observiumInterfaceService
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(concreteZabbixIntegrationService);
@@ -298,7 +320,8 @@ class MonitoringRuntimeIsolationTest {
                 sourceAvailabilityService,
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
-                snapshotPublicationService
+                snapshotPublicationService,
+                observiumInterfaceService
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(concreteZabbixIntegrationService);

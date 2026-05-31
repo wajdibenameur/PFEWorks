@@ -10,6 +10,8 @@ import tn.iteam.integration.IntegrationServiceRegistry;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.service.SourceAvailabilityService;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Periodic Observium host inventory refresh scheduler.
  *
@@ -24,19 +26,34 @@ public class ObserviumHostsScheduler {
 
     private final IntegrationServiceRegistry integrationServiceRegistry;
     private final SourceAvailabilityService sourceAvailabilityService;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     @Value("${observium.scheduler.retry-backoff-ms:60000}")
     private long retryBackoffMs = 60000L;
 
     @Scheduled(
-            fixedRateString = "${observium.scheduler.hosts.rate:120000}",
+            fixedDelayString = "${observium.scheduler.hosts.rate:120000}",
             initialDelayString = "${observium.scheduler.hosts.initial-delay:60000}"
     )
     public void refreshHosts() {
-        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), retryBackoffMs)) {
-            log.debug("Skipping Observium hosts scheduler refresh because retry cooldown is active.");
+        if (!running.compareAndSet(false, true)) {
+            log.warn("Observium hosts JOB SKIPPED already running");
             return;
         }
-        integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshHosts();
+        long startedAt = System.currentTimeMillis();
+        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), retryBackoffMs)) {
+            log.debug("Skipping Observium hosts scheduler refresh because retry cooldown is active.");
+            running.set(false);
+            return;
+        }
+        try {
+            log.info("Observium hosts JOB START");
+            integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshHosts();
+            log.info("Observium hosts JOB DONE durationMs={}", System.currentTimeMillis() - startedAt);
+        } catch (Exception exception) {
+            log.warn("Observium hosts JOB FAILED: {}", exception.getMessage());
+        } finally {
+            running.set(false);
+        }
     }
 }

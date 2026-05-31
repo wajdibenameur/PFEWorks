@@ -7,9 +7,11 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -37,6 +39,7 @@ public class ZabbixMetric extends BaseEntity {
     @Column(nullable = false)
     private String metricKey;
 
+    @Builder.Default
     @Column(nullable = false)
     private String source = "Zabbix";
 
@@ -44,7 +47,8 @@ public class ZabbixMetric extends BaseEntity {
     private Integer valueType;
 
     @Column(nullable = false)
-    private String status;
+    @Builder.Default
+    private String status = "UNKNOWN";
 
     private String units;
 

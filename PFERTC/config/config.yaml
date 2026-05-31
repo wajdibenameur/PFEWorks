@@ -3,7 +3,7 @@ project:
   random_seed: 42
 
 paths:
-  sql_dump_path: ../mmmonitoringgg_db.sql
+  sql_dump_path: moniiit_db.sql
   artifacts_dir: artifacts
   model_checkpoint: artifacts/models/final_model.pth
   torchscript_model: artifacts/models/model.pt

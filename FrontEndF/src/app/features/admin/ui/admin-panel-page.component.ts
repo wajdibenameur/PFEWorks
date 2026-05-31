@@ -4,10 +4,11 @@ import { AUTH_CONTEXT } from '../../../core/auth/auth-context.port';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { AdminApiService } from '../data/admin-api.service';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
+import { UserManagementPageComponent } from '../../users/ui/user-management-page.component';
 
 @Component({
   selector: 'app-admin-panel-page',
-  imports: [CommonModule],
+  imports: [CommonModule, UserManagementPageComponent],
   templateUrl: './admin-panel-page.component.html',
   styleUrls: ['./admin-panel-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush

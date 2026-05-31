@@ -119,6 +119,124 @@
   position: relative;
 }
 
+.notification-wrap {
+  position: relative;
+}
+
+.notification-btn {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #d7e3f2;
+  border-radius: 999px;
+  color: #1b385a;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.8rem;
+  font-weight: 700;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+}
+
+.notification-btn em {
+  background: #e8384f;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+  min-width: 1.4rem;
+  padding: 0.15rem 0.4rem;
+  text-align: center;
+}
+
+.notification-menu {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid #dce7f5;
+  border-radius: 18px;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.14);
+  max-height: 360px;
+  overflow: auto;
+  padding: 0.85rem;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.55rem);
+  width: 340px;
+}
+
+.notification-head {
+  align-items: baseline;
+  border-bottom: 1px solid #edf3fa;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.6rem;
+}
+
+.notification-head strong {
+  color: #16253d;
+  font-size: 0.9rem;
+}
+
+.notification-head small {
+  color: #6d86a4;
+  font-size: 0.72rem;
+}
+
+.notification-empty {
+  color: #6d86a4;
+  font-size: 0.82rem;
+  margin: 0.2rem 0 0;
+}
+
+.notification-menu ul {
+  display: grid;
+  gap: 0.55rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.notification-menu li {
+  background: #f6faff;
+  border: 1px solid #e5eef9;
+  border-radius: 12px;
+  padding: 0.65rem;
+}
+
+.notification-menu li strong {
+  color: #1c3352;
+  display: block;
+  font-size: 0.8rem;
+}
+
+.notification-menu li p {
+  color: #4a6687;
+  font-size: 0.76rem;
+  margin: 0.3rem 0;
+}
+
+.notification-menu li small {
+  color: #7892af;
+  font-size: 0.68rem;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.4rem;
+}
+
+.notification-actions button {
+  background: #ffffff;
+  border: 1px solid #d4e2f3;
+  border-radius: 8px;
+  color: #315374;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.2rem 0.45rem;
+}
+
 .profile-btn {
   align-items: center;
   background: #fff;
@@ -239,7 +357,8 @@
   .subtitle,
   .profile-copy,
   .status-pill,
-  .action-btn.ghost {
+  .action-btn.ghost,
+  .notification-btn span {
     display: none;
   }
 

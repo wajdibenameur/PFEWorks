@@ -1,54 +1,54 @@
-import { HttpBackend, HttpClient } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
 import { Inject, Injectable } from '@angular/core';
-import { Observable, catchError, finalize, map, shareReplay, throwError } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
+import { catchError, finalize, map, shareReplay, switchMap } from 'rxjs/operators';
 import { APP_CONFIG, AppConfig } from '../config/app-config.token';
-import { StompClientService } from '../realtime/stomp-client.service';
 import { AUTH_CONTEXT, AuthContextPort } from './auth-context.port';
 
 interface RefreshTokenResponse {
   access_token: string;
-  refresh_token?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class TokenRefreshService {
-  private readonly http: HttpClient;
   private refreshInFlight$: Observable<string> | null = null;
 
   constructor(
-    httpBackend: HttpBackend,
+    private readonly http: HttpClient,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(AUTH_CONTEXT) private readonly authContext: AuthContextPort,
-    private readonly stompClientService: StompClientService
-  ) {
-    this.http = new HttpClient(httpBackend);
-  }
+    @Inject(AUTH_CONTEXT) private readonly authContext: AuthContextPort
+  ) {}
 
   refreshAccessToken(): Observable<string> {
     if (this.refreshInFlight$) {
+      console.debug('[AUTH] REFRESH WAIT EXISTING');
       return this.refreshInFlight$;
     }
 
-    const refreshToken = this.authContext.getRefreshToken();
-    if (!refreshToken) {
-      return throwError(() => new Error('Refresh token is not available'));
-    }
+    console.debug('[AUTH] REFRESH START');
+    const ensureCsrf$: Observable<unknown> = this.hasXsrfCookie()
+      ? of(null)
+      : this.http.get(`${this.config.authApiUrl}/api/auth/csrf`, { withCredentials: true });
 
-    this.refreshInFlight$ = this.http
-      .post<RefreshTokenResponse>(`${this.config.authApiUrl}/api/auth/refresh`, {
-        refreshToken
-      })
+    const refresh$: Observable<string> = ensureCsrf$
+      .pipe(
+        switchMap(() =>
+          this.http.post<RefreshTokenResponse>(`${this.config.authApiUrl}/api/auth/refresh`, {}, { withCredentials: true })
+        )
+      )
       .pipe(
         map((response) => {
           const nextAccessToken = response.access_token;
-          const nextRefreshToken = response.refresh_token ?? refreshToken;
-          this.authContext.setTokens(nextAccessToken, nextRefreshToken);
-          this.stompClientService.reconnect();
+          if (!nextAccessToken) {
+            throw new Error('Refresh response does not contain access_token');
+          }
+          this.authContext.setTokens(nextAccessToken, null);
+
+          console.debug('[AUTH] REFRESH SUCCESS');
           return nextAccessToken;
         }),
         catchError((error: unknown) => {
-          this.stompClientService.disconnect();
-          this.authContext.logout();
+          console.warn('[AUTH] REFRESH FAILED -> LOGOUT', error);
           return throwError(() => error);
         }),
         finalize(() => {
@@ -57,7 +57,12 @@ export class TokenRefreshService {
         shareReplay(1)
       );
 
-    return this.refreshInFlight$;
+    this.refreshInFlight$ = refresh$;
+    return refresh$;
+  }
+
+  private hasXsrfCookie(): boolean {
+    return document.cookie.includes('XSRF-TOKEN=');
   }
 }
 

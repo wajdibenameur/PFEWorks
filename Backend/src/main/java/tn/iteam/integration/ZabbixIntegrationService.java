@@ -3,6 +3,8 @@ package tn.iteam.integration;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -22,6 +24,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.snapshot.SnapshotStore;
 import tn.iteam.monitoring.snapshot.StoredSnapshot;
 import tn.iteam.service.*;
+import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.util.MonitoringConstants;
 
 import java.time.Instant;
@@ -52,9 +55,25 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     private final SourceAvailabilityService availabilityService;
     private final MonitoredHostSnapshotService monitoredHostSnapshotService;
     private final ZabbixHostSyncService zabbixSyncService;
+    private final MonitoringFreshnessService freshnessService;
     private final Object hostsSnapshotLock = new Object();
     private volatile JsonNode lastHostsSnapshot;
     private volatile long lastHostsSnapshotAt;
+
+    @Value("${app.monitoring.hosts.freshness-ms:300000}")
+    private long hostsFreshnessMs;
+    @Value("${app.monitoring.metrics.freshness-ms:60000}")
+    private long metricsFreshnessMs;
+    @Value("${app.monitoring.problems.freshness-ms:60000}")
+    private long problemsFreshnessMs;
+
+    @PostConstruct
+    void hydrateSnapshotsFromDatabaseOnStartup() {
+        String source = getSourceType().name();
+        hydrateDatasetIfMissingOrEmpty(DATASET_HOSTS, source);
+        hydrateDatasetIfMissingOrEmpty(DATASET_PROBLEMS, source);
+        hydrateDatasetIfMissingOrEmpty(DATASET_METRICS, source);
+    }
 
     @Override
     public MonitoringSourceType getSourceType() {
@@ -68,6 +87,11 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     @Override
     public void refreshHosts() {
+        String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return;
+        }
         JsonNode hosts = zabbixAdapter.fetchHosts();
         updateHostsSnapshot(hosts, "live-refreshHosts");
         refreshHosts(hosts);
@@ -75,6 +99,10 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     private void refreshHosts(JsonNode hosts) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ServiceStatusDTO> statuses = List.copyOf(hasHosts(hosts)
@@ -96,7 +124,15 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> serviceStatusPersistenceService.saveAll(statuses));
+            tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                    return;
+                }
+                serviceStatusPersistenceService.saveAll(statuses);
+                freshnessService.markPersistSuccess(DATASET_HOSTS, source, statuses);
+            });
+            freshnessService.markFetchSuccess(DATASET_HOSTS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_HOSTS, source, exception);
         }
@@ -104,11 +140,21 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     @Override
     public void refreshProblems() {
+        String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            hydrateDatasetIfMissingOrEmpty(DATASET_PROBLEMS, source);
+            return;
+        }
         refreshProblems(resolveHostsSnapshot());
     }
 
     private void refreshProblems(JsonNode hosts) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ZabbixProblemDTO> problems = List.copyOf(hasHosts(hosts)
@@ -116,14 +162,16 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                     : zabbixProblemService.synchronizeActiveProblemsFromZabbix());
             
             // Step 2: Save snapshot FIRST (always succeeds, in-memory)
+            List<ZabbixProblemDTO> recentProblems = List.copyOf(zabbixProblemService.getPersistedRecentProblems());
             saveSnapshot(
                     DATASET_PROBLEMS,
                     source,
-                    problems.stream().map(monitoringMapper::toProblem).toList()
+                    recentProblems.stream().map(monitoringMapper::toProblem).toList()
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped) - skipped for problems
             // Problems are handled by ZabbixProblemService internally
+            freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_PROBLEMS, source, exception);
         }
@@ -131,13 +179,19 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     private void refreshProblems(List<ZabbixProblemDTO> problems) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return;
+        }
         try {
-            List<ZabbixProblemDTO> synchronizedProblems = List.copyOf(zabbixProblemService.synchronizeActiveProblems(problems));
+            zabbixProblemService.synchronizeActiveProblems(problems);
+            List<ZabbixProblemDTO> synchronizedProblems = List.copyOf(zabbixProblemService.getPersistedRecentProblems());
             saveSnapshot(
                     DATASET_PROBLEMS,
                     source,
                     synchronizedProblems.stream().map(monitoringMapper::toProblem).toList()
             );
+            freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_PROBLEMS, source, exception);
         }
@@ -181,6 +235,11 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     private Mono<Void> refreshMetricsAsync(JsonNode hosts) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_METRICS, source, metricsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_METRICS, source);
+            hydrateDatasetIfMissingOrEmpty(DATASET_METRICS, source);
+            return Mono.empty();
+        }
         JsonNode resolvedHosts = hasHosts(hosts) ? hosts : resolveHostsSnapshot();
         Mono<List<ZabbixMetric>> metricsMono = !hasHosts(resolvedHosts)
                 ? zabbixMetricsService.fetchMetricsRefreshResult()
@@ -201,6 +260,10 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
 
     private Mono<Void> refreshCollectedMetricsAsync(ZabbixMetricsCollectionResult metricsCollection) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_METRICS, source, metricsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_METRICS, source);
+            return Mono.empty();
+        }
         return zabbixMetricsService.persistCollectedMetrics(metricsCollection)
                 .doOnNext(result -> handleMetricsRefreshResult(source, result))
                 .onErrorResume(throwable -> {
@@ -233,6 +296,10 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     }
 
     private void handleMetricsRefreshResult(String source, ZabbixMetricsRefreshResult result) {
+        boolean hasDelta = freshnessService.hasPersistDelta(DATASET_METRICS, source, result.metrics());
+        if (!hasDelta) {
+            log.debug("PERSIST SKIPPED no changes dataset={} source={}, snapshot will still be refreshed", DATASET_METRICS, source);
+        }
         saveSnapshot(
                 DATASET_METRICS,
                 source,
@@ -240,6 +307,10 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                 result.partial(),
                 FRESHNESS_LIVE
         );
+        if (hasDelta) {
+            freshnessService.markPersistSuccess(DATASET_METRICS, source, result.metrics());
+        }
+        freshnessService.markFetchSuccess(DATASET_METRICS, source);
 
         if (result.partial()) {
             availabilityService.markDegraded(source, "Partial Zabbix metrics collected");
@@ -302,7 +373,15 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                     source,
                     persistedHostsSnapshot
             );
-            tryPersistToDatabase(() -> serviceStatusPersistenceService.saveAll(statuses));
+            tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                    return;
+                }
+                serviceStatusPersistenceService.saveAll(statuses);
+                freshnessService.markPersistSuccess(DATASET_HOSTS, source, statuses);
+            });
+            freshnessService.markFetchSuccess(DATASET_HOSTS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_HOSTS, source, exception);
         }
@@ -370,7 +449,7 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     private List<?> loadPersistedFallback(String dataset) {
         return switch (dataset) {
             case DATASET_HOSTS -> monitoredHostSnapshotService.loadHosts(getSourceType());
-            case DATASET_PROBLEMS -> zabbixProblemService.getPersistedFilteredActiveProblems()
+            case DATASET_PROBLEMS -> zabbixProblemService.getPersistedRecentProblems()
                     .stream()
                     .map(monitoringMapper::toProblem)
                     .toList();
@@ -426,8 +505,10 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     }
 
     private void tryPersistToDatabase(Runnable persistenceAction) {
+        long startedAt = System.currentTimeMillis();
         try {
             persistenceAction.run();
+            log.info("Zabbix DB persistence done durationMs={}", System.currentTimeMillis() - startedAt);
         } catch (Exception ex) {
             log.warn("Database unavailable, skipping persistence: {}", ex.getMessage());
         }
@@ -581,6 +662,29 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                     size, snapshot.get().freshness().get(getSourceType().name()));
         } catch (Exception exception) {
             log.warn("Unable to inspect in-memory Zabbix hosts snapshot fallback: {}", safeMessage(exception));
+        }
+    }
+
+    private void hydrateDatasetIfMissingOrEmpty(String dataset, String source) {
+        try {
+            Optional<StoredSnapshot<List<?>>> existing = snapshotStore.get(dataset, source);
+            if (existing.isPresent() && existing.get().data() != null && !existing.get().data().isEmpty()) {
+                return;
+            }
+
+            List<?> persisted = safeLoadPersistedFallback(dataset);
+            if (persisted.isEmpty()) {
+                return;
+            }
+
+            snapshotStore.save(
+                    dataset,
+                    source,
+                    new StoredSnapshot<>(persisted, true, Map.of(source, FRESHNESS_DATABASE_SNAPSHOT), Instant.now())
+            );
+            log.info("Hydrated {} snapshot from persisted DB for {} entries={}", dataset, source, persisted.size());
+        } catch (Exception exception) {
+            log.warn("Unable to hydrate {} snapshot from DB for {}: {}", dataset, source, safeMessage(exception));
         }
     }
 }

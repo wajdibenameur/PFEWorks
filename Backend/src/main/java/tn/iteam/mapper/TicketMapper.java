@@ -1,6 +1,8 @@
 package tn.iteam.mapper;
 
 import org.springframework.stereotype.Component;
+import org.hibernate.Hibernate;
+import jakarta.persistence.EntityNotFoundException;
 import tn.iteam.domain.Intervention;
 import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
@@ -21,6 +23,9 @@ public class TicketMapper {
                 .description(ticket.getDescription())
                 .creationDate(ticket.getCreationDate())
                 .status(ticket.getStatus() != null ? ticket.getStatus().name() : null)
+                .statusChangedAt(ticket.getStatusChangedAt())
+                .resolvedAt(ticket.getResolvedAt())
+                .validatedAt(ticket.getValidatedAt())
                 .priority(ticket.getPriority() != null ? ticket.getPriority().name() : null)
                 .externalProblem(ticket.getExternalProblem())
                 .monitoringSource(ticket.getMonitoringSource())
@@ -28,10 +33,11 @@ public class TicketMapper {
                 .resourceRef(ticket.getResourceRef())
                 .resolution(ticket.getResolution())
                 .archived(ticket.getArchived())
+                .archivedAt(ticket.getArchivedAt())
                 .createdBy(toUser(ticket.getCreatedBy()))
                 .assignedTo(toUser(ticket.getAssignedTo()))
                 .validatedBy(toUser(ticket.getValidatedBy()))
-                .interventions(ticket.getInterventions() == null
+                .interventions(ticket.getInterventions() == null || !Hibernate.isInitialized(ticket.getInterventions())
                         ? List.of()
                         : ticket.getInterventions().stream().map(this::toIntervention).toList())
                 .build();
@@ -42,12 +48,30 @@ public class TicketMapper {
             return null;
         }
 
-        return TicketUserDTO.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .email(user.getEmail())
-                .role(user.getRole() != null && user.getRole().getName() != null ? user.getRole().getName().name() : null)
-                .build();
+        try {
+            return TicketUserDTO.builder()
+                    .id(user.getId())
+                    .username(user.getUsername())
+                    .email(user.getEmail())
+                    .role(user.getRole() != null && user.getRole().getName() != null ? user.getRole().getName().name() : null)
+                    .build();
+        } catch (EntityNotFoundException ex) {
+            // Defensive fallback for orphaned FK references (deleted/missing users).
+            return TicketUserDTO.builder()
+                    .id(safeUserId(user))
+                    .username(null)
+                    .email(null)
+                    .role(null)
+                    .build();
+        }
+    }
+
+    private Long safeUserId(User user) {
+        try {
+            return user.getId();
+        } catch (RuntimeException ex) {
+            return null;
+        }
     }
 
     public TicketInterventionDTO toIntervention(Intervention intervention) {

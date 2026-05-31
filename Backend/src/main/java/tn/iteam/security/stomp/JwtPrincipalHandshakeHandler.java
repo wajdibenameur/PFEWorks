@@ -29,9 +29,10 @@ public class JwtPrincipalHandshakeHandler extends DefaultHandshakeHandler {
         Object jwtAttribute = attributes.get(JwtWebSocketHandshakeInterceptor.JWT_ATTRIBUTE);
         if (jwtAttribute instanceof Jwt jwt) {
             AbstractAuthenticationToken authentication = authenticationConverter.convert(jwt);
-            return authentication;
+            if (authentication != null) {
+                return authentication;
+            }
         }
-
-        return super.determineUser(request, wsHandler, attributes);
+        return null;
     }
 }

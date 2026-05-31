@@ -157,7 +157,7 @@
 }
 
 .category-summary-grid {
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   margin-top: 0.9rem;
 }
 
@@ -206,7 +206,7 @@
 .content-grid {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.38fr) minmax(0, 0.62fr);
 }
 
 .panel-header {

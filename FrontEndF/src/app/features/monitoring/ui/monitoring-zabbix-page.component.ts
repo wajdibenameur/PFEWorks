@@ -184,6 +184,30 @@ export class MonitoringZabbixPageComponent implements OnInit {
       'uptime'
     ].some((keyword) => normalized.includes(keyword));
   }
+
+  protected formatMetricValue(metricKey: string, value: number | null | undefined): string {
+    if (value == null || Number.isNaN(value)) {
+      return 'N/A';
+    }
+
+    const key = metricKey.toLowerCase();
+    if (key.startsWith('icmppingsec')) {
+      const ms = value * 1000;
+      return `${ms.toFixed(2)} ms`;
+    }
+
+    if (key.startsWith('icmpping')) {
+      return `${Math.round(value)}`;
+    }
+
+    if (Math.abs(value) >= 100) {
+      return value.toFixed(0);
+    }
+    if (Math.abs(value) >= 10) {
+      return value.toFixed(2);
+    }
+    return value.toFixed(3);
+  }
 }
 
 

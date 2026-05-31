@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tn.iteam.adapter.zabbix.ZabbixAdapter;
 import tn.iteam.domain.ZabbixProblem;
 import tn.iteam.dto.ZabbixProblemDTO;
@@ -48,6 +48,7 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
     private final ZabbixDataQualityService dataQualityService;
     private final IntegrationExecutionHelper executionHelper;
     private final ZabbixProblemSanitizer problemSanitizer;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public List<ZabbixProblemDTO> getPersistedFilteredActiveProblems() {
@@ -57,7 +58,18 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
     }
 
     @Override
-    @Transactional
+    public List<ZabbixProblemDTO> getPersistedRecentProblems() {
+        return repository.findAll().stream()
+                .sorted(Comparator.comparing(
+                        ZabbixProblem::getUpdatedAt,
+                        Comparator.nullsLast(Comparator.naturalOrder())
+                ).reversed())
+                .limit(5000)
+                .map(mapper::toDTO)
+                .toList();
+    }
+
+    @Override
     public List<ZabbixProblemDTO> synchronizeActiveProblems(List<ZabbixProblemDTO> problems) {
         log.info(FETCHING_ACTIVE_PROBLEMS_MESSAGE);
         return executionHelper.execute(
@@ -68,18 +80,16 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 SYNCHRONIZATION_FAILED_TEMPLATE,
                 UNEXPECTED_ERROR_MESSAGE,
                 List.of(),
-                () -> persistProblems(problems)
+                () -> executeInTransaction(() -> persistProblems(problems))
         );
     }
 
     @Override
-    @Transactional
     public List<ZabbixProblemDTO> synchronizeActiveProblemsFromZabbix() {
         return synchronizeActiveProblemsFromZabbix(null);
     }
 
     @Override
-    @Transactional
     public List<ZabbixProblemDTO> synchronizeActiveProblemsFromZabbix(JsonNode hosts) {
         log.info(FETCHING_ACTIVE_PROBLEMS_MESSAGE);
         return executionHelper.execute(
@@ -90,8 +100,23 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 SYNCHRONIZATION_FAILED_TEMPLATE,
                 UNEXPECTED_ERROR_MESSAGE,
                 List.of(),
-                () -> persistProblems(hosts == null ? zabbixAdapter.fetchProblems() : zabbixAdapter.fetchProblems(hosts))
+                () -> {
+                    List<ZabbixProblemDTO> fetched =
+                            hosts == null ? zabbixAdapter.fetchProblems() : zabbixAdapter.fetchProblems(hosts);
+                    return executeInTransaction(() -> persistProblems(fetched));
+                }
         );
+    }
+
+    private List<ZabbixProblemDTO> executeInTransaction(java.util.concurrent.Callable<List<ZabbixProblemDTO>> action) {
+        List<ZabbixProblemDTO> result = transactionTemplate.execute(status -> {
+            try {
+                return action.call();
+            } catch (Exception exception) {
+                throw new RuntimeException(exception);
+            }
+        });
+        return result == null ? List.of() : result;
     }
 
     private List<ZabbixProblemDTO> persistProblems(List<ZabbixProblemDTO> dtos) {

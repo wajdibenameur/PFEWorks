@@ -1,6 +1,7 @@
 package tn.iteam.security;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.convert.converter.Converter;
 import org.springframework.security.authentication.AbstractAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -18,37 +19,42 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Component
 public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, AbstractAuthenticationToken> {
+    private static final Logger log = LoggerFactory.getLogger(KeycloakJwtAuthenticationConverter.class);
 
     private final KeycloakRolePermissionService rolePermissionService;
     private final EffectiveUserPermissionService effectiveUserPermissionService;
     private final AuthenticatedUserService authenticatedUserService;
+    private final String keycloakClientId;
 
     @Autowired
     public KeycloakJwtAuthenticationConverter(
             KeycloakRolePermissionService rolePermissionService,
             EffectiveUserPermissionService effectiveUserPermissionService,
-            AuthenticatedUserService authenticatedUserService) {
+            AuthenticatedUserService authenticatedUserService,
+            @Value("${keycloak.client-id:}") String keycloakClientId) {
         this.rolePermissionService = rolePermissionService;
         this.effectiveUserPermissionService = effectiveUserPermissionService;
         this.authenticatedUserService = authenticatedUserService;
+        this.keycloakClientId = normalizeBlank(keycloakClientId);
     }
 
     public KeycloakJwtAuthenticationConverter(KeycloakRolePermissionService rolePermissionService) {
-        this(rolePermissionService, null, null);
+        this(rolePermissionService, null, null, null);
     }
 
     @Override
     public AbstractAuthenticationToken convert(Jwt jwt) {
         Set<RoleName> roles = rolePermissionService.parseRoles(extractTokenRoles(jwt));
         String principalName = preferredPrincipal(jwt);
-        String email = normalizeBlank(jwt.getClaimAsString("email"));
         Set<Permission> permissions;
 
         if (effectiveUserPermissionService != null && authenticatedUserService != null) {
-            var localUser = authenticatedUserService.synchronizeUser(principalName, email, roles);
+            var localUser = authenticatedUserService.synchronizeUser(jwt, roles);
             permissions = effectiveUserPermissionService.resolveEffectivePermissions(roles, localUser);
         } else {
             permissions = rolePermissionService.permissionsForRoles(roles);
@@ -61,6 +67,15 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
         for (Permission permission : permissions) {
             authorities.add(new SimpleGrantedAuthority(permission.name()));
         }
+
+        log.info(
+                "AUTH TRACE principal={} sub={} roles={} permissionsCount={} permissions={}",
+                principalName,
+                jwt.getSubject(),
+                roles,
+                permissions.size(),
+                permissions
+        );
 
         return new UsernamePasswordAuthenticationToken(jwt, "n/a", authorities) {
             @Override
@@ -92,14 +107,16 @@ public class KeycloakJwtAuthenticationConverter implements Converter<Jwt, Abstra
             return List.of();
         }
 
-        LinkedHashSet<String> roles = new LinkedHashSet<>();
-        for (Object clientAccess : resourceMap.values()) {
-            if (!(clientAccess instanceof Map<?, ?> clientMap)) {
-                continue;
-            }
-            roles.addAll(extractRolesClaim(clientMap.get("roles")));
+        if (keycloakClientId == null) {
+            return List.of();
         }
-        return List.copyOf(roles);
+
+        Object clientAccess = resourceMap.get(keycloakClientId);
+        if (!(clientAccess instanceof Map<?, ?> clientMap)) {
+            return List.of();
+        }
+
+        return extractRolesClaim(clientMap.get("roles"));
     }
 
     private List<String> extractRolesClaim(Object rolesClaim) {

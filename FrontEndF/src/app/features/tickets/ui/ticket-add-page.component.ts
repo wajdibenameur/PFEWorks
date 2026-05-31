@@ -32,11 +32,7 @@ export class TicketAddPageComponent {
 
   readonly priorityOptions: Array<TicketPriority> = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
   readonly sourceOptions = ['ZABBIX', 'OBSERVIUM', 'ZKBIO', 'CAMERA'];
-  readonly canCreateTicket = computed(() =>
-    this.auth.arePermissionsLoaded()
-      ? this.auth.hasPermission('CREATE_TICKET')
-      : this.auth.hasRole('SUPERADMIN') || this.auth.hasRole('ADMIN') || this.auth.hasRole('SUPPORT')
-  );
+  readonly canCreateTicket = computed(() => this.auth.arePermissionsLoaded() && this.auth.hasPermission('CREATE_TICKET'));
 
   constructor(
     private readonly api: TicketManagerApiService,

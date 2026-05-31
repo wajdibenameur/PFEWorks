@@ -68,6 +68,13 @@ td {
   color: #0f172a;
 }
 
+.metric-label {
+  color: #64748b;
+  display: block;
+  font-size: 0.7rem;
+  margin-top: 0.15rem;
+}
+
 .status {
   border-radius: 999px;
   font-size: 0.72rem;
@@ -88,6 +95,38 @@ td {
 .status-UNKNOWN {
   background: #e2e8f0;
   color: #334155;
+}
+
+.realtime-state {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+}
+
+.realtime-fresh {
+  background: rgba(16, 185, 129, 0.2);
+  color: #065f46;
+}
+
+.realtime-unchanged {
+  background: rgba(59, 130, 246, 0.16);
+  color: #1d4ed8;
+}
+
+.realtime-stale {
+  background: rgba(245, 158, 11, 0.2);
+  color: #92400e;
+}
+
+.realtime-offline {
+  background: rgba(239, 68, 68, 0.2);
+  color: #991b1b;
+}
+
+.realtime-disconnected {
+  background: rgba(107, 114, 128, 0.24);
+  color: #374151;
 }
 
 .empty {

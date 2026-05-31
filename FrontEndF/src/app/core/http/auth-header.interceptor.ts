@@ -6,8 +6,15 @@ export const authHeaderInterceptor: HttpInterceptorFn = (request, next) => {
   const authContext = inject(AUTH_CONTEXT);
   const token = authContext.getAccessToken();
 
-  // Skip adding token for login endpoint
-  if (!token || request.url.includes('/api/auth/login') || request.url.includes('/api/auth/refresh')) {
+  // Skip bearer injection for auth endpoints that are cookie/XSRF driven.
+  const skipAuthHeader =
+    request.url.includes('/api/auth/login') ||
+    request.url.includes('/api/auth/refresh') ||
+    request.url.includes('/api/auth/logout') ||
+    request.url.includes('/api/auth/csrf') ||
+    request.url.includes('/api/auth/callback');
+
+  if (!token || skipAuthHeader) {
     return next(request);
   }
 

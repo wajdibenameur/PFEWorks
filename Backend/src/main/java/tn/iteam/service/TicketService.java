@@ -36,7 +36,7 @@ public interface TicketService {
 
     Intervention addIntervention(Long ticketId, String action, String comment, String result);
 
-    Page<Ticket> search(TicketStatus status, Priority priority, String source, Pageable pageable);
+    Page<Ticket> search(TicketStatus status, Priority priority, String source, String archived, Pageable pageable);
 
     Page<Ticket> getAll(Pageable pageable);
 
@@ -45,6 +45,10 @@ public interface TicketService {
     Optional<Ticket> getById(Long id);
 
     List<User> getAssignableUsers();
+
+    Ticket archive(Long ticketId);
+
+    Ticket unarchive(Long ticketId);
 
     void delete(Long id);
 }

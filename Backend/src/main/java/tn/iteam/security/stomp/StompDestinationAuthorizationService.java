@@ -15,11 +15,21 @@ public class StompDestinationAuthorizationService {
         permissionsByPrefix.put("/topic/monitoring/problems", Permission.VIEW_ALERTS);
         permissionsByPrefix.put("/topic/monitoring/metrics", Permission.VIEW_METRICS);
         permissionsByPrefix.put("/topic/monitoring/sources", Permission.VIEW_DASHBOARD);
+        permissionsByPrefix.put("/topic/zabbix", Permission.VIEW_ZABBIX);
+        permissionsByPrefix.put("/topic/observium", Permission.VIEW_OBSERVIUM);
+        permissionsByPrefix.put("/topic/camera", Permission.VIEW_CAMERA);
+        permissionsByPrefix.put("/topic/access-point", Permission.VIEW_ACCESS_POINT);
         permissionsByPrefix.put("/topic/tickets", Permission.VIEW_TICKETS);
-        permissionsByPrefix.put("/topic/zkbio/problems", Permission.VIEW_ALERTS);
-        permissionsByPrefix.put("/topic/zkbio/attendance", Permission.VIEW_LOGS);
-        permissionsByPrefix.put("/topic/zkbio/devices", Permission.VIEW_HOSTS);
-        permissionsByPrefix.put("/topic/zkbio/status", Permission.VIEW_HOSTS);
+        permissionsByPrefix.put("/topic/chat.room.", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/topic/chat.presence.", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/user/queue/chat", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/user/queue/chat.presence", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/app/chat.", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/user/queue/notifications", Permission.VIEW_TICKETS);
+        permissionsByPrefix.put("/topic/zkbio/problems", Permission.VIEW_ZKBIO);
+        permissionsByPrefix.put("/topic/zkbio/attendance", Permission.VIEW_ZKBIO);
+        permissionsByPrefix.put("/topic/zkbio/devices", Permission.VIEW_ZKBIO);
+        permissionsByPrefix.put("/topic/zkbio/status", Permission.VIEW_ZKBIO);
     }
 
     public Permission requiredPermission(String destination) {

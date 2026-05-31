@@ -3,11 +3,13 @@ package tn.iteam.service.impl;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
+import tn.iteam.domain.CameraDevice;
 import tn.iteam.dto.CameraDeviceDTO;
-import tn.iteam.repository.ServiceStatusRepository;
+import tn.iteam.repository.CameraDeviceRepository;
 import tn.iteam.service.CameraInventoryService;
-import tn.iteam.util.MonitoringConstants;
+import tn.iteam.service.camera.CameraHealthPollingService;
 
+import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -19,24 +21,15 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CameraInventoryServiceImpl implements CameraInventoryService {
 
-    private final ServiceStatusRepository serviceStatusRepository;
+    private final CameraDeviceRepository cameraDeviceRepository;
+    private final CameraHealthPollingService cameraHealthPollingService;
 
     @Override
     public List<CameraDeviceDTO> getRegisteredCameras() {
-        return serviceStatusRepository.findBySourceOrderByIpAscPortAsc(MonitoringConstants.SOURCE_CAMERA)
-                .stream()
-                .map(entity -> CameraDeviceDTO.builder()
-                        .source(entity.getSource())
-                        .name(entity.getName())
-                        .ip(entity.getIp())
-                        .port(entity.getPort())
-                        .protocol(entity.getProtocol())
-                        .status(entity.getStatus())
-                        .category(entity.getCategory())
-                        .lastScanAt(entity.getLastCheck())
-                        .reachable(MonitoringConstants.STATUS_UP.equalsIgnoreCase(entity.getStatus()))
-                        .persisted(true)
-                        .build())
+        return cameraDeviceRepository.findAll().stream()
+                .sorted(Comparator.comparing(CameraDevice::getIpAddress, Comparator.nullsLast(String::compareTo))
+                        .thenComparing(CameraDevice::getPort, Comparator.nullsLast(Integer::compareTo)))
+                .map(cameraHealthPollingService::toDto)
                 .toList();
     }
 }

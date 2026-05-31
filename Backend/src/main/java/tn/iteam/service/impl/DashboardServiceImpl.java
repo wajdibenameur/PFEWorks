@@ -70,6 +70,11 @@ public class DashboardServiceImpl implements DashboardService {
 
     @Override
     public List<DashboardPredictionDTO> getPredictions() {
+        if (!predictionService.isEnabled()) {
+            log.info("Dashboard predictions disabled: {}", predictionService.getDisabledReason());
+            return List.of();
+        }
+
         List<HostContext> hosts = loadHostContexts();
         List<DashboardPredictionDTO> predictions = new ArrayList<>();
 
@@ -85,7 +90,7 @@ public class DashboardServiceImpl implements DashboardService {
                         .status(toRiskStatus(response.probability()))
                         .build());
             } catch (IOException | ModelException | TranslateException | IllegalArgumentException | IllegalStateException exception) {
-                log.warn("Unable to compute prediction for host {}: {}", host.hostId(), exception.getMessage());
+                log.debug("Unable to compute prediction for host {}: {}", host.hostId(), exception.getMessage());
             }
         }
 
@@ -191,6 +196,17 @@ public class DashboardServiceImpl implements DashboardService {
                 .filter(Objects::nonNull)
                 .toList();
 
+        List<Double> cpuLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "system.cpu.util", "system.cpu.load");
+        List<Double> cpuPrev23h = metricValuesByPrefix(metrics, twentyFourHourStart, oneHourStart, "system.cpu.util", "system.cpu.load");
+        List<Double> ramUsedLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "vm.memory.size[used]");
+        List<Double> ramAvailableLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "vm.memory.size[available]", "vm.memory.size[pavailable]");
+        List<Double> diskPusedLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "vfs.fs.size");
+        List<Double> pingLossLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "icmppingloss");
+        List<Double> pingRttLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "icmppingsec");
+        List<Double> netInLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "net.if.in");
+        List<Double> netOutLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "net.if.out");
+        List<Double> uptimeLast1h = metricValuesByPrefix(metrics, oneHourStart, referenceTime, "system.uptime");
+
         long problemCountLast1h = problems.stream()
                 .filter(problem -> problem.getStartedAt() != null && problem.getStartedAt() >= oneHourStart && problem.getStartedAt() < referenceTime)
                 .count();
@@ -208,6 +224,18 @@ public class DashboardServiceImpl implements DashboardService {
         double maxMetricLast1h = metricsLast1h.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
         double avgMetricPrev23h = metricsPrev23h.stream().mapToDouble(Double::doubleValue).average().orElse(avgMetricLast1h);
         double trendMetric = avgMetricLast1h - avgMetricPrev23h;
+        double cpuAvgLast1h = cpuLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double cpuMaxLast1h = cpuLast1h.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
+        double cpuAvgPrev23h = cpuPrev23h.stream().mapToDouble(Double::doubleValue).average().orElse(cpuAvgLast1h);
+        double cpuTrend = cpuAvgLast1h - cpuAvgPrev23h;
+        double ramUsedAvgLast1h = ramUsedLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double ramAvailableAvgLast1h = ramAvailableLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double diskPusedAvgLast1h = diskPusedLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double pingLossAvgLast1h = pingLossLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double pingRttAvgLast1h = pingRttLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double netInAvgLast1h = netInLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double netOutAvgLast1h = netOutLast1h.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double uptimeLatest = uptimeLast1h.stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
 
         Map<String, Double> featureMap = new LinkedHashMap<>();
         featureMap.put("problem_count_last_1h", (double) problemCountLast1h);
@@ -216,10 +244,49 @@ public class DashboardServiceImpl implements DashboardService {
         featureMap.put("max_metric_last_1h", maxMetricLast1h);
         featureMap.put("trend_metric", trendMetric);
         featureMap.put("time_since_last_problem", (double) timeSinceLastProblem);
+        // 10 operationally relevant features for risk prediction.
+        featureMap.put("cpu_avg_last_1h", cpuAvgLast1h);
+        featureMap.put("cpu_max_last_1h", cpuMaxLast1h);
+        featureMap.put("cpu_trend", cpuTrend);
+        featureMap.put("ram_used_avg_last_1h", ramUsedAvgLast1h);
+        featureMap.put("ram_available_avg_last_1h", ramAvailableAvgLast1h);
+        featureMap.put("disk_pused_avg_last_1h", diskPusedAvgLast1h);
+        featureMap.put("ping_loss_avg_last_1h", pingLossAvgLast1h);
+        featureMap.put("ping_rtt_avg_last_1h", pingRttAvgLast1h);
+        featureMap.put("net_in_avg_last_1h", netInAvgLast1h);
+        featureMap.put("net_out_avg_last_1h", netOutAvgLast1h);
+        featureMap.put("uptime_latest", uptimeLatest);
 
         return predictionService.getFeatureOrder().stream()
                 .map(featureName -> featureMap.getOrDefault(featureName, 0.0))
                 .toList();
+    }
+
+    private List<Double> metricValuesByPrefix(
+            List<ZabbixMetric> metrics,
+            long startInclusive,
+            long endExclusive,
+            String... prefixes
+    ) {
+        return metrics.stream()
+                .filter(metric -> metric.getTimestamp() != null
+                        && metric.getTimestamp() >= startInclusive
+                        && metric.getTimestamp() < endExclusive)
+                .filter(metric -> metric.getMetricKey() != null)
+                .filter(metric -> matchesAnyPrefix(metric.getMetricKey(), prefixes))
+                .map(ZabbixMetric::getValue)
+                .filter(Objects::nonNull)
+                .toList();
+    }
+
+    private boolean matchesAnyPrefix(String metricKey, String... prefixes) {
+        String normalizedKey = metricKey.toLowerCase();
+        for (String prefix : prefixes) {
+            if (normalizedKey.startsWith(prefix.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<HostContext> loadHostContexts() {

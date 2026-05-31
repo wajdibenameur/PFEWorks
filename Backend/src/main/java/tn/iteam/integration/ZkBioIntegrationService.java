@@ -2,6 +2,7 @@ package tn.iteam.integration;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import java.util.function.Supplier;
@@ -22,7 +23,8 @@ import tn.iteam.service.ServiceStatusPersistenceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZkBioPersistenceService;
 import tn.iteam.service.ZkBioServiceInterface;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
+import tn.iteam.service.support.MonitoringFreshnessService;
+import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
 import java.time.Instant;
@@ -52,12 +54,22 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     private final ZkBioPersistenceService zkBioPersistenceService;
     private final SnapshotStore snapshotStore;
     private final SourceAvailabilityService availabilityService;
-    private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
+    private final MonitoringSnapshotPublicationService monitoringSnapshotPublicationService;
     private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
     private final MonitoredHostPersistenceService monitoredHostPersistenceService;
     private final MonitoredHostSnapshotService monitoredHostSnapshotService;
     private final ZkBioProblemRepository zkBioProblemRepository;
     private final ZkBioMetricRepository zkBioMetricRepository;
+    private final MonitoringFreshnessService freshnessService;
+
+    @Value("${app.monitoring.hosts.freshness-ms:300000}")
+    private long hostsFreshnessMs;
+    @Value("${app.monitoring.metrics.freshness-ms:60000}")
+    private long metricsFreshnessMs;
+    @Value("${app.monitoring.problems.freshness-ms:60000}")
+    private long problemsFreshnessMs;
+    @Value("${app.monitoring.source-health.freshness-ms:60000}")
+    private long sourceHealthFreshnessMs;
 
     @Override
     public MonitoringSourceType getSourceType() {
@@ -72,6 +84,10 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     @Override
     public void refreshHosts() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ServiceStatusDTO> statuses = List.copyOf(zkBioAdapter.fetchAll());
@@ -85,9 +101,15 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
             tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                    return;
+                }
                 serviceStatusPersistenceService.saveAll(statuses);
                 monitoredHostPersistenceService.saveAll(source, statuses);
+                freshnessService.markPersistSuccess(DATASET_HOSTS, source, statuses);
             });
+            freshnessService.markFetchSuccess(DATASET_HOSTS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_HOSTS, source, exception);
         }
@@ -96,6 +118,10 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     @Override
     public void refreshProblems() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ZkBioProblemDTO> problems = List.copyOf(zkBioAdapter.fetchProblems());
@@ -108,7 +134,15 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> zkBioPersistenceService.saveProblems(problems));
+            tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problems)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
+                    return;
+                }
+                zkBioPersistenceService.saveProblems(problems);
+                freshnessService.markPersistSuccess(DATASET_PROBLEMS, source, problems);
+            });
+            freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_PROBLEMS, source, exception);
         }
@@ -120,24 +154,32 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     }
 
     public Mono<Void> refreshAsync() {
-        return Mono.zip(
-            refreshHostsAsync(),
-            refreshProblemsAsync(),
-            refreshMetricsAsync()
-        ).then();
+        return refreshHostsAsync()
+                .then(refreshProblemsAsync())
+                .then(refreshMetricsAsync());
     }
 
     public Mono<Void> refreshHostsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(zkBioAdapter::fetchAll)
             .subscribeOn(Schedulers.boundedElastic())
             .doOnNext(statuses -> {
                 List<ServiceStatusDTO> statusList = List.copyOf(statuses);
                 saveSnapshot(DATASET_HOSTS, source, statusList.stream().map(monitoringMapper::toHost).toList());
                 tryPersistToDatabase(() -> {
+                    if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statusList)) {
+                        log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                        return;
+                    }
                     serviceStatusPersistenceService.saveAll(statusList);
                     monitoredHostPersistenceService.saveAll(source, statusList);
+                    freshnessService.markPersistSuccess(DATASET_HOSTS, source, statusList);
                 });
+                freshnessService.markFetchSuccess(DATASET_HOSTS, source);
             })
             .onErrorResume(throwable -> {
                 handleRefreshFailure(DATASET_HOSTS, source, toException(throwable));
@@ -148,12 +190,24 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
 
     public Mono<Void> refreshProblemsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(zkBioAdapter::fetchProblems)
             .subscribeOn(Schedulers.boundedElastic())
             .doOnNext(problems -> {
                 List<ZkBioProblemDTO> problemList = List.copyOf(problems);
                 saveSnapshot(DATASET_PROBLEMS, source, problemList.stream().map(monitoringMapper::toProblem).toList());
-                tryPersistToDatabase(() -> zkBioPersistenceService.saveProblems(problemList));
+                tryPersistToDatabase(() -> {
+                    if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problemList)) {
+                        log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
+                        return;
+                    }
+                    zkBioPersistenceService.saveProblems(problemList);
+                    freshnessService.markPersistSuccess(DATASET_PROBLEMS, source, problemList);
+                });
+                freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
             })
             .onErrorResume(throwable -> {
                 handleRefreshFailure(DATASET_PROBLEMS, source, toException(throwable));
@@ -164,6 +218,10 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
 
     public Mono<Void> refreshMetricsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_METRICS, source, metricsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_METRICS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(() -> {
                     // Step 1: Fetch live data
                     List<ZkBioMetricDTO> metrics = List.copyOf(zkBioAdapter.fetchMetrics());
@@ -172,7 +230,15 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
                     List<?> data = metrics.stream().map(monitoringMapper::toMetric).toList();
                     
                     // Step 3: Try DB persistence (non-blocking, wrapped)
-                    tryPersistToDatabase(() -> zkBioPersistenceService.saveMetrics(metrics));
+                    tryPersistToDatabase(() -> {
+                        if (!freshnessService.hasPersistDelta(DATASET_METRICS, source, metrics)) {
+                            log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_METRICS, source);
+                            return;
+                        }
+                        zkBioPersistenceService.saveMetrics(metrics);
+                        freshnessService.markPersistSuccess(DATASET_METRICS, source, metrics);
+                    });
+                    freshnessService.markFetchSuccess(DATASET_METRICS, source);
                     
                     return data;
                 })
@@ -209,8 +275,8 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
         return refreshAsync()
                 .then(refreshAttendanceAsync())
                 .then(Mono.fromRunnable(() -> {
-                    monitoringWebSocketPublisher.publishProblemsFromSnapshot(MonitoringSourceType.ZKBIO);
-                    monitoringWebSocketPublisher.publishMetricsFromSnapshot(MonitoringSourceType.ZKBIO);
+                    monitoringSnapshotPublicationService.publishProblemsSnapshot(MonitoringSourceType.ZKBIO);
+                    monitoringSnapshotPublicationService.publishMetricsSnapshot(MonitoringSourceType.ZKBIO);
                     zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
                     zkBioWebSocketPublisher.publishDevicesFromSnapshot();
                     zkBioWebSocketPublisher.publishStatusFromSnapshot();
@@ -219,6 +285,10 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
 
     private <T> Mono<Void> refreshRawDatasetAsync(String dataset, Supplier<Mono<T>> loader) {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(dataset, source, sourceHealthFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", dataset, source);
+            return Mono.empty();
+        }
         return Mono.defer(loader::get)
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnNext(data -> {
@@ -228,6 +298,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
                             StoredSnapshot.of(data, false, Map.of(source, FRESHNESS_LIVE))
                     );
                     availabilityService.markAvailable(source);
+                    freshnessService.markFetchSuccess(dataset, source);
                     log.debug("Stored {} snapshot for {}", dataset, source);
                 })
                 .onErrorResume(throwable -> {
@@ -386,8 +457,10 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     }
 
     private void tryPersistToDatabase(Runnable persistenceAction) {
+        long startedAt = System.currentTimeMillis();
         try {
             persistenceAction.run();
+            log.info("ZKBio DB persistence done durationMs={}", System.currentTimeMillis() - startedAt);
         } catch (Exception ex) {
             log.warn("Database unavailable, skipping persistence: {}", ex.getMessage());
         }

@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import reactor.core.publisher.Mono;
@@ -22,6 +25,7 @@ import tn.iteam.service.ZabbixMetricsRefreshResult;
 import tn.iteam.util.MonitoringConstants;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -49,8 +53,11 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
             "Skipped overlapping heavy metrics refresh for {}";
     private static final String REUSING_PERSISTED_METRICS_MESSAGE =
             "No live Zabbix metrics collected, reusing persisted snapshot";
+    private static final int METRICS_PERSISTENCE_CHUNK_SIZE = 500;
 
     private final AtomicBoolean metricsRefreshInProgress = new AtomicBoolean(false);
+    @Value("${app.monitoring.zabbix.persisted-snapshot-limit:5000}")
+    private int persistedSnapshotLimit;
 
     private final ZabbixAdapter adapter;
     private final ZabbixMetricMapper mapper;
@@ -61,7 +68,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
 
     @Override
     public List<ZabbixMetric> getPersistedMetricsSnapshot() {
-        return repository.findAll();
+        return loadLatestMetricsPerHostItem();
     }
 
     @Override
@@ -89,7 +96,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
                     .map(metrics -> new ZabbixMetricsRefreshResult(List.copyOf(metrics), false));
         }
 
-        log.info(FETCHING_METRICS_MESSAGE);
+        long startedAt = System.currentTimeMillis();
         return Mono.fromCallable(() -> doFetchMetricsRefresh(result))
                 .subscribeOn(Schedulers.boundedElastic())
                 .doOnSuccess(refreshResult -> {
@@ -101,6 +108,8 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
                     } else {
                         availabilityService.markAvailable(MonitoringConstants.SOURCE_ZABBIX);
                     }
+                    log.info("Zabbix metrics refresh finished durationMs={} partial={}",
+                            System.currentTimeMillis() - startedAt, refreshResult.partial());
                 })
                 .onErrorResume(ex -> {
                     availabilityService.markUnavailable(
@@ -123,20 +132,11 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
 
     @Override
     public Mono<ZabbixMetricsRefreshResult> fetchMetricsRefreshResult(JsonNode hosts) {
-        if (!metricsRefreshInProgress.compareAndSet(false, true)) {
-            log.warn(METRICS_REFRESH_ALREADY_RUNNING_MESSAGE);
-            log.warn(SKIPPED_CONCURRENT_REFRESH_LOG_TEMPLATE, MonitoringConstants.SOURCE_ZABBIX);
-            return Mono.fromCallable(this::getPersistedMetricsSnapshot)
-                    .subscribeOn(Schedulers.boundedElastic())
-                    .map(metrics -> new ZabbixMetricsRefreshResult(List.copyOf(metrics), false));
-        }
-
         log.info(FETCHING_METRICS_MESSAGE);
         return loadMetricCollection(hosts)
                 .flatMap(this::persistCollectedMetrics)
                 .doOnSuccess(result -> {
-                })
-                .doFinally(signalType -> { });
+                });
     }
 
     private ZabbixMetricsRefreshResult doFetchMetricsRefresh(ZabbixMetricsCollectionResult result) {
@@ -154,18 +154,18 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
 
         if (mappingResult.entitiesToSave().isEmpty()) {
             log.warn(NO_METRICS_MESSAGE);
-            return new ZabbixMetricsRefreshResult(List.of(), result.partial());
+            return new ZabbixMetricsRefreshResult(resolveEmptyMetricsResult(), result.partial());
         }
 
         if (result.partial()) {
             log.warn("Partial Zabbix metrics collected, skipping DB persistence and keeping in-memory snapshot only");
-            return new ZabbixMetricsRefreshResult(List.copyOf(mappingResult.entitiesToSave()), true);
+            List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(mappingResult.entitiesToSave());
+            return new ZabbixMetricsRefreshResult(displaySnapshot, true);
         }
 
-        return new ZabbixMetricsRefreshResult(
-                persistMetricsInTransaction(mappingResult.entitiesToSave()),
-                false
-        );
+        List<ZabbixMetric> persistedBatch = persistMetricsInTransaction(mappingResult.entitiesToSave());
+        List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(persistedBatch);
+        return new ZabbixMetricsRefreshResult(displaySnapshot, false);
     }
 
     private Mono<ZabbixMetricsCollectionResult> loadMetricCollection(JsonNode hosts) {
@@ -175,7 +175,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
     }
 
     private List<ZabbixMetric> resolveEmptyMetricsResult() {
-        List<ZabbixMetric> persistedSnapshot = getPersistedMetricsSnapshot();
+        List<ZabbixMetric> persistedSnapshot = loadLatestMetricsPerHostItem();
         if (!persistedSnapshot.isEmpty()) {
             log.warn(REUSING_PERSISTED_METRICS_MESSAGE);
             return persistedSnapshot;
@@ -223,7 +223,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
 
         for (ZabbixMetricDTO dto : dtos) {
             if (!isValidMetricDto(dto)) {
-                log.warn(EMPTY_METRIC_LOG_TEMPLATE, dto);
+                log.debug(EMPTY_METRIC_LOG_TEMPLATE, dto);
                 skippedInvalidRows++;
                 continue;
             }
@@ -273,15 +273,62 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
 
     private List<ZabbixMetric> persistMetricsInTransaction(List<ZabbixMetric> entitiesToSave) {
         return transactionTemplate.execute(status -> {
-            List<ZabbixMetric> saved = repository.saveAll(entitiesToSave);
-            repository.flush();
+            long startedAt = System.currentTimeMillis();
+            List<ZabbixMetric> saved = new ArrayList<>(entitiesToSave.size());
+            for (int index = 0; index < entitiesToSave.size(); index += METRICS_PERSISTENCE_CHUNK_SIZE) {
+                int end = Math.min(index + METRICS_PERSISTENCE_CHUNK_SIZE, entitiesToSave.size());
+                List<ZabbixMetric> chunk = entitiesToSave.subList(index, end);
+                saved.addAll(repository.saveAll(chunk));
+                repository.flush();
+            }
 
             dataQualityService.logMetricQualitySummary(saved);
             log.info(PERSISTED_METRICS_LOG_TEMPLATE, saved.size());
-            log.info("Saved/Updated {} Zabbix metrics", saved.size());
+            log.info("Saved/Updated {} Zabbix metrics in {} ms", saved.size(), System.currentTimeMillis() - startedAt);
 
             return saved;
         });
+    }
+
+    private List<ZabbixMetric> mergeFreshWithPersistedLatest(List<ZabbixMetric> freshMetrics) {
+        Map<String, ZabbixMetric> byHostAndItem = loadLatestMetricsPerHostItem().stream()
+                .collect(Collectors.toMap(
+                        metric -> metric.getHostId() + "|" + metric.getItemId(),
+                        Function.identity(),
+                        this::pickLatestMetric
+                ));
+
+        for (ZabbixMetric metric : freshMetrics) {
+            if (metric.getHostId() == null || metric.getHostId().isBlank()
+                    || metric.getItemId() == null || metric.getItemId().isBlank()) {
+                continue;
+            }
+            String key = metric.getHostId() + "|" + metric.getItemId();
+            ZabbixMetric existing = byHostAndItem.get(key);
+            byHostAndItem.put(key, existing == null ? metric : pickLatestMetric(existing, metric));
+        }
+
+        return byHostAndItem.values().stream()
+                .sorted(Comparator.comparing(ZabbixMetric::getTimestamp, Comparator.nullsLast(Long::compareTo)).reversed())
+                .limit(resolveSnapshotLimit())
+                .toList();
+    }
+
+    private ZabbixMetric pickLatestMetric(ZabbixMetric left, ZabbixMetric right) {
+        long leftTs = left.getTimestamp() != null ? left.getTimestamp() : Long.MIN_VALUE;
+        long rightTs = right.getTimestamp() != null ? right.getTimestamp() : Long.MIN_VALUE;
+        return rightTs >= leftTs ? right : left;
+    }
+
+    private List<ZabbixMetric> loadLatestMetricsPerHostItem() {
+        return repository.findLatestByHostAndItem().stream()
+                .sorted(Comparator.comparing(ZabbixMetric::getTimestamp, Comparator.nullsLast(Long::compareTo)).reversed())
+                .limit(resolveSnapshotLimit())
+                .toList();
+    }
+
+    private int resolveSnapshotLimit() {
+        return persistedSnapshotLimit > 0 ? persistedSnapshotLimit : 5000;
     }
 
     private record MappingResult(List<ZabbixMetric> entitiesToSave, int skippedInvalidRows) {

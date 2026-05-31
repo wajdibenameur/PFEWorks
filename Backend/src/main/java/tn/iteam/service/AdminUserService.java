@@ -1,6 +1,8 @@
 package tn.iteam.service;
 
 import tn.iteam.dto.AdminUserDTO;
+import tn.iteam.dto.SyncAllLocalUsersResponse;
+import tn.iteam.dto.SyncLocalUserRequest;
 import tn.iteam.dto.UserPermissionsDTO;
 
 import java.util.List;
@@ -12,6 +14,10 @@ import java.util.List;
 public interface AdminUserService {
 
     List<AdminUserDTO> getAllUsers();
+
+    UserPermissionsDTO ensureLocalUser(SyncLocalUserRequest request);
+
+    SyncAllLocalUsersResponse syncAllKeycloakUsersToLocal();
 
     UserPermissionsDTO getUserPermissions(Long userId);
 

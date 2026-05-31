@@ -8,6 +8,8 @@ import {
 import { RouterOutlet } from '@angular/router';
 import { NavbarComponent } from '../navbar/navbar.component';
 import { SidebarComponent } from '../sidebar/sidebar.component';
+import { PlatformAlertService } from '../../core/ui/platform-alert.service';
+import { IdleLogoutService } from '../../core/auth/idle-logout.service';
 
 @Component({
   selector: 'app-shell',
@@ -18,11 +20,15 @@ import { SidebarComponent } from '../sidebar/sidebar.component';
 })
 export class ShellComponent {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly idleLogoutService = inject(IdleLogoutService);
+  readonly platformAlert = inject(PlatformAlertService);
   readonly sidebarCollapsed = signal(false);
   readonly drawerOpen = signal(false);
   readonly overlayMode = signal(this.isOverlayMode());
 
   constructor() {
+    this.idleLogoutService.start();
+
     const handleResize = () => {
       const isOverlay = this.isOverlayMode();
       this.overlayMode.set(isOverlay);

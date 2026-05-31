@@ -1,12 +1,14 @@
 import { DestroyRef, Injectable, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, forkJoin, of } from 'rxjs';
+import { APP_CONFIG, AppConfig } from '../../../core/config/app-config.token';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
 import { MonitoringHost } from '../../../core/models/monitoring-host.model';
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
+import { RealtimeConnectionStore } from '../../../core/realtime/realtime-connection.store';
 import { MonitoringApiService } from '../data/monitoring-api.service';
 import { MonitoringRealtimeService } from '../data/monitoring-realtime.service';
 import {
@@ -16,6 +18,7 @@ import {
   GlobalKpiVm,
   MonitoringSource,
   ProblemSummaryVm,
+  RealtimeDataState,
   SourceHealthVm
 } from './global-monitoring.models';
 
@@ -39,13 +42,22 @@ type DatasetKind = 'hosts' | 'problems' | 'metrics';
 @Injectable()
 export class MonitoringStore {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly config = inject<AppConfig>(APP_CONFIG);
+  private readonly realtimeConnection = inject(RealtimeConnectionStore);
   private readonly refreshTimeoutIds: number[] = [];
   private realtimeBound = false;
   private loadGeneration = 0;
+  private heartbeatIntervalId: number | null = null;
+  private lastNoDeltaLogBucket = -1;
 
   readonly isLoading = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly lastRefresh = signal<Date | null>(null);
+  readonly nowMs = signal(Date.now());
+  readonly lastBackendRefreshAtMs = signal<number | null>(null);
+  readonly lastWebSocketUpdateAtMs = signal<number | null>(null);
+  readonly lastMetricUpdateAtMs = signal<number | null>(null);
+  readonly wsEventCounter = signal(0);
 
   readonly hosts = signal<MonitoringHost[]>([]);
   readonly problems = signal<MonitoringProblem[]>([]);
@@ -60,8 +72,23 @@ export class MonitoringStore {
   readonly unifiedDegraded = signal(false);
 
   readonly assets = computed<GlobalAssetVm[]>(() =>
-    this.buildAssets(this.hosts(), this.problems(), this.metrics())
+    this.buildAssets(this.hosts(), this.problems(), this.metrics(), this.sourceAvailability())
   );
+
+  readonly websocketUiState = computed<'Connected' | 'Reconnecting' | 'Disconnected'>(() => {
+    const status = this.realtimeConnection.status();
+    if (status === 'CONNECTED') {
+      return 'Connected';
+    }
+    if (status === 'CONNECTING') {
+      return 'Reconnecting';
+    }
+    return 'Disconnected';
+  });
+
+  readonly lastBackendRefreshLabel = computed(() => this.relativeFromMs(this.lastBackendRefreshAtMs()));
+  readonly lastWebSocketUpdateLabel = computed(() => this.relativeFromMs(this.lastWebSocketUpdateAtMs()));
+  readonly lastMetricUpdateLabel = computed(() => this.relativeFromMs(this.lastMetricUpdateAtMs()));
 
   readonly kpi = computed<GlobalKpiVm>(() => {
     const assets = this.assets();
@@ -177,7 +204,11 @@ export class MonitoringStore {
     private readonly api: MonitoringApiService,
     private readonly realtime: MonitoringRealtimeService
   ) {
-    this.destroyRef.onDestroy(() => this.clearScheduledRefreshes());
+    this.startHeartbeat();
+    this.destroyRef.onDestroy(() => {
+      this.clearScheduledRefreshes();
+      this.stopHeartbeat();
+    });
   }
 
   loadSnapshot(): void {
@@ -238,6 +269,8 @@ export class MonitoringStore {
           hostsResponse.degraded || problemsResponse.degraded || metricsResponse.degraded
         );
         this.lastRefresh.set(new Date());
+        this.lastBackendRefreshAtMs.set(Date.now());
+        this.lastMetricUpdateAtMs.set(this.resolveLatestMetricTimestampMs(this.metrics()));
         this.isLoading.set(false);
       }
     });
@@ -251,8 +284,11 @@ export class MonitoringStore {
 
     this.realtime.monitoringProblems$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
+        console.debug('WS EVENT RECEIVED', 'problems', incoming.length);
         this.problems.set(this.mergeProblems(this.problems(), incoming));
         this.problemsFreshness.update((freshness) => this.markRealtimeFreshness(freshness));
+        this.lastWebSocketUpdateAtMs.set(Date.now());
+        this.wsEventCounter.update((value) => value + 1);
       },
       error: (error) => {
         this.errorMessage.set(
@@ -263,8 +299,12 @@ export class MonitoringStore {
 
     this.realtime.monitoringMetrics$().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (incoming) => {
+        console.debug('WS EVENT RECEIVED', 'metrics', incoming.length);
         this.metrics.set(this.mergeMetrics(this.metrics(), incoming));
         this.metricsFreshness.update((freshness) => this.markRealtimeFreshness(freshness));
+        this.lastWebSocketUpdateAtMs.set(Date.now());
+        this.wsEventCounter.update((value) => value + 1);
+        this.lastMetricUpdateAtMs.set(this.resolveLatestMetricTimestampMs(this.metrics()));
       },
       error: (error) => {
         this.errorMessage.set(
@@ -278,6 +318,8 @@ export class MonitoringStore {
         this.sourceAvailability.set(
           this.mergeSourceAvailability(this.sourceAvailability(), incoming)
         );
+        this.lastWebSocketUpdateAtMs.set(Date.now());
+        this.wsEventCounter.update((value) => value + 1);
       },
       error: (error) => {
         this.errorMessage.set(
@@ -358,6 +400,9 @@ export class MonitoringStore {
   }
 
   private mergeMetrics(existing: UnifiedMonitoringMetric[], incoming: UnifiedMonitoringMetric[]): UnifiedMonitoringMetric[] {
+    if (incoming.length === 0) {
+      console.debug('KPI UNCHANGED', 'no incoming metrics delta');
+    }
     const map = new Map<string, UnifiedMonitoringMetric>();
 
     for (const metric of existing) {
@@ -366,8 +411,11 @@ export class MonitoringStore {
     for (const metric of incoming) {
       map.set(this.metricKey(metric), metric);
     }
-
-    return Array.from(map.values());
+    const merged = Array.from(map.values());
+    if (merged.length !== existing.length || incoming.length > 0) {
+      console.debug('KPI UPDATED', `existing=${existing.length} incoming=${incoming.length} merged=${merged.length}`);
+    }
+    return merged;
   }
 
   private problemKey(problem: MonitoringProblem): string {
@@ -393,9 +441,13 @@ export class MonitoringStore {
   private buildAssets(
     hosts: MonitoringHost[],
     problems: MonitoringProblem[],
-    metrics: UnifiedMonitoringMetric[]
+    metrics: UnifiedMonitoringMetric[],
+    availability: SourceAvailability[]
   ): GlobalAssetVm[] {
     const hostMap = new Map<string, HostAccumulator>();
+    const availabilityMap = new Map(
+      availability.map((entry) => [entry.source.toUpperCase(), this.mapAvailability(entry)])
+    );
 
     for (const host of hosts) {
       const key = this.assetCorrelationKey(
@@ -484,6 +536,12 @@ export class MonitoringStore {
             : backendStatus === 'UP'
               ? 'UP'
               : 'UNKNOWN';
+        const staleThresholdMs = entry.source === 'CAMERA'
+          ? this.config.hostsStaleThresholdMs
+          : this.config.metricsStaleThresholdMs;
+        const metricTimestampMs = entry.lastMetricTimestamp != null ? entry.lastMetricTimestamp * 1000 : null;
+        const availabilityStatus = availabilityMap.get(entry.source) ?? 'UNKNOWN';
+        const realtimeState = this.resolveRealtimeState(metricTimestampMs, staleThresholdMs, availabilityStatus);
 
         return {
           id: `${entry.source}:${entry.hostId ?? entry.hostname}`,
@@ -496,7 +554,10 @@ export class MonitoringStore {
           status: finalStatus,
           hasActiveAlert,
           problemCount: entry.problemCount,
-          lastMetricTimestamp: entry.lastMetricTimestamp
+          lastMetricTimestamp: entry.lastMetricTimestamp,
+          realtimeState,
+          realtimeLabel: this.toRealtimeLabel(realtimeState),
+          lastMetricLabel: this.relativeFromMs(metricTimestampMs)
         } as GlobalAssetVm;
       })
       .sort((a, b) => a.hostname.localeCompare(b.hostname));
@@ -648,6 +709,8 @@ export class MonitoringStore {
     switch (freshness.toLowerCase()) {
       case 'live':
         return 'Live data';
+      case 'snapshot_fallback':
+        return 'Snapshot fallback';
       case 'database_snapshot_fallback':
         return 'Database snapshot fallback';
       case 'memory_snapshot_fallback':
@@ -687,6 +750,118 @@ export class MonitoringStore {
     return this.severityRank(problem.severity) >= 4;
   }
 
+  private resolveRealtimeState(
+    metricTimestampMs: number | null,
+    staleThresholdMs: number,
+    availabilityStatus: 'AVAILABLE' | 'DEGRADED' | 'UNAVAILABLE' | 'UNKNOWN'
+  ): RealtimeDataState {
+    if (availabilityStatus === 'UNAVAILABLE') {
+      return 'offline';
+    }
+
+    const wsStatus = this.realtimeConnection.status();
+    if (wsStatus === 'DISCONNECTED' || wsStatus === 'ERROR') {
+      return 'disconnected';
+    }
+
+    if (metricTimestampMs == null) {
+      return 'unchanged';
+    }
+
+    const ageMs = Math.max(0, this.nowMs() - metricTimestampMs);
+    if (ageMs <= this.config.freshDataWindowMs) {
+      return 'fresh';
+    }
+    if (ageMs > staleThresholdMs) {
+      return 'stale';
+    }
+    return 'unchanged';
+  }
+
+  private toRealtimeLabel(state: RealtimeDataState): string {
+    switch (state) {
+      case 'fresh':
+        return 'Fresh';
+      case 'unchanged':
+        return 'Unchanged';
+      case 'stale':
+        return 'Stale';
+      case 'offline':
+        return 'Offline';
+      case 'disconnected':
+        return 'Disconnected';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  private relativeFromMs(timestampMs: number | null): string {
+    if (!timestampMs) {
+      return 'No update yet';
+    }
+    const diff = Math.max(0, this.nowMs() - timestampMs);
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) {
+      return `Updated ${seconds}s ago`;
+    }
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) {
+      return `Updated ${minutes} min ago`;
+    }
+    const date = new Date(timestampMs);
+    const hh = `${date.getHours()}`.padStart(2, '0');
+    const mm = `${date.getMinutes()}`.padStart(2, '0');
+    return `No update since ${hh}:${mm}`;
+  }
+
+  private resolveLatestMetricTimestampMs(metrics: UnifiedMonitoringMetric[]): number | null {
+    let maxTimestamp = 0;
+    for (const metric of metrics) {
+      const ts = metric.timestamp ?? 0;
+      if (ts > maxTimestamp) {
+        maxTimestamp = ts;
+      }
+    }
+    return maxTimestamp > 0 ? maxTimestamp * 1000 : null;
+  }
+
+  private startHeartbeat(): void {
+    this.heartbeatIntervalId = window.setInterval(() => {
+      this.nowMs.set(Date.now());
+      const wsStatus = this.realtimeConnection.status();
+      if (wsStatus === 'CONNECTED') {
+        console.debug('WS HEARTBEAT OK');
+        const lastWs = this.lastWebSocketUpdateAtMs();
+        if (lastWs != null) {
+          const gap = this.nowMs() - lastWs;
+          if (gap > this.config.wsNoDeltaThresholdMs) {
+            const bucket = Math.floor(gap / this.config.wsNoDeltaThresholdMs);
+            if (bucket !== this.lastNoDeltaLogBucket) {
+              console.debug('WS NO DELTA RECEIVED', `gapMs=${gap}`);
+              this.lastNoDeltaLogBucket = bucket;
+            }
+          } else {
+            this.lastNoDeltaLogBucket = -1;
+          }
+        }
+      }
+
+      for (const asset of this.assets()) {
+        if (asset.realtimeState === 'stale') {
+          console.debug('KPI MARKED STALE', asset.id);
+        }
+      }
+    }, 5000);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatIntervalId == null) {
+      return;
+    }
+    window.clearInterval(this.heartbeatIntervalId);
+    this.heartbeatIntervalId = null;
+  }
+
   private scheduleSnapshotRefresh(): void {
     // Backend collection endpoints answer immediately, while the actual work runs asynchronously.
     // We delay the snapshot reload slightly so the frontend reads the updated state more reliably.
@@ -712,6 +887,7 @@ export class MonitoringStore {
     for (const [source, currentState] of Object.entries(currentFreshness)) {
       if (currentState !== 'database_snapshot_fallback' &&
           currentState !== 'memory_snapshot_fallback' &&
+          currentState !== 'snapshot_fallback' &&
           currentState !== 'snapshot_missing' &&
           currentState !== 'redis_fallback') {
         next[source] = 'live';

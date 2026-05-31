@@ -14,6 +14,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
+import tn.iteam.service.ObserviumInterfaceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
@@ -57,6 +58,9 @@ private AsyncIntegrationService asyncIntegrationService;
     @Mock
     private MonitoringSnapshotPublicationService snapshotPublicationService;
 
+    @Mock
+    private ObserviumInterfaceService observiumInterfaceService;
+
     @BeforeEach
     void setUp() {
         MonitoringController controller = new MonitoringController(
@@ -64,7 +68,8 @@ private AsyncIntegrationService asyncIntegrationService;
                 sourceAvailabilityService,
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
-                snapshotPublicationService
+                snapshotPublicationService,
+                observiumInterfaceService
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();

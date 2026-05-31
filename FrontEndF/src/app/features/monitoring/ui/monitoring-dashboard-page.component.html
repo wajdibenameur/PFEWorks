@@ -13,6 +13,15 @@
     </section>
   }
 
+  <section class="realtime-banner">
+    <span class="ws-state ws-{{ facade.websocketUiState().toLowerCase() }}">
+      WS {{ facade.websocketUiState() }}
+    </span>
+    <span>Last backend refresh: {{ facade.lastBackendRefreshLabel() }}</span>
+    <span>Last websocket update: {{ facade.lastWebSocketUpdateLabel() }}</span>
+    <span>Last metric timestamp: {{ facade.lastMetricUpdateLabel() }}</span>
+  </section>
+
   <app-global-kpi-strip [kpi]="facade.kpi()"></app-global-kpi-strip>
 
   <section class="overview-grid">

@@ -1,9 +1,10 @@
 package tn.iteam.service.impl;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import tn.iteam.dto.SourceAvailabilityDTO;
+import tn.iteam.events.SourceAvailabilityChangedEvent;
 import tn.iteam.service.SourceAvailabilityService;
-import tn.iteam.websocket.MonitoringWebSocketPublisher;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,10 +28,10 @@ public class SourceAvailabilityServiceImpl implements SourceAvailabilityService 
     private static final List<String> KNOWN_SOURCES = List.of(ZABBIX, OBSERVIUM, ZKBIO, CAMERA, DATABASE);
 
     private final Map<String, AvailabilityState> states = new ConcurrentHashMap<>();
-    private final MonitoringWebSocketPublisher publisher;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public SourceAvailabilityServiceImpl(MonitoringWebSocketPublisher publisher) {
-        this.publisher = publisher;
+    public SourceAvailabilityServiceImpl(ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
         for (String source : KNOWN_SOURCES) {
             states.put(source, new AvailabilityState(AVAILABLE, null, null));
         }
@@ -142,7 +143,7 @@ public class SourceAvailabilityServiceImpl implements SourceAvailabilityService 
         states.put(source, next);
 
         if (hasChanged(previous, next)) {
-            publisher.publishSourceAvailability(toDto(source, next, eventTimestamp));
+            eventPublisher.publishEvent(new SourceAvailabilityChangedEvent(toDto(source, next, eventTimestamp)));
         }
     }
 

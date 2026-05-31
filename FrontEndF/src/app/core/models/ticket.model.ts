@@ -18,6 +18,9 @@ export interface Ticket {
   description: string | null;
   creationDate: string | null;
   status: TicketStatus | null;
+  statusChangedAt: string | null;
+  resolvedAt: string | null;
+  validatedAt: string | null;
   priority: TicketPriority | null;
   externalProblem: boolean | null;
   monitoringSource: string | null;
@@ -25,6 +28,7 @@ export interface Ticket {
   resourceRef: string | null;
   resolution: string | null;
   archived: boolean | null;
+  archivedAt: string | null;
   createdBy: TicketUser | null;
   assignedTo: TicketUser | null;
   validatedBy: TicketUser | null;

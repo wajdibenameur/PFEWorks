@@ -2,32 +2,37 @@
   <section class="hero-card">
     <div>
       <p class="eyebrow">Admin Workspace</p>
-      <h1>Gestion des utilisateurs, roles et permissions</h1>
+      <h1>User, role and permission management</h1>
       <p>
-        Les comptes et roles viennent de Keycloak via auth-service. Les permissions personnalisees sont pilotees
-        localement par le Backend monitoring.
+        Accounts and roles come from Keycloak through the main backend. Custom permissions are managed locally
+        by the monitoring backend.
       </p>
     </div>
     @if (permissionsLoaded() && canManageUsers()) {
-      <button type="button" class="primary-btn" (click)="openCreateDrawer()">Nouvel utilisateur</button>
+      <div class="hero-actions">
+        <button type="button" class="ghost-btn info-btn" [disabled]="isSyncAllRunning()" (click)="syncAllLocalUsers()">
+          {{ isSyncAllRunning() ? 'Synchronizing...' : 'Sync all Keycloak -> Local' }}
+        </button>
+        <button type="button" class="primary-btn" (click)="openCreateDrawer()">New user</button>
+      </div>
     }
   </section>
 
   <section class="stats-grid">
     <article class="stat-card">
-      <span>Tous les utilisateurs</span>
+      <span>All users</span>
       <strong>{{ users().length }}</strong>
     </article>
     <article class="stat-card success">
-      <span>Actifs</span>
+      <span>Active</span>
       <strong>{{ activeCount() }}</strong>
     </article>
     <article class="stat-card warning">
-      <span>Inactifs</span>
+      <span>Inactive</span>
       <strong>{{ inactiveCount() }}</strong>
     </article>
     <article class="stat-card">
-      <span>Roles admin</span>
+      <span>Admin roles</span>
       <strong>{{ adminCount() }}</strong>
     </article>
   </section>
@@ -44,46 +49,49 @@
     <section class="panel">
       <header class="panel-header">
         <div>
-          <h2>Liste des utilisateurs</h2>
-          <small>Keycloak pour users/roles, Backend pour permissions personnalisees</small>
+          <h2>User list</h2>
+          <small>Keycloak for users/roles, backend for custom permissions</small>
         </div>
         <div class="filters">
           <label>
             <span>Role</span>
             <select [value]="roleFilter()" (change)="roleFilter.set($any($event.target).value)">
-              <option value="ALL">Tous</option>
+              <option value="ALL">All</option>
               @for (role of roles(); track role.name) {
                 <option [value]="role.name">{{ role.label }}</option>
               }
             </select>
           </label>
           <label>
-            <span>Statut</span>
+            <span>Status</span>
             <select [value]="statusFilter()" (change)="statusFilter.set($any($event.target).value)">
-              <option value="ALL">Tous</option>
-              <option value="ACTIVE">Actif</option>
-              <option value="INACTIVE">Inactif</option>
+              <option value="ALL">All</option>
+              <option value="ACTIVE">Active</option>
+              <option value="INACTIVE">Inactive</option>
             </select>
           </label>
         </div>
       </header>
 
       @if (isLoading()) {
-        <p class="feedback">Chargement des utilisateurs...</p>
+        <p class="feedback">Loading users...</p>
       } @else if (permissionsLoaded() && !canViewUsers()) {
-        <p class="feedback error">Cette page requiert VIEW_USERS.</p>
+        <p class="feedback error">This page requires VIEW_USERS.</p>
       } @else if (!filteredUsers().length) {
-        <p class="feedback">Aucun utilisateur ne correspond aux filtres actuels.</p>
+        <p class="feedback">No users match the current filters.</p>
       } @else {
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
-                <th>Utilisateur</th>
+                <th>User</th>
                 <th>Role</th>
                 <th>Email</th>
-                <th>Permissions effectives</th>
-                <th>Statut</th>
+                <th>Phone</th>
+                <th>Position</th>
+                <th>Effective permissions</th>
+                <th>Connection</th>
+                <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -98,6 +106,8 @@
                   </td>
                   <td><span class="badge neutral">{{ primaryRole(user) }}</span></td>
                   <td>{{ user.email }}</td>
+                  <td>{{ user.phone || 'Not provided' }}</td>
+                  <td>{{ user.position || 'Not provided' }}</td>
                   <td>
                     <div class="permission-stack">
                       <div class="chip-row">
@@ -114,36 +124,66 @@
                     </div>
                   </td>
                   <td>
-                    <span class="badge" [class.status-active]="user.enabled" [class.status-inactive]="!user.enabled">
-                      {{ userStatus(user) }}
+                    <span class="badge" [class.status-active]="isUserConnected(user)" [class.status-inactive]="!isUserConnected(user)">
+                      {{ connectionStatus(user) }}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge" [class.status-active]="user.enabled === true" [class.status-inactive]="user.enabled !== true">
+                      {{ user.enabled === true ? 'ACTIVE' : 'INACTIVE' }}
                     </span>
                   </td>
                   <td>
                     <div class="action-row">
                       @if (permissionsLoaded() && canManageUsers()) {
-                        <button type="button" class="ghost-btn" (click)="openEditDrawer(user)">Modifier</button>
+                        <button type="button" class="ghost-btn" (click)="openEditDrawer(user)">Edit</button>
+                        @if (user.enabled !== true) {
+                          <button
+                            type="button"
+                            class="ghost-btn success-btn"
+                            (click)="toggleUserStatus(user)"
+                          >
+                            Activate
+                          </button>
+                        }
+                        @if (user.enabled === true) {
+                          <button
+                            type="button"
+                            class="ghost-btn warning-btn"
+                            (click)="toggleUserStatus(user)"
+                          >
+                            Deactivate
+                          </button>
+                        }
                         <button
                           type="button"
-                          class="ghost-btn"
-                          [class.warning-btn]="user.enabled"
-                          [class.success-btn]="!user.enabled"
-                          (click)="toggleUserStatus(user)"
+                          class="ghost-btn info-btn"
+                          [disabled]="!isUserConnected(user)"
+                          (click)="forceLogout(user)"
                         >
-                          {{ user.enabled ? 'Desactiver' : 'Activer' }}
+                          Force logout
                         </button>
+                        @if (!isSystemTechnicalUser(user)) {
+                          <button
+                            type="button"
+                            class="ghost-btn danger-btn"
+                            (click)="deleteUser(user)"
+                          >
+                            Delete
+                          </button>
+                        }
                       }
                       @if (!permissionsLoaded()) {
                         <button type="button" class="ghost-btn" disabled>
-                          Verification permissions...
+                          Checking permissions...
                         </button>
                       } @else if (canManagePermissions()) {
                         <button
                           type="button"
                           class="ghost-btn info-btn"
-                          [disabled]="!user.localUserId"
                           (click)="openPermissionsDrawer(user)"
                         >
-                          Gerer permissions
+                          Manage permissions
                         </button>
                       }
                     </div>
@@ -156,26 +196,8 @@
       }
     </section>
 
-    <aside class="side-stack">
-      <section class="panel panel-compact">
-        <header class="panel-header">
-          <div>
-            <h2>Catalogue des roles</h2>
-            <small>Roles applicatifs reconnus par Keycloak et le frontend</small>
-          </div>
-        </header>
-
-        <div class="role-list">
-          @for (role of roles(); track role.name) {
-            <article class="role-card">
-              <strong>{{ role.label }}</strong>
-              <span>{{ role.name }}</span>
-              <p>{{ role.description }}</p>
-            </article>
-          }
-        </div>
-      </section>
-
+    <!-- <aside class="side-stack">
+      
       @if (permissionDrawerOpen() && selectedPermissionUser(); as permissionUser) {
         <section class="panel panel-compact">
           <header class="panel-header">
@@ -267,7 +289,7 @@
           <header class="panel-header">
             <div>
               <h2>{{ drawerTitle() }}</h2>
-              <small>Formulaire branche a auth-service et reserve aux comptes avec MANAGE_USERS</small>
+              <small>Formulaire branche au Backend principal et reserve aux comptes avec MANAGE_USERS</small>
             </div>
             <button type="button" class="ghost-btn" (click)="closeDrawer()">Fermer</button>
           </header>
@@ -291,6 +313,17 @@
               <label>
                 <span>Nom</span>
                 <input type="text" formControlName="lastName" placeholder="Ben Salah" />
+              </label>
+            </div>
+
+            <div class="split-grid">
+              <label>
+                <span>Telephone</span>
+                <input type="text" formControlName="phone" placeholder="+216 00 000 000" />
+              </label>
+              <label>
+                <span>Poste</span>
+                <input type="text" formControlName="position" placeholder="Support Engineer" />
               </label>
             </div>
 
@@ -322,6 +355,262 @@
           </form>
         </section>
       }
-    </aside>
+    </aside> -->
+  @if (permissionDrawerOpen() && selectedPermissionUser(); as permissionUser) {
+  <div class="modal-backdrop" (click)="closePermissionsDrawer()">
+    <section class="modal-card" (click)="$event.stopPropagation()">
+
+      <header class="modal-header">
+        <div>
+          <h2>Permissions for {{ permissionUser.username }}</h2>
+          <small>Visible only for accounts with MANAGE_PERMISSIONS</small>
+        </div>
+
+        <button type="button" class="ghost-btn" (click)="closePermissionsDrawer()">
+          Close
+        </button>
+      </header>
+
+      @if (successMessage(); as message) {
+        <p class="feedback success inline-feedback">{{ message }}</p>
+      }
+      @if (errorMessage(); as message) {
+        <p class="feedback error inline-feedback">{{ message }}</p>
+      }
+
+      <div class="permission-panel">
+
+        <article class="permission-group">
+          <strong>Role-inherited permissions</strong>
+          <div class="chip-row">
+            @for (permission of permissionUser.rolePermissions; track permission) {
+              <span class="permission-chip inherited">{{ permission }}</span>
+            }
+          </div>
+        </article>
+
+        <article class="permission-group">
+          <strong>Effective permissions</strong>
+          <div class="chip-row">
+            @for (permission of permissionUser.effectivePermissions; track permission) {
+              <span class="permission-chip effective">{{ permission }}</span>
+            }
+          </div>
+        </article>
+
+        <article class="permission-group">
+          <strong>Added permissions</strong>
+          <div class="chip-row">
+            @for (permission of permissionUser.extraPermissions; track permission) {
+              <button
+                type="button"
+                class="permission-chip extra removable"
+                (click)="removeGrantedPermission(permission)"
+              >
+                {{ permission }} ×
+              </button>
+            }
+
+            @if (!permissionUser.extraPermissions.length) {
+              <small>No added permissions.</small>
+            }
+          </div>
+        </article>
+
+        <article class="permission-group">
+          <strong>Removed permissions</strong>
+          <div class="chip-row">
+            @for (permission of permissionUser.revokedPermissions; track permission) {
+              <button
+                type="button"
+                class="permission-chip revoked removable"
+                (click)="removeRevokedPermission(permission)"
+              >
+                {{ permission }} ×
+              </button>
+            }
+
+            @if (!permissionUser.revokedPermissions.length) {
+              <small>No removed permissions.</small>
+            }
+          </div>
+        </article>
+
+        <div class="permission-actions">
+          <label>
+            <span>Add permission</span>
+
+            <select
+              [value]="selectedGrantPermission()"
+              (change)="selectedGrantPermission.set($any($event.target).value)"
+            >
+              @for (permission of permissionChoices(); track permission) {
+                <option [value]="permission">{{ permission }}</option>
+              }
+            </select>
+
+            <button
+              type="button"
+              class="primary-btn"
+              [disabled]="isPermissionsSaving()"
+              (click)="grantSelectedPermission()"
+            >
+              Add permission
+            </button>
+          </label>
+
+          <label>
+            <span>Remove permission</span>
+
+            <select
+              [value]="selectedRevokePermission()"
+              (change)="selectedRevokePermission.set($any($event.target).value)"
+            >
+              @for (permission of permissionChoices(); track permission) {
+                <option [value]="permission">{{ permission }}</option>
+              }
+            </select>
+
+            <button
+              type="button"
+              class="ghost-btn warning-btn"
+              [disabled]="isPermissionsSaving()"
+              (click)="revokeSelectedPermission()"
+            >
+              Remove permission
+            </button>
+          </label>
+        </div>
+
+      </div>
+    </section>
+  </div>
+}
+
+@if (drawerOpen()) {
+  <div class="modal-backdrop" (click)="closeDrawer()">
+    <section class="modal-card" (click)="$event.stopPropagation()">
+
+      <header class="modal-header">
+        <div>
+          <h2>{{ drawerTitle() }}</h2>
+          <small>
+            Form connected to the main backend and restricted to accounts with MANAGE_USERS
+          </small>
+        </div>
+
+        <button type="button" class="ghost-btn" (click)="closeDrawer()">
+          Close
+        </button>
+      </header>
+
+      <form
+        class="editor-form"
+        [formGroup]="userForm"
+        (ngSubmit)="submitForm()"
+        autocomplete="off"
+      >
+        @if (successMessage(); as message) {
+          <p class="feedback success inline-feedback">{{ message }}</p>
+        }
+        @if (errorMessage(); as message) {
+          <p class="feedback error inline-feedback">{{ message }}</p>
+        }
+
+        <label>
+          <span>Username</span>
+          <input type="text" formControlName="username" placeholder="monitor-admin" />
+          @if (userForm.controls.username.touched && userForm.controls.username.hasError('required')) {
+            <small class="field-error">Username is required.</small>
+          } @else if (userForm.controls.username.touched && userForm.controls.username.hasError('minlength')) {
+            <small class="field-error">Username must be at least 8 characters long.</small>
+          } @else if (userForm.controls.username.touched && userForm.controls.username.hasError('pattern')) {
+            <small class="field-error">Username must not contain spaces.</small>
+          }
+        </label>
+
+        <label>
+          <span>Email</span>
+          <input type="email" formControlName="email" placeholder="admin@company.tn" />
+        </label>
+
+        <div class="split-grid">
+          <label>
+            <span>First name</span>
+            <input type="text" formControlName="firstName" placeholder="Ali" />
+          </label>
+
+          <label>
+            <span>Last name</span>
+            <input type="text" formControlName="lastName" placeholder="Ben Salah" />
+          </label>
+        </div>
+
+        <div class="split-grid">
+          <label>
+            <span>Phone</span>
+            <input type="text" formControlName="phone" placeholder="+216 00 000 000" />
+          </label>
+
+          <label>
+            <span>Position</span>
+            <input type="text" formControlName="position" placeholder="Support Engineer" />
+          </label>
+        </div>
+
+        <label>
+          <span>Role</span>
+          <select formControlName="role">
+            @for (role of roles(); track role.name) {
+              <option [value]="role.name">{{ role.label }}</option>
+            }
+          </select>
+          <small>{{ roleDescription(userForm.controls.role.value) }}</small>
+        </label>
+
+        <label>
+          <span>
+            Password {{ editorMode() === 'edit' ? '(leave empty to keep current)' : '' }}
+          </span>
+          <input
+            type="password"
+            formControlName="password"
+            placeholder="********"
+            autocomplete="new-password"
+          />
+          @if (editorMode() === 'edit') {
+            @if (!userForm.controls.password.value) {
+              <small>Leave empty to keep the current password.</small>
+            } @else if (userForm.controls.password.hasError('minlength')) {
+              <small class="field-error">Password must be at least 8 characters long.</small>
+            } @else if (userForm.controls.password.hasError('pattern')) {
+              <small class="field-error">Password must include at least one special character.</small>
+            } @else {
+              <small class="field-success">The new password will be applied when saved.</small>
+            }
+          } @else if (userForm.controls.password.touched && userForm.controls.password.hasError('required')) {
+            <small class="field-error">Password is required.</small>
+          } @else if (userForm.controls.password.touched && userForm.controls.password.hasError('minlength')) {
+            <small class="field-error">Password must be at least 8 characters long.</small>
+          } @else if (userForm.controls.password.touched && userForm.controls.password.hasError('pattern')) {
+            <small class="field-error">Password must include at least one special character.</small>
+          }
+        </label>
+
+        <label class="toggle-row">
+          <input type="checkbox" formControlName="enabled" />
+          <span>Account active after save</span>
+        </label>
+
+        <div class="form-actions">
+          <button type="submit" class="primary-btn" [disabled]="isSaving()">
+            {{ isSaving() ? 'Saving...' : submitLabel() }}
+          </button>
+        </div>
+      </form>
+
+    </section>
+  </div>
+}
   </section>
 </main>

@@ -16,7 +16,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/observium")
 @RequiredArgsConstructor
-@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_OBSERVIUM)")
 /**
  * Temporary compatibility controller for Observium-specific API consumers.
  *

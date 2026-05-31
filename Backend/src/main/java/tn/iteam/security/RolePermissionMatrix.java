@@ -37,6 +37,11 @@ public final class RolePermissionMatrix {
         matrix.put(RoleName.SUPERADMIN, Set.copyOf(EnumSet.allOf(Permission.class)));
         matrix.put(RoleName.ADMIN, Set.copyOf(EnumSet.of(
                 Permission.VIEW_DASHBOARD,
+                Permission.VIEW_ZABBIX,
+                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_CAMERA,
+                Permission.VIEW_ZKBIO,
+                Permission.VIEW_ACCESS_POINT,
                 Permission.VIEW_METRICS,
                 Permission.VIEW_ALERTS,
                 Permission.VIEW_LOGS,
@@ -59,25 +64,27 @@ public final class RolePermissionMatrix {
         )));
         matrix.put(RoleName.SUPPORT, Set.copyOf(EnumSet.of(
                 Permission.VIEW_DASHBOARD,
+                Permission.VIEW_ZABBIX,
+                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_CAMERA,
+                Permission.VIEW_ZKBIO,
+                Permission.VIEW_ACCESS_POINT,
                 Permission.VIEW_METRICS,
                 Permission.VIEW_ALERTS,
                 Permission.VIEW_LOGS,
                 Permission.VIEW_HOSTS,
                 Permission.VIEW_TICKETS,
                 Permission.VIEW_ASSIGNED_TICKETS,
-                Permission.CREATE_TICKET,
                 Permission.EDIT_TICKET,
+                Permission.VALIDATE_TICKET,
                 Permission.ADD_COMMENT,
                 Permission.EDIT_COMMENT
         )));
         matrix.put(RoleName.VIEWER, Set.copyOf(EnumSet.of(
                 Permission.VIEW_DASHBOARD,
-                Permission.VIEW_METRICS,
-                Permission.VIEW_ALERTS,
-                Permission.VIEW_LOGS,
-                Permission.VIEW_HOSTS,
                 Permission.VIEW_TICKETS
         )));
+        matrix.put(RoleName.SYSTEM, Set.of());
 
         return Collections.unmodifiableMap(matrix);
     }

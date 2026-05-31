@@ -138,30 +138,40 @@
                 <th>Protocol</th>
                 <th>Status</th>
                 <th>Last Scan</th>
+                <th>Realtime</th>
                 <th>Persistence</th>
               </tr>
             </thead>
             <tbody>
-              @for (device of cameraDevices(); track trackByDevice($index, device)) {
+              @for (row of cameraRows(); track trackByDevice($index, row.camera)) {
                 <tr>
                   <td>
                     <div class="device-cell">
-                      <strong>{{ device.name ?? 'Camera' }}</strong>
-                      <small>{{ device.ip ?? 'UNKNOWN' }}:{{ device.port ?? 'N/A' }}</small>
+                      <strong>{{ row.camera.name ?? 'Camera' }}</strong>
+                      <small>{{ row.camera.ip ?? 'UNKNOWN' }}:{{ row.camera.port ?? 'N/A' }}</small>
                     </div>
                   </td>
-                  <td>{{ device.ip ?? 'UNKNOWN' }}</td>
-                  <td>{{ device.port ?? 'N/A' }}</td>
+                  <td>{{ row.camera.ip ?? 'UNKNOWN' }}</td>
+                  <td>{{ row.camera.port ?? 'N/A' }}</td>
                   <td>
-                    <span class="protocol-chip">{{ protocolLabel(device) }}</span>
+                    <span class="protocol-chip">{{ protocolLabel(row.camera) }}</span>
                   </td>
                   <td>
-                    <span class="badge" [class.down]="!device.reachable">
-                      {{ statusLabel(device) }}
+                    <span class="badge" [class.down]="!row.camera.reachable">
+                      {{ statusLabel(row) }}
                     </span>
                   </td>
-                  <td>{{ scanTimestampLabel(device) }}</td>
-                  <td>{{ persistenceLabel(device) }}</td>
+                  <td>{{ scanTimestampLabel(row.camera) }}</td>
+                  <td>
+                    <span class="badge"
+                          [class.down]="row.realtimeState === 'stale' || row.realtimeState === 'offline' || row.realtimeState === 'disconnected'">
+                      {{ realtimeLabel(row) }}
+                    </span>
+                    <div class="device-cell">
+                      <small>{{ realtimeAgeLabel(row) }}</small>
+                    </div>
+                  </td>
+                  <td>{{ persistenceLabel(row.camera) }}</td>
                 </tr>
               }
             </tbody>

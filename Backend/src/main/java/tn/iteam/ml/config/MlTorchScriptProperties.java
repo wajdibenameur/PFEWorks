@@ -4,6 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 @ConfigurationProperties(prefix = "ml.torchscript")
 public record MlTorchScriptProperties(
+        Boolean enabled,
         String modelPath,
         String metadataPath
 ) {

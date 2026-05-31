@@ -14,7 +14,42 @@
 
   <div class="actions">
     <span class="status-pill" [class]="'status-' + connectionLabel()">{{ connectionStatus() }}</span>
+    <div class="notification-wrap">
+      <button type="button" class="notification-btn" (click)="toggleNotificationMenu($event)">
+        <span>Notifications</span>
+        @if (unreadNotifications() > 0) {
+          <em>{{ unreadNotifications() }}</em>
+        }
+      </button>
+
+      @if (notificationMenuOpen()) {
+        <div class="notification-menu">
+          <div class="notification-head">
+            <strong>Activite tickets</strong>
+            <small>{{ notificationItems().length }} recents</small>
+          </div>
+          @if (!notificationItems().length) {
+            <p class="notification-empty">Aucune notification pour le moment.</p>
+          } @else {
+            <ul>
+              @for (notification of notificationItems(); track notification.id + '-' + notification.eventId) {
+                <li>
+                  <strong>{{ notification.title }}</strong>
+                  <p>{{ notification.message }}</p>
+                  <small>{{ notification.createdAt }}</small>
+                  <div class="notification-actions">
+                    <button type="button" (click)="markRead(notification.id)">Read</button>
+                    <button type="button" (click)="removeNotification(notification.id)">Delete</button>
+                  </div>
+                </li>
+              }
+            </ul>
+          }
+        </div>
+      }
+    </div>
     <button type="button" class="action-btn ghost">Live Sources</button>
+    <a class="action-btn ghost" routerLink="/notifications">Notification Center</a>
     <button type="button" class="action-btn">Refresh</button>
     <div class="profile-wrap">
       <button type="button" class="profile-btn" (click)="toggleProfileMenu($event)">

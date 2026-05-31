@@ -23,8 +23,24 @@ public class EffectiveUserPermissionService {
         }
 
         EnumSet<Permission> effective = EnumSet.noneOf(Permission.class);
-        if (roles != null && !roles.isEmpty()) {
-            effective.addAll(rolePermissionService.permissionsForRoles(roles));
+        Set<RoleName> resolvedRoles = roles;
+        if ((resolvedRoles == null || resolvedRoles.isEmpty()) && user != null) {
+            resolvedRoles = user.getRoles() == null
+                    ? Set.of()
+                    : user.getRoles().stream()
+                    .filter(role -> role != null && role.getName() != null)
+                    .map(role -> role.getName())
+                    .collect(java.util.stream.Collectors.toSet());
+
+            if ((resolvedRoles == null || resolvedRoles.isEmpty())
+                    && user.getRole() != null
+                    && user.getRole().getName() != null) {
+                resolvedRoles = Set.of(user.getRole().getName());
+            }
+        }
+
+        if (resolvedRoles != null && !resolvedRoles.isEmpty()) {
+            effective.addAll(rolePermissionService.permissionsForRoles(resolvedRoles));
         }
 
         if (user != null) {

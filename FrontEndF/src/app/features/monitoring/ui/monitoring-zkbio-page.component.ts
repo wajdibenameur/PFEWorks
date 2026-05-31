@@ -59,6 +59,8 @@ export class MonitoringZkBioPageComponent implements OnInit {
     switch (freshness.toLowerCase()) {
       case 'live':
         return 'Live data';
+      case 'snapshot_fallback':
+        return 'Snapshot fallback';
       case 'database_snapshot_fallback':
         return 'Database snapshot fallback';
       case 'memory_snapshot_fallback':

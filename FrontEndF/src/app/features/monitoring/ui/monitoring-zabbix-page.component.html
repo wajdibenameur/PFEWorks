@@ -251,9 +251,9 @@
                                   {{ metric.trend === 'up' ? 'UP' : metric.trend === 'down' ? 'DOWN' : 'FLAT' }}
                                 </span>
                               </div>
-                              <div class="metric-value">{{ metric.currentValue }}</div>
+                              <div class="metric-value">{{ formatMetricValue(metric.metricKey, metric.currentValue) }}</div>
                               <div class="metric-meta">
-                                <small>Previous value: {{ metric.previousValue ?? 'Only one point available' }}</small>
+                                <small>Previous value: {{ metric.previousValue == null ? 'Only one point available' : formatMetricValue(metric.metricKey, metric.previousValue) }}</small>
                                 <small>
                                   @if (hasValidTimestamp(metric.timestamp)) {
                                     {{ metric.timestamp * 1000 | date: 'short' }}

@@ -107,7 +107,7 @@
           @for (group of categoryGroups(); track group.category) {
             <article class="category-card">
               <div class="category-card__head">
-                <h3>{{ group.category }}</h3>
+                <h3>{{ categoryLabel(group.category) }}</h3>
                 <span>{{ group.total }} total</span>
               </div>
               <div class="category-card__stats">
@@ -133,7 +133,7 @@
             <section class="category-section">
               <header class="category-section__header">
                 <div>
-                  <h3>{{ group.category }}</h3>
+                  <h3>{{ categoryLabel(group.category) }}</h3>
                   <small>{{ group.total }} equipment{{ group.total > 1 ? 's' : '' }}</small>
                 </div>
                 <div class="category-section__totals">
@@ -164,11 +164,11 @@
                           <td>{{ host.hostId ?? 'UNKNOWN' }}</td>
                           <td>{{ hostAddress(host) }}</td>
                           <td>
-                            <span class="badge" [class.down]="(host.status ?? '').toUpperCase() === 'DOWN'">
+                            <span class="badge" [class.down]="hostIsDown(host)">
                               {{ host.status ?? 'UNKNOWN' }}
                             </span>
                           </td>
-                          <td>{{ hostCategory(host) }}</td>
+                          <td>{{ categoryLabel(hostCategory(host)) }}</td>
                         </tr>
                       }
                     </tbody>

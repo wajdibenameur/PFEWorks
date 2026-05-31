@@ -17,7 +17,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/cameras")
 @RequiredArgsConstructor
-@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_CAMERA)")
 @Tag(name = "Caméras", description = "API d'inventaire des caméras")
 public class CameraController {
 

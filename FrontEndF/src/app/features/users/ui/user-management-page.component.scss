@@ -1,6 +1,9 @@
 .admin-workspace {
+  background: linear-gradient(180deg, #eef5ff 0%, #e8f1fb 100%);
+  border-radius: 18px;
   display: grid;
   gap: 1rem;
+  padding: 1rem;
 }
 
 .hero-card,
@@ -19,6 +22,38 @@
   justify-content: space-between;
   gap: 1rem;
   padding: 1.3rem 1.4rem;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.role-mini-panel {
+  padding: 1rem;
+}
+
+.mini-role-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mini-role-item {
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.03);
+}
+
+.mini-role-item strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.mini-role-item small {
+  opacity: 0.7;
+  font-size: 0.75rem;
 }
 
 .eyebrow {
@@ -106,13 +141,91 @@ input {
   color: #b91c1c;
 }
 
-.content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 0.95fr);
-  gap: 1rem;
-  align-items: start;
+.inline-feedback {
+  margin-bottom: 0.3rem;
 }
 
+.field-error {
+  color: #b91c1c;
+}
+
+.field-success {
+  color: #166534;
+}
+
+.content-grid {
+  grid-template-columns: 1fr;
+}
+
+.admin-users-section,
+.content-grid,
+.panel,
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 2rem;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(6px);
+}
+
+.modal-card {
+  width: min(920px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #dce4f2;
+  border-radius: 24px;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+  padding: 1.3rem;
+}
+
+.modal-card {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.permission-panel {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding-right: 8px;
+  padding-bottom: 88px;
+}
+
+.permission-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 16px 0 8px 0;
+  border-top: 1px solid #e5e7eb;
+  position: sticky;
+  bottom: 0;
+  background: #ffffff;
+  z-index: 2;
+}
+
+.permission-actions label {
+  display: grid;
+  gap: 8px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid #e2e8f0;
+}
 .panel {
   overflow: hidden;
 }
@@ -232,6 +345,11 @@ td {
 .warning-btn {
   border-color: #fdba74;
   color: #b45309;
+}
+
+.danger-btn {
+  border-color: #fca5a5;
+  color: #b91c1c;
 }
 
 .success-btn {

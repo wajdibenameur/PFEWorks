@@ -1,7 +1,5 @@
 .shell {
-  background:
-    radial-gradient(circle at top left, rgba(188, 225, 255, 0.38), transparent 24%),
-    linear-gradient(180deg, #f8fbff 0%, #eef4fb 100%);
+  background: linear-gradient(90deg, #2f8ecf 0%, #2a78be 100%);
   color: #102542;
   min-height: 100vh;
   position: relative;
@@ -25,6 +23,10 @@
 }
 
 .content {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.45), transparent 28%),
+    linear-gradient(90deg, #1a8a90 0%, #26a3d7 100%);
+  border-radius: 18px;
   flex: 1;
   min-width: 0;
   padding: 1.25rem 1.25rem 2rem;
@@ -33,6 +35,56 @@
 
 .content > * {
   width: 100%;
+}
+
+.platform-alert-card {
+  align-items: center;
+  background: linear-gradient(135deg, #fff8f3 0%, #ffe8d9 100%);
+  border: 1px solid #f5b78c;
+  border-radius: 14px;
+  box-shadow: 0 8px 24px rgba(147, 60, 18, 0.12);
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: auto 1fr auto;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.platform-alert-card__badge {
+  background: #b24a12;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0.65rem;
+  text-transform: uppercase;
+}
+
+.platform-alert-card__body strong {
+  color: #7a2e09;
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 0.1rem;
+}
+
+.platform-alert-card__body p {
+  color: #5f290f;
+  margin: 0;
+}
+
+.platform-alert-card__close {
+  background: #ffffffcc;
+  border: 1px solid #e6ab82;
+  border-radius: 10px;
+  color: #7a2e09;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.42rem 0.72rem;
+}
+
+.platform-alert-card__close:hover {
+  background: #fff;
 }
 
 app-sidebar {
@@ -62,6 +114,11 @@ app-sidebar {
   .content {
     order: 2;
     padding: 1rem;
+  }
+
+  .platform-alert-card {
+    grid-template-columns: 1fr;
+    justify-items: start;
   }
 
   .shell.drawer-open .backdrop {

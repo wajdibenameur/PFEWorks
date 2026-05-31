@@ -4,5 +4,6 @@ public enum RoleName {
     SUPERADMIN,
     ADMIN,
     SUPPORT,
-    VIEWER
+    VIEWER,
+    SYSTEM
 }

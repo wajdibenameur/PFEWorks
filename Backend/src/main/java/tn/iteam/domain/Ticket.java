@@ -30,6 +30,9 @@ public class Ticket extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private TicketStatus status;
+    private LocalDateTime statusChangedAt;
+    private LocalDateTime resolvedAt;
+    private LocalDateTime validatedAt;
 
     @Enumerated(EnumType.STRING)
     private Priority priority;
@@ -47,6 +50,7 @@ public class Ticket extends BaseEntity {
 
     @Builder.Default
     private Boolean archived = false;
+    private LocalDateTime archivedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by_id", nullable = false)

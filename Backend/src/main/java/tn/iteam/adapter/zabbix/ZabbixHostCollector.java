@@ -1,11 +1,12 @@
 package tn.iteam.adapter.zabbix;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import tn.iteam.adapter.zabbix.ZabbixClient;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.util.MonitoringConstants;
 
@@ -28,9 +29,16 @@ public class ZabbixHostCollector {
     private static final int DEFAULT_ZABBIX_PORT = 10050;
 
     private final ZabbixClient zabbixClient;
+    private final ZabbixSyncStateService syncStateService;
+    private volatile JsonNode cachedHosts;
+    private volatile long cachedHostsAtMs = 0L;
 
-    public ZabbixHostCollector(ZabbixClient zabbixClient) {
+    @Value("${zabbix.hosts.cache-ttl-ms:300000}")
+    private long hostsCacheTtlMs;
+
+    public ZabbixHostCollector(ZabbixClient zabbixClient, ZabbixSyncStateService syncStateService) {
         this.zabbixClient = zabbixClient;
+        this.syncStateService = syncStateService;
     }
 
     /**
@@ -58,6 +66,12 @@ public class ZabbixHostCollector {
      * @return JsonNode containing hosts array
      */
     public JsonNode fetchHosts() {
+        long now = System.currentTimeMillis();
+        if (cachedHosts instanceof ArrayNode && cachedHostsAtMs > 0 && (now - cachedHostsAtMs) <= Math.max(hostsCacheTtlMs, 1000L)) {
+            log.info(LOG_PREFIX + "INCREMENTAL FETCH START hosts using cache, LASTCLOCK USED={}", syncStateService.getLastSuccessfulHostsClock());
+            return cachedHosts;
+        }
+        log.info(LOG_PREFIX + "FULL FETCH START hosts");
         return await(zabbixClient.getHosts());
     }
 
@@ -75,6 +89,9 @@ public class ZabbixHostCollector {
         }
 
         log.info(LOG_PREFIX + "Received {} hosts from Zabbix", hosts.size());
+        cachedHosts = hosts;
+        cachedHostsAtMs = System.currentTimeMillis();
+        syncStateService.markHostsCollectedNow();
 
         for (JsonNode hostNode : hosts) {
             ServiceStatusDTO dto = new ServiceStatusDTO();

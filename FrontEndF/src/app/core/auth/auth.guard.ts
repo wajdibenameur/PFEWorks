@@ -15,18 +15,13 @@ export class AuthGuard implements CanActivate {
       return true;
     }
 
-    if (this.auth.getRefreshToken()) {
-      return this.tokenRefreshService.refreshAccessToken().pipe(
-        map(() => true),
-        catchError(() => {
-          void this.router.navigate(['/login']);
-          return of(false);
-        })
-      );
-    }
-
-    void this.router.navigate(['/login']);
-    return false;
+    return this.tokenRefreshService.refreshAccessToken().pipe(
+      map(() => true),
+      catchError(() => {
+        void this.router.navigate(['/login']);
+        return of(false);
+      })
+    );
   }
 }
 

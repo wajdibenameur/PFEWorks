@@ -19,7 +19,15 @@ import {
   matchesMonitoringSource
 } from '../data/monitoring-source.utils';
 
-type ObserviumCategory = 'PRINTER' | 'SERVER' | 'SWITCH' | 'ACCESS_POINT' | 'OTHER';
+type ObserviumCategory =
+  | 'PRINTER'
+  | 'SWITCH'
+  | 'ROUTER'
+  | 'FIREWALL'
+  | 'LOAD_BALANCER'
+  | 'WIFI_ACCESS_POINT'
+  | 'NETWORK_CONTROLLER'
+  | 'OTHER';
 type ObserviumCoverage = 'native' | 'synthetic' | 'not_applicable' | 'unknown';
 
 interface ObserviumCategoryGroup {
@@ -53,10 +61,12 @@ export class MonitoringObserviumPageComponent {
   private loadGeneration = 0;
   private readonly categoryOrder: ObserviumCategory[] = [
     'PRINTER',
-    'SERVER',
     'SWITCH',
-    'ACCESS_POINT',
-    'OTHER'
+    'ROUTER',
+    'FIREWALL',
+    'LOAD_BALANCER',
+    'WIFI_ACCESS_POINT',
+    'NETWORK_CONTROLLER'
   ];
 
   readonly isLoading = signal(false);
@@ -108,16 +118,18 @@ export class MonitoringObserviumPageComponent {
   }
 
   readonly kpi = computed(() => ({
-    totalHosts: this.hosts().length,
-    downHosts: this.hosts().filter((host) => (host.status ?? '').toUpperCase() === 'DOWN').length,
+    totalHosts: this.sortedHosts().length,
+    downHosts: this.sortedHosts().filter((host) => this.isDownStatus(this.normalizeStatus(host.status))).length,
     activeAlerts: this.problems().filter((problem) => problem.active).length,
     totalMetrics: this.metrics().length
   }));
 
   readonly sortedHosts = computed(() =>
-    [...this.hosts()].sort((left, right) =>
-      this.hostLabel(left).localeCompare(this.hostLabel(right))
-    )
+    [...this.hosts()]
+      .filter((host) => this.normalizeCategory(host.category) !== 'OTHER')
+      .sort((left, right) =>
+        this.hostLabel(left).localeCompare(this.hostLabel(right))
+      )
   );
 
   readonly categoryGroups = computed<ObserviumCategoryGroup[]>(() => {
@@ -139,10 +151,10 @@ export class MonitoringObserviumPageComponent {
       group.total += 1;
 
       const status = this.normalizeStatus(host.status);
-      if (status === 'DOWN') {
+      if (this.isDownStatus(status)) {
         group.down += 1;
       }
-      if (status === 'UP') {
+      if (this.isUpStatus(status)) {
         group.up += 1;
       }
 
@@ -396,6 +408,10 @@ export class MonitoringObserviumPageComponent {
     return this.normalizeCategory(host.category);
   }
 
+  hostIsDown(host: MonitoringHost): boolean {
+    return this.isDownStatus(this.normalizeStatus(host.status));
+  }
+
   metricValue(metric: ObserviumMetricGroup): string {
     if (metric.latestValue == null) {
       return 'N/A';
@@ -433,8 +449,44 @@ export class MonitoringObserviumPageComponent {
     return 'OTHER';
   }
 
+  categoryLabel(category: ObserviumCategory): string {
+    switch (category) {
+      case 'SWITCH':
+        return 'Switches';
+      case 'ROUTER':
+        return 'Routers';
+      case 'FIREWALL':
+        return 'Firewalls';
+      case 'LOAD_BALANCER':
+        return 'Load Balancers';
+      case 'WIFI_ACCESS_POINT':
+        return 'Wi-Fi Access Points';
+      case 'NETWORK_CONTROLLER':
+        return 'Network Controllers';
+      case 'PRINTER':
+        return 'Printers';
+      default:
+        return 'Other';
+    }
+  }
+
   private normalizeStatus(status: string | null | undefined): string {
-    return (status ?? '').toUpperCase();
+    const normalized = (status ?? '').toUpperCase();
+    if (normalized === 'AVAILABLE' || normalized === 'NORMAL') {
+      return 'UP';
+    }
+    if (normalized === 'UNAVAILABLE' || normalized === 'ERROR') {
+      return 'DOWN';
+    }
+    return normalized;
+  }
+
+  private isDownStatus(status: string): boolean {
+    return status === 'DOWN' || status === 'DEGRADED';
+  }
+
+  private isUpStatus(status: string): boolean {
+    return status === 'UP';
   }
 
   private problemTime(problem: MonitoringProblem): number {
@@ -442,6 +494,37 @@ export class MonitoringObserviumPageComponent {
   }
 
   private metricLabel(metricKey: string): string {
+    const key = metricKey.toLowerCase();
+    const catalog: Array<{ test: (k: string) => boolean; label: string }> = [
+      { test: (k) => k.startsWith('system.cpu.util'), label: 'CPU Utilization (%)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg1]'), label: 'CPU Load (1 min)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg5]'), label: 'CPU Load (5 min)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg15]'), label: 'CPU Load (15 min)' },
+      { test: (k) => k.startsWith('system.cpu.load'), label: 'CPU Load' },
+      { test: (k) => k.startsWith('vm.memory.size[pavailable]'), label: 'Memory Available (%)' },
+      { test: (k) => k.startsWith('vm.memory.size[available]'), label: 'Memory Available' },
+      { test: (k) => k.startsWith('vm.memory.size[used]'), label: 'Memory Used' },
+      { test: (k) => k.startsWith('vm.memory.util'), label: 'Memory Utilization (%)' },
+      { test: (k) => k.startsWith('system.swap'), label: 'Swap Usage' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,pused]'), label: 'Disk Used (%)' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,free]'), label: 'Disk Free Space' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,used]'), label: 'Disk Used Space' },
+      { test: (k) => k.startsWith('icmppingsec'), label: 'Network Latency (s)' },
+      { test: (k) => k.startsWith('icmppingloss'), label: 'Packet Loss (%)' },
+      { test: (k) => k.startsWith('icmpping'), label: 'Ping Availability' },
+      { test: (k) => k.startsWith('net.if.in.errors'), label: 'Inbound Network Errors' },
+      { test: (k) => k.startsWith('net.if.out.errors'), label: 'Outbound Network Errors' },
+      { test: (k) => k.startsWith('net.if.in'), label: 'Inbound Throughput' },
+      { test: (k) => k.startsWith('net.if.out'), label: 'Outbound Throughput' },
+      { test: (k) => k.startsWith('system.uptime'), label: 'System Uptime' },
+      { test: (k) => k.startsWith('proc.num'), label: 'Process Count' },
+      { test: (k) => k.startsWith('agent.ping'), label: 'Agent Availability' }
+    ];
+    const match = catalog.find((entry) => entry.test(key));
+    if (match) {
+      return match.label;
+    }
+
     return metricKey
       .replace(/[\[\]\._]/g, ' ')
       .replace(/\s+/g, ' ')

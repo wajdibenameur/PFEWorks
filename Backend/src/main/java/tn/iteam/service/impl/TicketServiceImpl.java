@@ -10,21 +10,27 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tn.iteam.domain.Intervention;
+import tn.iteam.domain.Role;
 import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
 import tn.iteam.dto.ObserviumProblemDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
 import tn.iteam.enums.Priority;
+import tn.iteam.enums.RoleName;
 import tn.iteam.enums.TicketStatus;
 import tn.iteam.exception.TicketingException;
+import tn.iteam.mapper.TicketMapper;
 import tn.iteam.repository.InterventionRepository;
+import tn.iteam.repository.RoleRepository;
 import tn.iteam.repository.TicketRepository;
 import tn.iteam.repository.UserRepository;
 import tn.iteam.security.AuthenticatedUserService;
+import tn.iteam.security.RolePermissionMatrix;
 import tn.iteam.service.TicketService;
 import tn.iteam.enums.Permission;
 import tn.iteam.util.MonitoringConstants;
+import tn.iteam.service.support.TicketNotificationService;
 
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
@@ -32,36 +38,43 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.Optional;
+import java.util.Objects;
 import java.util.Set;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class TicketServiceImpl implements TicketService {
 
     private final TicketRepository ticketRepository;
     private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
     private final InterventionRepository interventionRepository;
     private final SimpMessagingTemplate ws;
     private final AuthenticatedUserService authenticatedUserService;
+    private final TicketMapper ticketMapper;
+    private final TicketNotificationService ticketNotificationService;
 
     private static final String SYSTEM_USERNAME = "SYSTEM";
     private static final String SYSTEM_EMAIL = "system@monitoring.local";
 
     // ================= CREATE FROM ZABBIX =================
     @Override
+    @Transactional
     public Ticket createFromProblem(ZabbixProblemDTO problem) {
         return createFromProblem(problem, null);
     }
 
     @Override
+    @Transactional
     public Ticket createFromProblem(ObserviumProblemDTO problem) {
         return createFromProblem(problem, null);
     }
 
     @Override
+    @Transactional
     public Ticket createFromProblem(ZkBioProblemDTO problem) {
         return createFromProblem(problem, null);
     }
@@ -117,28 +130,114 @@ public class TicketServiceImpl implements TicketService {
 
         String source = normalizeSource(monitoringSource, MonitoringConstants.SOURCE_ZABBIX);
         User ticketCreator = creator != null ? creator : authenticatedOrSystemUser();
+        String normalizedTitle = description != null && !description.isBlank() ? description : "Monitoring incident";
+        Priority mappedPriority = mapSeverity(severity);
 
-        return ticketRepository.findByMonitoringSourceAndExternalProblemId(source, externalProblemId)
-                .orElseGet(() -> {
-                    Ticket ticket = Ticket.builder()
-                            .title(description != null && !description.isBlank() ? description : "Monitoring incident")
-                            .description(description)
-                            .hostId(parseHostId(hostId))
-                            .priority(mapSeverity(severity))
-                            .status(TicketStatus.OPEN)
-                            .externalProblem(true)
-                            .monitoringSource(source)
-                            .externalProblemId(externalProblemId)
-                            .resourceRef(resourceRef)
-                            .creationDate(LocalDateTime.now())
-                            .createdBy(ticketCreator)
-                            .build();
+        Optional<Ticket> byExternalId = ticketRepository.findByMonitoringSourceAndExternalProblemId(source, externalProblemId);
+        if (byExternalId.isPresent()) {
+            Ticket updated = refreshMonitoringTicket(byExternalId.get(), description, hostId, resourceRef, mappedPriority, externalProblemId);
+            notify("TICKET_UPDATED", updated);
+            return updated;
+        }
 
-                    Ticket saved = ticketRepository.save(ticket);
-                    log.info("Created monitoring ticket {} from external problem {} for creator {}", saved.getId(), externalProblemId, ticketCreator.getUsername());
-                    notify("NEW_TICKET", saved);
-                    return saved;
-                });
+        Optional<Ticket> similarOpenTicket = ticketRepository
+                .findFirstByMonitoringSourceAndResourceRefAndTitleAndArchivedFalseOrderByCreationDateDesc(
+                        source,
+                        resourceRef,
+                        normalizedTitle
+                )
+                .filter(this::isDedupCandidate);
+
+        if (similarOpenTicket.isPresent()) {
+            Ticket merged = refreshMonitoringTicket(similarOpenTicket.get(), description, hostId, resourceRef, mappedPriority, externalProblemId);
+            notify("TICKET_UPDATED", merged);
+            return merged;
+        }
+
+        Ticket ticket = Ticket.builder()
+                .title(normalizedTitle)
+                .description(description)
+                .hostId(parseHostId(hostId))
+                .priority(mappedPriority)
+                .status(TicketStatus.OPEN)
+                .statusChangedAt(LocalDateTime.now())
+                .externalProblem(true)
+                .monitoringSource(source)
+                .externalProblemId(externalProblemId)
+                .resourceRef(resourceRef)
+                .creationDate(LocalDateTime.now())
+                .createdBy(ticketCreator)
+                .build();
+
+        Ticket saved = ticketRepository.save(ticket);
+        log.info("Created monitoring ticket {} from external problem {} for creator {}", saved.getId(), externalProblemId, ticketCreator.getUsername());
+        notify("NEW_TICKET", saved);
+        ticketNotificationService.notifyImportantTicketCreated(saved, ticketCreator);
+        return saved;
+    }
+
+    private Ticket refreshMonitoringTicket(
+            Ticket existing,
+            String description,
+            String hostId,
+            String resourceRef,
+            Priority mappedPriority,
+            String externalProblemId
+    ) {
+        if (description != null && !description.isBlank()) {
+            existing.setTitle(description);
+            existing.setDescription(description);
+        }
+
+        Long parsedHostId = parseHostId(hostId);
+        if (parsedHostId != null) {
+            existing.setHostId(parsedHostId);
+        }
+
+        if (resourceRef != null && !resourceRef.isBlank()) {
+            existing.setResourceRef(resourceRef);
+        }
+
+        if (mappedPriority != null && isHigherPriority(mappedPriority, existing.getPriority())) {
+            existing.setPriority(mappedPriority);
+        }
+
+        if (externalProblemId != null && !externalProblemId.isBlank()) {
+            existing.setExternalProblemId(externalProblemId);
+        }
+
+        if (existing.getStatus() == TicketStatus.CLOSED || existing.getStatus() == TicketStatus.REJECTED) {
+            markStatusTransition(existing, TicketStatus.OPEN);
+        }
+
+        return ticketRepository.save(existing);
+    }
+
+    private boolean isDedupCandidate(Ticket ticket) {
+        return ticket != null
+                && Boolean.FALSE.equals(ticket.getArchived())
+                && ticket.getStatus() != TicketStatus.CLOSED
+                && ticket.getStatus() != TicketStatus.VALIDATED;
+    }
+
+    private boolean isHigherPriority(Priority incoming, Priority current) {
+        if (incoming == null) {
+            return false;
+        }
+        if (current == null) {
+            return true;
+        }
+
+        return priorityWeight(incoming) > priorityWeight(current);
+    }
+
+    private int priorityWeight(Priority priority) {
+        return switch (priority) {
+            case LOW -> 1;
+            case MEDIUM -> 2;
+            case HIGH -> 3;
+            case CRITICAL -> 4;
+        };
     }
 
     private User authenticatedOrSystemUser() {
@@ -150,13 +249,50 @@ public class TicketServiceImpl implements TicketService {
     }
 
     private User getOrCreateSystemUser() {
+        Role systemRole = ensureSystemRole();
+
         return userRepository.findByUsername(SYSTEM_USERNAME)
+                .map(existing -> ensureSystemUserRole(existing, systemRole))
                 .orElseGet(() -> {
                     User systemUser = new User();
                     systemUser.setUsername(SYSTEM_USERNAME);
                     systemUser.setEmail(SYSTEM_EMAIL);
-                    systemUser.setPassword("SYSTEM");
+                    systemUser.setEnabled(true);
+                    systemUser.setRole(systemRole);
+                    systemUser.setRoles(new HashSet<>(Set.of(systemRole)));
                     return userRepository.save(systemUser);
+                });
+    }
+
+    private User ensureSystemUserRole(User user, Role systemRole) {
+        boolean changed = false;
+        if (user.getRole() == null || user.getRole().getName() != RoleName.SYSTEM) {
+            user.setRole(systemRole);
+            changed = true;
+        }
+
+        if (user.getRoles() == null || user.getRoles().stream().noneMatch(role -> role != null && role.getName() == RoleName.SYSTEM)) {
+            Set<Role> nextRoles = user.getRoles() == null ? new HashSet<>() : new HashSet<>(user.getRoles());
+            nextRoles.add(systemRole);
+            user.setRoles(nextRoles);
+            changed = true;
+        }
+
+        if (!user.isEnabled()) {
+            user.setEnabled(true);
+            changed = true;
+        }
+
+        return changed ? userRepository.save(user) : user;
+    }
+
+    private Role ensureSystemRole() {
+        return roleRepository.findByName(RoleName.SYSTEM)
+                .orElseGet(() -> {
+                    Role role = new Role();
+                    role.setName(RoleName.SYSTEM);
+                    role.setPermissions(new ArrayList<>(RolePermissionMatrix.permissionsFor(RoleName.SYSTEM)));
+                    return roleRepository.save(role);
                 });
     }
 
@@ -191,22 +327,26 @@ public class TicketServiceImpl implements TicketService {
 
     // ================= CREATE MANUAL =================
     @Override
+    @Transactional
     public Ticket createManual(Ticket ticket) {
         User creator = authenticatedUserService.getCurrentUser();
         ticket.setCreationDate(LocalDateTime.now());
         ticket.setCreatedBy(creator);
         ticket.setStatus(TicketStatus.OPEN);
+        ticket.setStatusChangedAt(LocalDateTime.now());
         ticket.setInterventions(ticket.getInterventions() == null ? new ArrayList<>() : ticket.getInterventions());
 
         Ticket saved = ticketRepository.save(ticket);
         log.info("Created manual ticket {} by {}", saved.getId(), creator.getUsername());
         notify("NEW_TICKET", saved);
+        ticketNotificationService.notifyImportantTicketCreated(saved, creator);
 
         return saved;
     }
 
     // ================= ASSIGN =================
     @Override
+    @Transactional
     public Ticket assign(Long ticketId, Long userId) {
 
         Ticket ticket = getTicketOrThrow(ticketId);
@@ -214,24 +354,26 @@ public class TicketServiceImpl implements TicketService {
 
         ticket.setAssignedTo(user);
         if (ticket.getStatus() == TicketStatus.OPEN) {
-            ticket.setStatus(TicketStatus.IN_PROGRESS);
+            markStatusTransition(ticket, TicketStatus.IN_PROGRESS);
         }
 
         Ticket saved = ticketRepository.save(ticket);
         recordIntervention(saved, user, "ASSIGNMENT", "Ticket assigned to " + user.getUsername(), "ASSIGNED");
         log.info("Assigned ticket {} to {}", saved.getId(), user.getUsername());
         notify("ASSIGNED", saved);
+        ticketNotificationService.notifyAssignment(saved, authenticatedUserService.getCurrentUser());
 
         return saved;
     }
 
     // ================= STATUS UPDATE =================
     @Override
+    @Transactional
     public Ticket updateStatus(Long ticketId, TicketStatus status, String resolution) {
 
         Ticket ticket = getTicketOrThrow(ticketId);
         ensureTransitionAllowed(ticket.getStatus(), status);
-        ticket.setStatus(status);
+        markStatusTransition(ticket, status);
         if (resolution != null && !resolution.isBlank()) {
             ticket.setResolution(resolution.trim());
         }
@@ -239,36 +381,40 @@ public class TicketServiceImpl implements TicketService {
         Ticket saved = ticketRepository.save(ticket);
         log.info("Updated ticket {} status from {} to {}", saved.getId(), ticket.getStatus(), status);
         notify("STATUS_UPDATED", saved);
+        ticketNotificationService.notifyStatusOrValidation(saved, authenticatedUserService.getCurrentUser(), "STATUS_UPDATED");
 
         return saved;
     }
 
     // ================= VALIDATE =================
     @Override
+    @Transactional
     public Ticket validate(Long ticketId) {
         User admin = authenticatedUserService.getCurrentUser();
         Ticket ticket = getTicketOrThrow(ticketId);
 
         ensureTransitionAllowed(ticket.getStatus(), TicketStatus.VALIDATED);
-        ticket.setStatus(TicketStatus.VALIDATED);
+        markStatusTransition(ticket, TicketStatus.VALIDATED);
         ticket.setValidatedBy(admin);
 
         Ticket saved = ticketRepository.save(ticket);
         recordIntervention(saved, admin, "VALIDATION", "Ticket validated", "VALIDATED");
         log.info("Validated ticket {} by {}", saved.getId(), admin.getUsername());
         notify("VALIDATED", saved);
+        ticketNotificationService.notifyStatusOrValidation(saved, admin, "VALIDATED");
 
         return saved;
     }
 
     // ================= REJECT =================
     @Override
+    @Transactional
     public Ticket reject(Long ticketId, String reason) {
         User admin = authenticatedUserService.getCurrentUser();
         Ticket ticket = getTicketOrThrow(ticketId);
 
         ensureTransitionAllowed(ticket.getStatus(), TicketStatus.REJECTED);
-        ticket.setStatus(TicketStatus.REJECTED);
+        markStatusTransition(ticket, TicketStatus.REJECTED);
         ticket.setResolution(reason);
         ticket.setValidatedBy(admin);
 
@@ -276,12 +422,14 @@ public class TicketServiceImpl implements TicketService {
         recordIntervention(saved, admin, "REJECTION", reason, "REJECTED");
         log.info("Rejected ticket {} by {} with reason {}", saved.getId(), admin.getUsername(), reason);
         notify("REJECTED", saved);
+        ticketNotificationService.notifyStatusOrValidation(saved, admin, "REJECTED");
 
         return saved;
     }
 
     // ================= COMMENT =================
     @Override
+    @Transactional
     public Ticket addComment(Long ticketId, String comment) {
         User user = authenticatedUserService.getCurrentUser();
         Ticket ticket = getTicketOrThrow(ticketId);
@@ -295,6 +443,7 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
+    @Transactional
     public Intervention addIntervention(Long ticketId, String action, String comment, String result) {
         User user = authenticatedUserService.getCurrentUser();
         Ticket ticket = getTicketOrThrow(ticketId);
@@ -308,17 +457,20 @@ public class TicketServiceImpl implements TicketService {
 
     // ================= GET =================
     @Override
+    @Transactional(readOnly = true)
     public Page<Ticket> getAll(Pageable pageable) {
-        return search(null, null, null, pageable);
+        return search(null, null, null, "active", pageable);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Page<Ticket> getByStatus(TicketStatus status, Pageable pageable) {
-        return search(status, null, null, pageable);
+        return search(status, null, null, "active", pageable);
     }
 
     @Override
-    public Page<Ticket> search(TicketStatus status, Priority priority, String source, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<Ticket> search(TicketStatus status, Priority priority, String source, String archived, Pageable pageable) {
         User currentUser = authenticatedUserService.getCurrentUser();
         Set<Permission> effectivePermissions = resolveEffectivePermissions(currentUser);
         boolean allowAllTickets = effectivePermissions.contains(Permission.VIEW_ALL_TICKETS);
@@ -326,7 +478,12 @@ public class TicketServiceImpl implements TicketService {
 
         Specification<Ticket> specification = (root, query, criteriaBuilder) -> {
             List<Predicate> predicates = new ArrayList<>();
-            predicates.add(criteriaBuilder.isFalse(root.get("archived")));
+            String archivedMode = archived == null ? "active" : archived.trim().toLowerCase();
+            if ("archived".equals(archivedMode)) {
+                predicates.add(criteriaBuilder.isTrue(root.get("archived")));
+            } else if (!"all".equals(archivedMode)) {
+                predicates.add(criteriaBuilder.isFalse(root.get("archived")));
+            }
 
             if (status != null) {
                 predicates.add(criteriaBuilder.equal(root.get("status"), status));
@@ -355,12 +512,41 @@ public class TicketServiceImpl implements TicketService {
         return ticketRepository.findAll(specification, pageable);
     }
 
+    @Override
+    @Transactional
+    public Ticket archive(Long ticketId) {
+        Ticket ticket = getTicketOrThrow(ticketId);
+        ticket.setArchived(true);
+        if (ticket.getArchivedAt() == null) {
+            ticket.setArchivedAt(LocalDateTime.now());
+        }
+        Ticket saved = ticketRepository.save(ticket);
+        notify("ARCHIVED", saved);
+        return saved;
+    }
+
+    @Override
+    @Transactional
+    public Ticket unarchive(Long ticketId) {
+        Ticket ticket = getTicketOrThrow(ticketId);
+        ticket.setArchived(false);
+        ticket.setArchivedAt(null);
+        Ticket saved = ticketRepository.save(ticket);
+        notify("UNARCHIVED", saved);
+        return saved;
+    }
+
     private Set<Permission> resolveEffectivePermissions(User user) {
         if (user == null) {
             return Set.of();
         }
 
         Set<Permission> effective = EnumSet.noneOf(Permission.class);
+        if (user.getRoles() != null) {
+            user.getRoles().stream()
+                    .filter(role -> role != null && role.getPermissions() != null)
+                    .forEach(role -> effective.addAll(role.getPermissions()));
+        }
         if (user.getRole() != null && user.getRole().getPermissions() != null) {
             effective.addAll(user.getRole().getPermissions());
         }
@@ -375,18 +561,19 @@ public class TicketServiceImpl implements TicketService {
     }
 
     @Override
+    @Transactional(readOnly = true)
     public Optional<Ticket> getById(Long id) {
         return ticketRepository.findById(id);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<User> getAssignableUsers() {
-        return userRepository.findAll().stream()
-                .sorted((left, right) -> left.getUsername().compareToIgnoreCase(right.getUsername()))
-                .toList();
+        return userRepository.findAllByOrderByUsernameAsc();
     }
 
     @Override
+    @Transactional
     public void delete(Long id) {
         ticketRepository.deleteById(id);
     }
@@ -405,7 +592,7 @@ public class TicketServiceImpl implements TicketService {
     private void notify(String type, Ticket ticket) {
         ws.convertAndSend("/topic/tickets", Map.of(
                 "type", type,
-                "data", ticket
+                "data", ticketMapper.toResponse(ticket)
         ));
     }
 
@@ -466,6 +653,33 @@ public class TicketServiceImpl implements TicketService {
                     "INVALID_TICKET_TRANSITION",
                     "Transition from " + current + " to " + target + " is not allowed"
             );
+        }
+    }
+
+    private void markStatusTransition(Ticket ticket, TicketStatus targetStatus) {
+        if (ticket == null || targetStatus == null) {
+            return;
+        }
+
+        TicketStatus previous = ticket.getStatus();
+        ticket.setStatus(targetStatus);
+
+        if (previous != targetStatus) {
+            ticket.setStatusChangedAt(LocalDateTime.now());
+        }
+
+        if (targetStatus == TicketStatus.RESOLVED) {
+            ticket.setResolvedAt(LocalDateTime.now());
+        } else if (targetStatus == TicketStatus.VALIDATED) {
+            if (ticket.getResolvedAt() == null) {
+                ticket.setResolvedAt(LocalDateTime.now());
+            }
+            ticket.setValidatedAt(LocalDateTime.now());
+        } else if (targetStatus == TicketStatus.REJECTED) {
+            ticket.setValidatedAt(null);
+        } else if (targetStatus == TicketStatus.OPEN || targetStatus == TicketStatus.IN_PROGRESS) {
+            ticket.setResolvedAt(null);
+            ticket.setValidatedAt(null);
         }
     }
 

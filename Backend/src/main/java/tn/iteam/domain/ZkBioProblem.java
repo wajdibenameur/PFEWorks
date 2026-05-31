@@ -16,12 +16,14 @@ public class ZkBioProblem extends BaseEntity {
     private String problemId;
     private String device;      // nom du device ou utilisateur
     private String description;
-    private Boolean active;
+    @Builder.Default
+    private Boolean active = Boolean.FALSE;
     private String status;
     @Column(name = "started_at")
     private Long startedAt;
     @Column(name = "resolved_at")
     private Long resolvedAt;
+    @Builder.Default
     private String source = "ZKBIO";
     private Long eventId;       // optionnel
 }

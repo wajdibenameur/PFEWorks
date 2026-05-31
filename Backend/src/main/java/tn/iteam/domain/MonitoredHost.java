@@ -7,6 +7,7 @@ import jakarta.persistence.UniqueConstraint;
 import lombok.*;
 
 @Data
+@EqualsAndHashCode(callSuper = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder

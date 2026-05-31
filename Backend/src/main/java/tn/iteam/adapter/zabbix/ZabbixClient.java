@@ -128,6 +128,7 @@ public class ZabbixClient {
     private static final String CONTEXT_TRIGGERS_BY_HOST = "triggers by host";
     private static final String CONTEXT_ITEMS_BY_HOST = "items by host";
     private static final String CONTEXT_ITEMS_BY_HOSTS = "items by hosts";
+    private static final String CONTEXT_LATEST_METRIC_CLOCK = "latest metric clock";
     private static final String CONTEXT_HISTORY = "history";
     private static final String CONTEXT_HISTORY_BATCH = "history batch";
     private static final String CONTEXT_LAST_ITEM_VALUE = "last item value";
@@ -297,6 +298,25 @@ public class ZabbixClient {
         return executeRequestLive(payload,CONTEXT_RECENT_PROBLEMS);
     }
 
+    @Retry(name = LIGHT_RESILIENCE_NAME)
+    @CircuitBreaker(name = LIGHT_RESILIENCE_NAME, fallbackMethod = "getRecentProblemsSinceFallback")
+    public Mono<JsonNode> getRecentProblemsSince(long timeFrom) {
+        log.info(LOG_PREFIX + "getRecentProblemsSince() called with timeFrom={}", timeFrom);
+        Map<String, Object> payload = createBasePayload("problem.get");
+        Map<String, Object> params = new HashMap<>();
+        params.put(OUTPUT, EXTEND);
+        params.put(SELECT_TAGS, EXTEND);
+        params.put(SORT_FIELD, EVENT_ID);
+        params.put(SORT_ORDER, DESC);
+        params.put(RECENT, true);
+        params.put(SEVERITIES, ALL_SEVERITIES);
+        if (timeFrom > 0) {
+            params.put(TIME_FROM, timeFrom);
+        }
+        payload.put(PARAMS, params);
+        return executeRequestLive(payload, CONTEXT_RECENT_PROBLEMS + " since");
+    }
+
 
     @Retry(name = LIGHT_RESILIENCE_NAME)
     @CircuitBreaker(name = LIGHT_RESILIENCE_NAME, fallbackMethod = "getRecentProblemsByHostFallback")
@@ -424,6 +444,36 @@ public class ZabbixClient {
         payload.put(PARAMS, params);
 
         return executeRequestLive(zabbixMetricsWebClient, payload, CONTEXT_ITEMS_BY_HOSTS, heavyRequestTimeout());
+    }
+
+    @Retry(name = HEAVY_RESILIENCE_NAME)
+    @CircuitBreaker(name = HEAVY_RESILIENCE_NAME, fallbackMethod = "getItemsByHostsIncrementalFallback")
+    public Mono<JsonNode> getItemsByHostsIncremental(List<String> hostIds) {
+        log.info(LOG_PREFIX + "getItemsByHostsIncremental() called with hostIds count={}", hostIds != null ? hostIds.size() : 0);
+        Map<String, Object> payload = createBasePayload("item.get");
+        Map<String, Object> params = new HashMap<>();
+        params.put(HOSTIDS, hostIds);
+        params.put(OUTPUT, ITEM_OUTPUT);
+        params.put(FILTER, ACTIVE_STATUS_FILTER);
+        params.put(SORT_FIELD, LAST_CLOCK);
+        params.put(SORT_ORDER, DESC);
+        payload.put(PARAMS, params);
+        return executeRequestLive(zabbixMetricsWebClient, payload, CONTEXT_ITEMS_BY_HOSTS + " incremental", heavyRequestTimeout());
+    }
+
+    @Retry(name = HEAVY_RESILIENCE_NAME)
+    @CircuitBreaker(name = HEAVY_RESILIENCE_NAME, fallbackMethod = "getLatestMetricClockFallback")
+    public Mono<JsonNode> getLatestMetricClock() {
+        log.info(LOG_PREFIX + "getLatestMetricClock() called");
+        Map<String, Object> payload = createBasePayload("item.get");
+        Map<String, Object> params = new HashMap<>();
+        params.put(OUTPUT, List.of(ITEM_ID, LAST_CLOCK));
+        params.put(FILTER, ACTIVE_STATUS_FILTER);
+        params.put(SORT_FIELD, LAST_CLOCK);
+        params.put(SORT_ORDER, DESC);
+        params.put(LIMIT, 1);
+        payload.put(PARAMS, params);
+        return executeRequestLive(zabbixMetricsWebClient, payload, CONTEXT_LATEST_METRIC_CLOCK, heavyRequestTimeout());
     }
 
     @Retry(name = HEAVY_RESILIENCE_NAME)
@@ -596,6 +646,10 @@ public class ZabbixClient {
         return Mono.error(mapCircuitBreakerException(CONTEXT_RECENT_PROBLEMS_BY_HOST, throwable));
     }
     @SuppressWarnings("unused")
+    private Mono<JsonNode> getRecentProblemsSinceFallback(long timeFrom, Throwable throwable) {
+        return Mono.error(mapCircuitBreakerException(CONTEXT_RECENT_PROBLEMS + " since", throwable));
+    }
+    @SuppressWarnings("unused")
     // Parameter required by Resilience4j fallback signature
     private Mono<JsonNode> getTriggerByIdFallback(String triggerId, Throwable throwable) {
         return Mono.error(mapCircuitBreakerException(CONTEXT_TRIGGER_BY_ID, throwable));
@@ -624,6 +678,14 @@ public class ZabbixClient {
     // Parameter required by Resilience4j fallback signature
     private Mono<JsonNode> getItemsByHostsFallback(List<String> hostIds, Throwable throwable) {
         return Mono.error(mapCircuitBreakerException(CONTEXT_ITEMS_BY_HOSTS, throwable));
+    }
+    @SuppressWarnings("unused")
+    private Mono<JsonNode> getItemsByHostsIncrementalFallback(List<String> hostIds, Throwable throwable) {
+        return Mono.error(mapCircuitBreakerException(CONTEXT_ITEMS_BY_HOSTS + " incremental", throwable));
+    }
+    @SuppressWarnings("unused")
+    private Mono<JsonNode> getLatestMetricClockFallback(Throwable throwable) {
+        return Mono.error(mapCircuitBreakerException(CONTEXT_LATEST_METRIC_CLOCK, throwable));
     }
     @SuppressWarnings("unused")
     private Mono<JsonNode> getItemHistoryFallback(String itemId, int valueType, long from, long to, Throwable throwable) {

@@ -11,6 +11,8 @@ import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Periodic Observium refresh scheduler.
  *
@@ -25,27 +27,35 @@ public class ObserviumScheduler {
     private final IntegrationServiceRegistry integrationServiceRegistry;
     private final SourceAvailabilityService sourceAvailabilityService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
+    private final AtomicBoolean running = new AtomicBoolean(false);
 
     @Value("${observium.scheduler.retry-backoff-ms:60000}")
     private long retryBackoffMs = 60000L;
 
     @Scheduled(
-            fixedRateString = "${observium.scheduler.problems.rate:60000}",
+            fixedDelayString = "${observium.scheduler.problems.rate:60000}",
             initialDelayString = "${observium.scheduler.problems.initial-delay:45000}"
     )
     public void refreshProblemsAndMetrics() {
-        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), retryBackoffMs)) {
-            log.debug("Skipping Observium scheduler refresh because retry cooldown is active.");
+        if (!running.compareAndSet(false, true)) {
+            log.warn("Observium monitoring JOB SKIPPED already running");
             return;
         }
+        long startedAt = System.currentTimeMillis();
+        if (!sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), retryBackoffMs)) {
+            log.debug("Skipping Observium scheduler refresh because retry cooldown is active.");
+            running.set(false);
+            return;
+        }
+        log.info("Observium monitoring JOB START");
         integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshAsync()
                 .then(Mono.fromRunnable(() ->
                         snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.OBSERVIUM)))
+                .doFinally(signalType -> running.set(false))
                 .subscribe(
-                        unused -> {
-                        },
+                        unused -> log.info("Observium monitoring JOB DONE durationMs={}", System.currentTimeMillis() - startedAt),
                         throwable -> log.warn(
-                                "Observium scheduler failed but application remains available: {}",
+                                "Observium monitoring JOB FAILED: {}",
                                 throwable != null && throwable.getMessage() != null ? throwable.getMessage() : "unknown cause"
                         )
                 );

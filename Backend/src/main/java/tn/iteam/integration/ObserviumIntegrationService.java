@@ -2,6 +2,8 @@ package tn.iteam.integration;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -23,6 +25,7 @@ import tn.iteam.service.MonitoredHostSnapshotService;
 import tn.iteam.service.ObserviumPersistenceService;
 import tn.iteam.service.ServiceStatusPersistenceService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.service.support.MonitoringFreshnessService;
 
 import java.time.Instant;
 import java.util.List;
@@ -52,6 +55,22 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
     private final MonitoredHostSnapshotService monitoredHostSnapshotService;
     private final ObserviumProblemRepository observiumProblemRepository;
     private final ObserviumMetricRepository observiumMetricRepository;
+    private final MonitoringFreshnessService freshnessService;
+
+    @Value("${app.monitoring.hosts.freshness-ms:300000}")
+    private long hostsFreshnessMs;
+    @Value("${app.monitoring.metrics.freshness-ms:60000}")
+    private long metricsFreshnessMs;
+    @Value("${app.monitoring.problems.freshness-ms:60000}")
+    private long problemsFreshnessMs;
+
+    @PostConstruct
+    void hydrateSnapshotsFromDatabaseOnStartup() {
+        String source = getSourceType().name();
+        hydrateDatasetIfMissing(DATASET_HOSTS, source);
+        hydrateDatasetIfMissing(DATASET_PROBLEMS, source);
+        hydrateDatasetIfMissing(DATASET_METRICS, source);
+    }
 
     @Override
     public MonitoringSourceType getSourceType() {
@@ -66,6 +85,10 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
     @Override
     public void refreshHosts() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ServiceStatusDTO> statuses = List.copyOf(observiumAdapter.fetchAll());
@@ -76,9 +99,15 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
             tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                    return;
+                }
                 serviceStatusPersistenceService.saveAll(statuses);
                 monitoredHostPersistenceService.saveAll(source, statuses);
+                freshnessService.markPersistSuccess(DATASET_HOSTS, source, statuses);
             });
+            freshnessService.markFetchSuccess(DATASET_HOSTS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_HOSTS, source, exception);
         }
@@ -87,6 +116,10 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
     @Override
     public void refreshProblems() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return;
+        }
         try {
             // Step 1: Fetch live data
             List<ObserviumProblemDTO> problems = List.copyOf(observiumAdapter.fetchProblems());
@@ -96,7 +129,15 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
             saveSnapshot(DATASET_PROBLEMS, source, data);
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> observiumPersistenceService.saveProblems(problems));
+            tryPersistToDatabase(() -> {
+                if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problems)) {
+                    log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
+                    return;
+                }
+                observiumPersistenceService.saveProblems(problems);
+                freshnessService.markPersistSuccess(DATASET_PROBLEMS, source, problems);
+            });
+            freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_PROBLEMS, source, exception);
         }
@@ -108,24 +149,32 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
     }
 
     public Mono<Void> refreshAsync() {
-        return Mono.zip(
-            refreshHostsAsync(),
-            refreshProblemsAsync(),
-            refreshMetricsAsync()
-        ).then();
+        return refreshHostsAsync()
+                .then(refreshProblemsAsync())
+                .then(refreshMetricsAsync());
     }
 
     public Mono<Void> refreshHostsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(observiumAdapter::fetchAll)
             .subscribeOn(Schedulers.boundedElastic())
             .doOnNext(statuses -> {
                 List<ServiceStatusDTO> statusList = List.copyOf(statuses);
                 saveSnapshot(DATASET_HOSTS, source, statusList.stream().map(monitoringMapper::toHost).toList());
                 tryPersistToDatabase(() -> {
+                    if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statusList)) {
+                        log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                        return;
+                    }
                     serviceStatusPersistenceService.saveAll(statusList);
                     monitoredHostPersistenceService.saveAll(source, statusList);
+                    freshnessService.markPersistSuccess(DATASET_HOSTS, source, statusList);
                 });
+                freshnessService.markFetchSuccess(DATASET_HOSTS, source);
             })
             .onErrorResume(throwable -> {
                 handleRefreshFailure(DATASET_HOSTS, source, toException(throwable));
@@ -136,12 +185,24 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
 
     public Mono<Void> refreshProblemsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_PROBLEMS, source, problemsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_PROBLEMS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(observiumAdapter::fetchProblems)
             .subscribeOn(Schedulers.boundedElastic())
             .doOnNext(problems -> {
                 List<ObserviumProblemDTO> problemList = List.copyOf(problems);
                 saveSnapshot(DATASET_PROBLEMS, source, problemList.stream().map(monitoringMapper::toProblem).toList());
-                tryPersistToDatabase(() -> observiumPersistenceService.saveProblems(problemList));
+                tryPersistToDatabase(() -> {
+                    if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problemList)) {
+                        log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
+                        return;
+                    }
+                    observiumPersistenceService.saveProblems(problemList);
+                    freshnessService.markPersistSuccess(DATASET_PROBLEMS, source, problemList);
+                });
+                freshnessService.markFetchSuccess(DATASET_PROBLEMS, source);
             })
             .onErrorResume(throwable -> {
                 handleRefreshFailure(DATASET_PROBLEMS, source, toException(throwable));
@@ -152,12 +213,24 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
 
     public Mono<Void> refreshMetricsAsync() {
         String source = getSourceType().name();
+        if (freshnessService.shouldSkipFetch(DATASET_METRICS, source, metricsFreshnessMs)) {
+            log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_METRICS, source);
+            return Mono.empty();
+        }
         return Mono.fromCallable(observiumAdapter::fetchMetrics)
                 .subscribeOn(Schedulers.boundedElastic())
                 .map(metrics -> {
                     List<ObserviumMetricDTO> metricList = List.copyOf(metrics);
                     List<UnifiedMonitoringMetricDTO> data = metricList.stream().map(monitoringMapper::toMetric).toList();
-                    tryPersistToDatabase(() -> observiumPersistenceService.saveMetrics(metricList));
+                    tryPersistToDatabase(() -> {
+                        if (!freshnessService.hasPersistDelta(DATASET_METRICS, source, metricList)) {
+                            log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_METRICS, source);
+                            return;
+                        }
+                        observiumPersistenceService.saveMetrics(metricList);
+                        freshnessService.markPersistSuccess(DATASET_METRICS, source, metricList);
+                    });
+                    freshnessService.markFetchSuccess(DATASET_METRICS, source);
                     return data;
                 })
                 .doOnNext(data -> saveSnapshot(DATASET_METRICS, source, data))
@@ -299,6 +372,29 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
         }
     }
 
+    private void hydrateDatasetIfMissing(String dataset, String source) {
+        try {
+            boolean hasSnapshot = snapshotStore.<List<?>>get(dataset, source).isPresent();
+            if (hasSnapshot) {
+                return;
+            }
+
+            List<?> persisted = safeLoadPersistedFallback(dataset);
+            if (persisted.isEmpty()) {
+                return;
+            }
+
+            snapshotStore.save(
+                    dataset,
+                    source,
+                    new StoredSnapshot<>(persisted, true, Map.of(source, FRESHNESS_DATABASE_SNAPSHOT), Instant.now())
+            );
+            log.info("Hydrated {} snapshot from persisted DB for {} entries={}", dataset, source, persisted.size());
+        } catch (Exception exception) {
+            log.warn("Unable to hydrate {} snapshot from DB for {}: {}", dataset, source, safeMessage(exception));
+        }
+    }
+
     private void saveFallbackSnapshot(String dataset, String source, List<?> data) {
         try {
             snapshotStore.save(
@@ -312,8 +408,10 @@ public class ObserviumIntegrationService implements AsyncIntegrationService {
     }
 
     private void tryPersistToDatabase(Runnable persistenceAction) {
+        long startedAt = System.currentTimeMillis();
         try {
             persistenceAction.run();
+            log.info("Observium DB persistence done durationMs={}", System.currentTimeMillis() - startedAt);
         } catch (Exception ex) {
             log.warn("Database unavailable, skipping persistence: {}", ex.getMessage());
         }

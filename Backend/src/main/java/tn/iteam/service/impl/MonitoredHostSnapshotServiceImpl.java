@@ -9,6 +9,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.repository.MonitoredHostRepository;
 import tn.iteam.repository.ServiceStatusRepository;
 import tn.iteam.service.MonitoredHostSnapshotService;
+import tn.iteam.service.observium.ObserviumSubnetClassifier;
 import tn.iteam.util.MonitoringConstants;
 import tn.iteam.util.MonitoringNormalizeUtils;
 
@@ -22,6 +23,7 @@ public class MonitoredHostSnapshotServiceImpl implements MonitoredHostSnapshotSe
 
     private final MonitoredHostRepository monitoredHostRepository;
     private final ServiceStatusRepository serviceStatusRepository;
+    private final ObserviumSubnetClassifier observiumSubnetClassifier;
 
     @Override
     public List<UnifiedMonitoringHostDTO> loadHosts(MonitoringSourceType source) {
@@ -79,12 +81,26 @@ public class MonitoredHostSnapshotServiceImpl implements MonitoredHostSnapshotSe
                 .port(host.getPort() != null ? host.getPort() : matchedStatus != null ? matchedStatus.getPort() : null)
                 .protocol(matchedStatus != null ? MonitoringNormalizeUtils.normalizeText(matchedStatus.getProtocol()) : null)
                 .status(matchedStatus != null ? MonitoringNormalizeUtils.normalizeText(matchedStatus.getStatus()) : null)
-                .category(matchedStatus != null ? normalizeCategory(matchedStatus.getCategory(), source) : normalizeCategory(null, source))
+                .category(
+                        matchedStatus != null
+                                ? normalizeCategory(matchedStatus.getCategory(), source, resolvedIp)
+                                : normalizeCategory(null, source, resolvedIp)
+                )
                 .lastCheck(matchedStatus != null ? matchedStatus.getLastCheck() : null)
                 .build();
     }
 
-    private String normalizeCategory(String value, MonitoringSourceType source) {
+    private String normalizeCategory(String value, MonitoringSourceType source, String ip) {
+        if (source == MonitoringSourceType.OBSERVIUM) {
+            String normalizedIp = MonitoringNormalizeUtils.normalizeIp(ip);
+            if (normalizedIp != null) {
+                if (!observiumSubnetClassifier.isIncludedInScope(normalizedIp)) {
+                    return MonitoringConstants.UNKNOWN;
+                }
+                return observiumSubnetClassifier.resolveCategory(normalizedIp);
+            }
+        }
+
         String normalized = MonitoringNormalizeUtils.normalizeText(value);
         if (normalized != null) {
             return normalized;

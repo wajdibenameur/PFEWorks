@@ -13,6 +13,7 @@ import { AUTH_CONTEXT } from '../../core/auth/auth-context.port';
 })
 export class SidebarComponent {
   private readonly auth = inject(AUTH_CONTEXT);
+  private readonly authDebug = true;
   readonly items = signal<NavItem[]>(SIDEBAR_NAV_ITEMS);
   readonly collapsed = input<boolean>(false);
   readonly drawerOpen = input<boolean>(false);
@@ -73,23 +74,29 @@ export class SidebarComponent {
     }
 
     if (item.requiredAnyPermissions?.length) {
-      if (this.auth.arePermissionsLoaded()) {
-        return item.requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission));
+      if (!this.auth.arePermissionsLoaded()) {
+        if (this.authDebug) {
+          console.debug('[SIDEBAR] waiting permissions for', item.label);
+        }
+        return false;
       }
 
-      if (item.fallbackRoles?.length) {
-        return item.fallbackRoles.some((role) => this.auth.hasRole(role));
+      const allowed = item.requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission));
+      if (this.authDebug) {
+        console.debug('[SIDEBAR] permission check', item.label, item.requiredAnyPermissions, '=>', allowed);
       }
-
-      return false;
+      return allowed;
     }
 
     if (item.visibility !== 'ADMIN_AREA') {
       return true;
     }
 
-    // UI hint only. Backend remains source of truth.
-    return this.auth.hasRole('SUPERADMIN') || this.auth.hasRole('ADMIN');
+    if (!this.auth.arePermissionsLoaded()) {
+      return false;
+    }
+
+    return this.auth.hasPermission('VIEW_USERS');
   }
 }
 

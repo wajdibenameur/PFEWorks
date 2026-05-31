@@ -44,6 +44,11 @@ public final class MonitoringConstants {
     public static final String CATEGORY_ACCESS_POINT = "ACCESS_POINT";
     public static final String CATEGORY_PRINTER = "PRINTER";
     public static final String CATEGORY_SWITCH = "SWITCH";
+    public static final String CATEGORY_ROUTER = "ROUTER";
+    public static final String CATEGORY_FIREWALL = "FIREWALL";
+    public static final String CATEGORY_LOAD_BALANCER = "LOAD_BALANCER";
+    public static final String CATEGORY_WIFI_ACCESS_POINT = "WIFI_ACCESS_POINT";
+    public static final String CATEGORY_NETWORK_CONTROLLER = "NETWORK_CONTROLLER";
 
     public static final String COLLECTION_FAILED_TEMPLATE = "{} collection failed: {}";
     public static final String UNEXPECTED_COLLECTION_ERROR_TEMPLATE = "Unexpected error collecting %s data";

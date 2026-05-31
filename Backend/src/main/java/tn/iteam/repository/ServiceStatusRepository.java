@@ -18,4 +18,6 @@ public interface ServiceStatusRepository
             String source, String name, String ip);
 
     List<ServiceStatus> findBySourceOrderByIpAscPortAsc(String source);
+
+    List<ServiceStatus> findBySource(String source);
 }

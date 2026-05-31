@@ -11,7 +11,9 @@ import tn.iteam.repository.ServiceStatusRepository;
 import tn.iteam.service.ServiceStatusPersistenceService;
 
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -19,6 +21,7 @@ import java.util.Optional;
 public class ServiceStatusPersistenceServiceImpl implements ServiceStatusPersistenceService {
 
     private static final String STATUS_SAVE_ERROR_TEMPLATE = "Error saving status for {}:{} - {}";
+    private static final int PERSISTENCE_CHUNK_SIZE = 500;
 
     private final ServiceStatusRepository statusRepository;
     private final ServiceStatusMapper statusMapper;
@@ -30,30 +33,54 @@ public class ServiceStatusPersistenceServiceImpl implements ServiceStatusPersist
             return 0;
         }
 
-        int saved = 0;
-        for (ServiceStatusDTO dto : statuses) {
-            try {
-                Optional<ServiceStatus> existing = Optional.empty();
-                if (dto.getSource() != null && dto.getName() != null && dto.getIp() != null) {
-                    existing = statusRepository.findBySourceAndNameAndIp(
-                            dto.getSource(), dto.getName(), dto.getIp());
-                } else if (dto.getSource() != null && dto.getIp() != null && dto.getPort() != null) {
-                    existing = statusRepository.findBySourceAndIpAndPort(
-                            dto.getSource(), dto.getIp(), dto.getPort());
-                }
+        long startedAt = System.currentTimeMillis();
+        String source = statuses.get(0).getSource();
+        List<ServiceStatus> existingForSource = source == null ? List.of() : statusRepository.findBySource(source);
 
-                existing
-                        .map(entity -> {
-                            statusMapper.updateEntity(entity, dto);
-                            return statusRepository.save(entity);
-                        })
-                        .orElseGet(() -> statusRepository.save(statusMapper.toEntity(dto)));
-                saved++;
+        Map<String, ServiceStatus> existingByIdentity = existingForSource.stream()
+                .filter(entity -> identityKey(entity.getSource(), entity.getName(), entity.getIp(), entity.getPort()) != null)
+                .collect(Collectors.toMap(
+                        entity -> identityKey(entity.getSource(), entity.getName(), entity.getIp(), entity.getPort()),
+                        Function.identity(),
+                        (left, right) -> left
+                ));
+
+        List<ServiceStatus> entitiesToSave = statuses.stream().map(dto -> {
+            try {
+                String key = identityKey(dto.getSource(), dto.getName(), dto.getIp(), dto.getPort());
+                ServiceStatus existing = key == null ? null : existingByIdentity.get(key);
+                if (existing != null) {
+                    statusMapper.updateEntity(existing, dto);
+                    return existing;
+                }
+                return statusMapper.toEntity(dto);
             } catch (Exception exception) {
                 log.error(STATUS_SAVE_ERROR_TEMPLATE, dto.getIp(), dto.getPort(), exception.getMessage());
+                return null;
             }
+        }).filter(java.util.Objects::nonNull).toList();
+
+        int saved = 0;
+        for (int index = 0; index < entitiesToSave.size(); index += PERSISTENCE_CHUNK_SIZE) {
+            int end = Math.min(index + PERSISTENCE_CHUNK_SIZE, entitiesToSave.size());
+            saved += statusRepository.saveAll(entitiesToSave.subList(index, end)).size();
         }
 
+        log.info("ServiceStatus batch persistence source={} rows={} durationMs={}",
+                source, saved, System.currentTimeMillis() - startedAt);
         return saved;
+    }
+
+    private String identityKey(String source, String name, String ip, Integer port) {
+        if (source == null || source.isBlank() || ip == null || ip.isBlank()) {
+            return null;
+        }
+        String normalizedSource = source.trim().toUpperCase();
+        String normalizedIp = ip.trim();
+        if (port != null) {
+            return normalizedSource + "|" + normalizedIp + "|" + port;
+        }
+        String normalizedName = name == null ? "" : name.trim();
+        return normalizedSource + "|" + normalizedIp + "|" + normalizedName;
     }
 }

@@ -179,9 +179,11 @@ public class TicketController {
             @RequestParam(required = false) Priority priority,
             @Parameter(description = "Filtre optionnel sur la source de supervision")
             @RequestParam(required = false) String source,
+            @Parameter(description = "Filtre archivage: active|archived|all")
+            @RequestParam(required = false, defaultValue = "active") String archived,
             Pageable pageable
     ) {
-        return ResponseEntity.ok(ticketService.search(status, priority, source, pageable).map(ticketMapper::toResponse));
+        return ResponseEntity.ok(ticketService.search(status, priority, source, archived, pageable).map(ticketMapper::toResponse));
     }
 
     @GetMapping("/status/{status}")
@@ -224,6 +226,20 @@ public class TicketController {
         return ticket.map(ticketMapper::toResponse)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @PutMapping("/{id}/archive")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VALIDATE_TICKET)")
+    @Operation(summary = "Archiver un ticket", description = "Archive un ticket et enregistre la date d archivage.")
+    public ResponseEntity<TicketResponseDTO> archive(@PathVariable Long id) {
+        return ResponseEntity.ok(ticketMapper.toResponse(ticketService.archive(id)));
+    }
+
+    @PutMapping("/{id}/unarchive")
+    @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VALIDATE_TICKET)")
+    @Operation(summary = "Desarchiver un ticket", description = "Retire un ticket des archives.")
+    public ResponseEntity<TicketResponseDTO> unarchive(@PathVariable Long id) {
+        return ResponseEntity.ok(ticketMapper.toResponse(ticketService.unarchive(id)));
     }
 
     @DeleteMapping("/{id}")

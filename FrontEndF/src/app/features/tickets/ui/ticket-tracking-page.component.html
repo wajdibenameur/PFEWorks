@@ -1,146 +1,234 @@
 <main class="workspace">
   <section class="hero">
     <div>
-      <p class="eyebrow">Ticket Manager</p>
-      <h1>Ticket Tracking</h1>
-      <p>Track a ticket end to end: assignment, status, interventions, validation, and rejection.</p>
+      <p class="eyebrow">Gestion des tickets</p>
+      <h1>Tickets</h1>
+      @if (!isArchivedSelection()) {
+        <p>Liste, creation, assignation, mise a jour et validation depuis un seul espace.</p>
+      }
     </div>
-    <div class="hero-actions">
-      <a routerLink="/tickets/list" class="ghost-link">Back to List</a>
-      <button type="button" (click)="refresh()">Refresh</button>
-    </div>
+    @if (!isArchivedSelection()) {
+      <div class="hero-actions">
+        @if (canCreateTicket()) {
+          <button type="button" (click)="toggleCreateForm()">
+            {{ createFormOpen() ? 'Fermer creation' : 'Creer un ticket' }}
+          </button>
+        }
+        <button type="button" class="secondary" (click)="toggleArchivedFilter()">
+          {{ showArchivedOnly() ? 'Tickets actifs' : 'Archives' }}
+        </button>
+        <button type="button" class="secondary" (click)="refresh()">Actualiser</button>
+      </div>
+    }
   </section>
 
   @if (errorMessage(); as message) {
     <section class="error-banner">{{ message }}</section>
   }
+  @if (successMessage(); as message) {
+    <section class="success-banner">{{ message }}</section>
+  }
 
-  <section class="tracking-grid">
-    <article class="panel ticket-selector">
+  @if (createFormOpen() && canCreateTicket()) {
+    <section class="panel create-panel">
       <header class="panel-header">
         <div>
-          <h2>Ticket Queue</h2>
-          <small>{{ tickets().length }} ticket{{ tickets().length > 1 ? 's' : '' }}</small>
+          <h2>Creer un ticket</h2>
+          <small>Creation directe depuis la page tickets.</small>
         </div>
       </header>
 
-      @if (isLoading()) {
-        <p class="empty">Loading ticket queue...</p>
-      } @else if (!tickets().length) {
-        <p class="empty">No ticket available for tracking.</p>
-      } @else {
-        <ul class="ticket-list">
-          @for (ticket of tickets(); track ticket.id) {
-            <li [class.active]="selectedTicket()?.id === ticket.id" (click)="selectTicket(ticket)">
-              <strong>#{{ ticket.id }} {{ ticket.title }}</strong>
-              <span>{{ ticket.status ?? 'UNKNOWN' }} • {{ ticket.priority ?? 'N/A' }}</span>
-            </li>
-          }
-        </ul>
-      }
-    </article>
+      <div class="create-grid">
+        <label>
+          <span>Titre</span>
+          <input [ngModel]="createTitle()" (ngModelChange)="createTitle.set($event)" />
+        </label>
+
+        <label>
+          <span>Priorite</span>
+          <select [ngModel]="createPriority()" (ngModelChange)="createPriority.set($event)">
+            @for (option of priorityOptions; track option) {
+              <option [value]="option">{{ option }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="wide">
+          <span>Description</span>
+          <textarea rows="4" [ngModel]="createDescription()" (ngModelChange)="createDescription.set($event)"></textarea>
+        </label>
+
+        <label>
+          <span>Source monitoring</span>
+          <select [ngModel]="createMonitoringSource()" (ngModelChange)="createMonitoringSource.set($event)">
+            <option value="">Manuel</option>
+            @for (source of sourceOptions; track source) {
+              <option [value]="source">{{ source }}</option>
+            }
+          </select>
+        </label>
+
+        <label>
+          <span>ID probleme externe</span>
+          <input [ngModel]="createExternalProblemId()" (ngModelChange)="createExternalProblemId.set($event)" />
+        </label>
+
+        <label>
+          <span>Reference ressource</span>
+          <input [ngModel]="createResourceRef()" (ngModelChange)="createResourceRef.set($event)" />
+        </label>
+
+        <label>
+          <span>Host ID</span>
+          <input [ngModel]="createHostId()" (ngModelChange)="createHostId.set($event)" />
+        </label>
+
+        <label>
+          <span>Assigner a</span>
+          <select [ngModel]="createAssignUserId()" (ngModelChange)="parseCreateAssignUser($event)">
+            <option [ngValue]="null">Non assigne</option>
+            @for (user of users(); track user.id) {
+              <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
+            }
+          </select>
+        </label>
+
+        <label class="checkbox-row wide">
+          <input
+            type="checkbox"
+            [ngModel]="createExternalProblem()"
+            (ngModelChange)="createExternalProblem.set($event)"
+          />
+          <span>Lier a un incident monitoring externe</span>
+        </label>
+      </div>
+
+      <div class="create-actions">
+        <button type="button" (click)="submitCreate()" [disabled]="isMutating()">
+          {{ isMutating() ? 'Creation...' : 'Creer le ticket' }}
+        </button>
+      </div>
+    </section>
+  }
+
+  <section class="tracking-grid" [class.detail-only]="hasSelection()">
+    @if (!hasSelection()) {
+      <article class="panel ticket-selector" [class.hidden]="hasSelection()">
+        <header class="panel-header">
+          <div>
+            <h2>Liste des tickets</h2>
+            <small>{{ displayedTickets().length }} ticket{{ displayedTickets().length > 1 ? 's' : '' }}</small>
+          </div>
+        </header>
+
+        @if (isLoading()) {
+          <p class="empty">Chargement de la liste...</p>
+        } @else if (!displayedTickets().length) {
+          <p class="empty">Aucun ticket dans cette vue.</p>
+        } @else {
+          <ul class="ticket-list">
+            @for (ticket of displayedTickets(); track ticket.id) {
+              <li [class.active]="selectedTicket()?.id === ticket.id" (click)="selectTicket(ticket)">
+                <strong>#{{ ticket.id }} {{ ticket.title }}</strong>
+                <span>{{ ticket.status ?? 'UNKNOWN' }} - {{ ticket.priority ?? 'N/A' }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </article>
+    }
 
     <article class="panel ticket-detail">
       @if (!hasSelection()) {
-        <p class="empty">Select a ticket from the queue to inspect and update it.</p>
+        <p class="empty">Selectionnez un ticket de la liste pour voir les details.</p>
       } @else {
         <header class="panel-header">
           <div>
-            <h2>#{{ selectedTicket()!.id }} — {{ selectedTicket()!.title }}</h2>
+            <h2>#{{ selectedTicket()!.id }} - {{ selectedTicket()!.title }}</h2>
             <small>
               {{ selectedTicket()!.monitoringSource ?? (selectedTicket()!.externalProblem ? 'EXTERNAL' : 'MANUAL') }}
-              • {{ priorityLabel(selectedTicket()) }}
+              - {{ priorityLabel(selectedTicket()) }}
             </small>
           </div>
-          <span class="badge">{{ statusBadge(selectedTicket()) }}</span>
+          <div class="detail-header-actions">
+            <span class="badge">{{ statusBadge(selectedTicket()) }}</span>
+            <button type="button" class="secondary" (click)="clearSelection()">Retour a la liste</button>
+          </div>
         </header>
 
         <section class="details-grid">
           <div class="detail-card">
             <span>Description</span>
-            <p>{{ selectedTicket()!.description ?? 'No description' }}</p>
+            <p>{{ selectedTicket()!.description ?? 'Aucune description' }}</p>
           </div>
           <div class="detail-card">
-            <span>Creator</span>
-            <p>{{ selectedTicket()!.createdBy?.username ?? 'Unknown' }}</p>
+            <span>Createur</span>
+            <p>{{ selectedTicket()!.createdBy?.username ?? 'Inconnu' }}</p>
           </div>
+          @if (!isSupport()) {
+            <div class="detail-card">
+              <span>Assigne a</span>
+              <p>{{ selectedTicket()!.assignedTo?.username ?? 'Non assigne' }}</p>
+            </div>
+          }
           <div class="detail-card">
-            <span>Assigned To</span>
-            <p>{{ selectedTicket()!.assignedTo?.username ?? 'Unassigned' }}</p>
-          </div>
-          <div class="detail-card">
-            <span>External Link</span>
+            <span>Lien externe</span>
             <p>
-              {{
-                selectedTicket()!.externalProblemId ??
-                  selectedTicket()!.resourceRef ??
-                  'No monitoring link stored'
-              }}
+              {{ selectedTicket()!.externalProblemId ?? selectedTicket()!.resourceRef ?? 'Aucun lien monitoring' }}
             </p>
           </div>
         </section>
 
+        @if (!isArchivedSelection()) {
         <section class="actions-grid">
-          <div class="action-card">
-            <h3>Status</h3>
-            @if (canEditTicket()) {
-              <select [ngModel]="statusDraft()" (ngModelChange)="statusDraft.set($event)">
-                @for (status of statusOptions; track status) {
-                  <option [value]="status">{{ status }}</option>
-                }
-              </select>
-              <textarea
-                rows="3"
-                placeholder="Optional resolution context"
-                [ngModel]="resolutionDraft()"
-                (ngModelChange)="resolutionDraft.set($event)"
-              ></textarea>
-              <button type="button" (click)="updateStatus()" [disabled]="isMutating()">Update Status</button>
-            } @else {
-              <p class="empty">This action requires EDIT_TICKET.</p>
-            }
-          </div>
+          @if (!isSupport()) {
+            <div class="action-card">
+              <h3>Statut</h3>
+              @if (canEditTicket()) {
+                <select [ngModel]="statusDraft()" (ngModelChange)="statusDraft.set($event)">
+                  @for (status of visibleStatusOptions(); track status) {
+                    <option [value]="status">{{ status }}</option>
+                  }
+                </select>
+                <textarea rows="3" placeholder="Contexte de resolution (optionnel)" [ngModel]="resolutionDraft()" (ngModelChange)="resolutionDraft.set($event)"></textarea>
+                <button type="button" (click)="updateStatus()" [disabled]="isMutating()">Mettre a jour</button>
+              } @else {
+                <p class="empty">Vous ne pouvez pas modifier le statut de ce ticket.</p>
+              }
+            </div>
+          }
 
-          <div class="action-card">
-            <h3>Assign</h3>
-            @if (canAssignTicket()) {
-              <select [ngModel]="assignUserId()" (ngModelChange)="parseAssignUser($event)">
-                <option [ngValue]="null">Select assignee</option>
-                @for (user of users(); track user.id) {
-                  <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
-                }
-              </select>
-              <button type="button" (click)="assign()" [disabled]="isMutating() || !assignUserId()">Assign Ticket</button>
-            } @else {
-              <p class="empty">This action requires ASSIGN_TICKET and VIEW_USERS.</p>
-            }
-          </div>
+          @if (!isSupport()) {
+            <div class="action-card">
+              <h3>Assignation</h3>
+              @if (canAssignTicket()) {
+                <select [ngModel]="assignUserId()" (ngModelChange)="parseAssignUser($event)">
+                  <option [ngValue]="null">Selectionner un assigne</option>
+                  @for (user of users(); track user.id) {
+                    <option [ngValue]="user.id">{{ user.username }} ({{ user.role ?? 'NO_ROLE' }})</option>
+                  }
+                </select>
+                <button type="button" (click)="assign()" [disabled]="isMutating() || !assignUserId()">Assigner le ticket</button>
+              } @else {
+                <p class="empty">Assigne a: {{ selectedTicket()!.assignedTo?.username ?? 'Non assigne' }}</p>
+              }
+            </div>
+          }
 
           <div class="action-card">
             <h3>Validation</h3>
             @if (canValidateTicket()) {
-              <textarea
-                rows="3"
-                placeholder="Rejection reason if needed"
-                [ngModel]="rejectReason()"
-                (ngModelChange)="rejectReason.set($event)"
-              ></textarea>
+              <textarea rows="3" placeholder="Motif du rejet (si necessaire)" [ngModel]="rejectReason()" (ngModelChange)="rejectReason.set($event)"></textarea>
               <div class="inline-actions">
-                <button type="button" (click)="validateTicket()" [disabled]="isMutating()">Validate</button>
-                <button
-                  type="button"
-                  class="danger"
-                  (click)="rejectTicket()"
-                  [disabled]="isMutating() || !rejectReason().trim()"
-                >
-                  Reject
-                </button>
+                <button type="button" (click)="validateTicket()" [disabled]="isMutating() || (isSupport() && !canSendForVerification())">{{ isSupport() ? 'Envoyer verification' : 'Valider' }}</button>
+                <button type="button" class="danger" (click)="rejectTicket()" [disabled]="isMutating() || !rejectReason().trim()">Rejeter</button>
               </div>
             } @else {
-              <p class="empty">This action requires VALIDATE_TICKET.</p>
+              <p class="empty">Vous ne pouvez pas valider ce ticket.</p>
             }
           </div>
         </section>
+        }
 
         <section class="panel interventions-panel">
           <header class="panel-header">
@@ -150,52 +238,33 @@
             </div>
           </header>
 
-          @if (canAddComment()) {
+          @if (!isArchivedSelection() && canAddComment()) {
             <div class="intervention-form">
-              <input
-                placeholder="Action"
-                [ngModel]="interventionAction()"
-                (ngModelChange)="interventionAction.set($event)"
-              />
-              <textarea
-                rows="3"
-                placeholder="Comment"
-                [ngModel]="interventionComment()"
-                (ngModelChange)="interventionComment.set($event)"
-              ></textarea>
-              <input
-                placeholder="Result (optional)"
-                [ngModel]="interventionResult()"
-                (ngModelChange)="interventionResult.set($event)"
-              />
-              <button
-                type="button"
-                (click)="addIntervention()"
-                [disabled]="isMutating() || !interventionComment().trim()"
-              >
-                Add Intervention
-              </button>
+              <input placeholder="Action" [ngModel]="interventionAction()" (ngModelChange)="interventionAction.set($event)" />
+              <textarea rows="3" placeholder="Commentaire" [ngModel]="interventionComment()" (ngModelChange)="interventionComment.set($event)"></textarea>
+              <input placeholder="Resultat (optionnel)" [ngModel]="interventionResult()" (ngModelChange)="interventionResult.set($event)" />
+              <button type="button" (click)="addIntervention()" [disabled]="isMutating() || !interventionComment().trim()">Ajouter intervention</button>
             </div>
-          } @else {
-            <p class="empty">Adding interventions requires ADD_COMMENT.</p>
+          } @else if (!isArchivedSelection()) {
+            <p class="empty">Vous ne pouvez pas ajouter d'intervention sur ce ticket.</p>
           }
 
           @if (!selectedTicket()!.interventions.length) {
-            <p class="empty">No intervention has been recorded yet.</p>
+            <p class="empty">Aucune intervention enregistree.</p>
           } @else {
             <ul class="intervention-list">
               @for (intervention of selectedTicket()!.interventions; track intervention.id) {
                 <li>
                   <div>
                     <strong>{{ intervention.action ?? 'COMMENT' }}</strong>
-                    <p>{{ intervention.comment ?? 'No comment' }}</p>
+                    <p>{{ intervention.comment ?? 'Sans commentaire' }}</p>
                     <small>
-                      {{ intervention.performedBy?.username ?? 'Unknown user' }}
-                      •
-                      {{ intervention.timestamp ? (intervention.timestamp | date: 'short') : 'Unknown date' }}
+                      {{ intervention.performedBy?.username ?? 'Utilisateur inconnu' }}
+                      -
+                      {{ intervention.timestamp ? (intervention.timestamp | date: 'short') : 'Date inconnue' }}
                     </small>
                   </div>
-                  <span>{{ intervention.result ?? 'Pending result' }}</span>
+                  <span>{{ intervention.result ?? 'Resultat en attente' }}</span>
                 </li>
               }
             </ul>
@@ -205,3 +274,8 @@
     </article>
   </section>
 </main>
+
+
+
+
+

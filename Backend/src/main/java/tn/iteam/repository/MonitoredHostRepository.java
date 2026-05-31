@@ -11,4 +11,5 @@ import java.util.Optional;
 public interface MonitoredHostRepository extends JpaRepository<MonitoredHost, Long> {
     Optional<MonitoredHost> findFirstByHostIdAndSource(String hostId, String source);
     List<MonitoredHost> findBySourceOrderByNameAsc(String source);
+    List<MonitoredHost> findBySourceAndHostIdIn(String source, List<String> hostIds);
 }

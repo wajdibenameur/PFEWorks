@@ -41,9 +41,11 @@ public class ZabbixProblemCollector {
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final ZabbixClient zabbixClient;
+    private final ZabbixSyncStateService syncStateService;
 
-    public ZabbixProblemCollector(ZabbixClient zabbixClient) {
+    public ZabbixProblemCollector(ZabbixClient zabbixClient, ZabbixSyncStateService syncStateService) {
         this.zabbixClient = zabbixClient;
+        this.syncStateService = syncStateService;
     }
 
     /**
@@ -64,7 +66,18 @@ public class ZabbixProblemCollector {
     public List<ZabbixProblemDTO> fetchProblems(JsonNode hosts) {
         Map<String, JsonNode> hostMapById = buildHostMap(hosts);
 
-        JsonNode problemsJson = await(zabbixClient.getRecentProblems());
+        long lastSuccessfulProblemsClock = syncStateService.getLastSuccessfulProblemsClock();
+        boolean fullResync = lastSuccessfulProblemsClock <= 0 || syncStateService.shouldRunFullResync("problems");
+        JsonNode problemsJson;
+        if (fullResync) {
+            log.info(LOG_PREFIX + "FULL FETCH START problems");
+            problemsJson = await(zabbixClient.getRecentProblems());
+            syncStateService.markFullSyncDoneNow("problems");
+        } else {
+            log.info(LOG_PREFIX + "INCREMENTAL FETCH START problems");
+            log.info(LOG_PREFIX + "LASTCLOCK USED problems={}", lastSuccessfulProblemsClock);
+            problemsJson = await(zabbixClient.getRecentProblemsSince(lastSuccessfulProblemsClock));
+        }
 
         List<ZabbixProblemDTO> dtos = new ArrayList<>();
 
@@ -76,6 +89,7 @@ public class ZabbixProblemCollector {
 
         Map<String, JsonNode> triggersById = preloadTriggersForProblems(problemsJson);
 
+        long maxClockSeen = lastSuccessfulProblemsClock;
         for (JsonNode node : problemsJson) {
             String hostId = resolveProblemHostId(node, hostMapById, triggersById);
             if (hostId == null || hostId.isBlank()) {
@@ -94,6 +108,9 @@ public class ZabbixProblemCollector {
 
             long startedAt = node.path(MonitoringConstants.CLOCK_FIELD).asLong(0L);
             long resolvedAt = node.path(RESOLVED_CLOCK_FIELD).asLong(0L);
+            if (startedAt > maxClockSeen) {
+                maxClockSeen = startedAt;
+            }
 
             boolean isResolved = resolvedAt > 0;
 
@@ -121,6 +138,10 @@ public class ZabbixProblemCollector {
                             .build()
             );
         }
+        if (maxClockSeen > lastSuccessfulProblemsClock) {
+            syncStateService.markProblemsClock(maxClockSeen);
+        }
+        log.info(LOG_PREFIX + "DELTA FETCH DONE problems newCount={} lastClock={}", dtos.size(), maxClockSeen);
 
         return dtos;
     }

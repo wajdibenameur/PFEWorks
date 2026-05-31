@@ -7,7 +7,6 @@ export interface NavItem {
   section?: string;
   visibility?: VisibilityRule;
   requiredAnyPermissions?: string[];
-  fallbackRoles?: string[];
   children?: NavItem[];
 }
 
@@ -18,8 +17,7 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     icon: 'dashboard',
     section: 'Overview',
     visibility: 'ALL',
-    requiredAnyPermissions: ['VIEW_DASHBOARD'],
-    fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER']
+    requiredAnyPermissions: ['VIEW_DASHBOARD']
   },
   {
     label: 'Monitoring',
@@ -27,11 +25,11 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     section: 'Monitoring',
     visibility: 'ALL',
     children: [
-      { label: 'Zabbix', route: '/monitoring/zabbix', visibility: 'ALL', requiredAnyPermissions: ['VIEW_DASHBOARD'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] },
-      { label: 'Observium', route: '/monitoring/observium', visibility: 'ALL', requiredAnyPermissions: ['VIEW_DASHBOARD'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] },
-      { label: 'Camera', route: '/monitoring/camera', visibility: 'ALL', requiredAnyPermissions: ['VIEW_DASHBOARD'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] },
-      { label: 'ZKBio', route: '/monitoring/zkbio', visibility: 'ALL', requiredAnyPermissions: ['VIEW_DASHBOARD'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] },
-      { label: 'Access Point', route: '/monitoring/access-point', visibility: 'ALL', requiredAnyPermissions: ['VIEW_DASHBOARD'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] }
+      { label: 'Zabbix', route: '/monitoring/zabbix', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZABBIX'] },
+      { label: 'Observium', route: '/monitoring/observium', visibility: 'ALL', requiredAnyPermissions: ['VIEW_OBSERVIUM'] },
+      { label: 'Camera', route: '/monitoring/camera', visibility: 'ALL', requiredAnyPermissions: ['VIEW_CAMERA'] },
+      { label: 'ZKBio', route: '/monitoring/zkbio', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZKBIO'] },
+      { label: 'Access Point', route: '/monitoring/access-point', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ACCESS_POINT'] }
     ]
   },
   {
@@ -40,18 +38,21 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     icon: 'equipment',
     section: 'Operations',
     visibility: 'ALL',
-    requiredAnyPermissions: ['VIEW_HOSTS'],
-    fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER']
+    requiredAnyPermissions: ['VIEW_HOSTS']
   },
   {
     label: 'Tickets',
+    route: '/tickets/list',
     icon: 'tickets',
     visibility: 'ALL',
-    children: [
-      { label: 'List', route: '/tickets/list', visibility: 'ALL', requiredAnyPermissions: ['VIEW_TICKETS'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] },
-      { label: 'Add', route: '/tickets/add', visibility: 'ALL', requiredAnyPermissions: ['CREATE_TICKET'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT'] },
-      { label: 'Tracking', route: '/tickets/tracking', visibility: 'ALL', requiredAnyPermissions: ['VIEW_TICKETS'], fallbackRoles: ['SUPERADMIN', 'ADMIN', 'SUPPORT', 'VIEWER'] }
-    ]
+    requiredAnyPermissions: ['VIEW_TICKETS']
+  },
+  {
+    label: 'Incident Chat',
+    route: '/chat',
+    icon: 'chat',
+    visibility: 'ALL',
+    requiredAnyPermissions: ['VIEW_TICKETS']
   },
   {
     label: 'Users',
@@ -59,16 +60,14 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     icon: 'users',
     section: 'Administration',
     visibility: 'ALL',
-    requiredAnyPermissions: ['VIEW_USERS'],
-    fallbackRoles: ['SUPERADMIN', 'ADMIN']
+    requiredAnyPermissions: ['VIEW_USERS']
   },
   {
     label: 'Admin Panel',
     route: '/admin',
     icon: 'admin',
     visibility: 'ALL',
-    requiredAnyPermissions: ['VIEW_USERS'],
-    fallbackRoles: ['SUPERADMIN', 'ADMIN']
+    requiredAnyPermissions: ['VIEW_USERS']
   }
 ];
 

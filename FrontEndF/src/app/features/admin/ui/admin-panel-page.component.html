@@ -5,14 +5,6 @@
       <h1>Admin Panel</h1>
       <p>Govern source activation, user permissions, and operational readiness from one place.</p>
     </div>
-    <div class="hero-actions">
-      @if (canManagePermissions()) {
-        <button type="button" class="ghost-btn">Export Audit</button>
-      }
-      @if (canManageUsers()) {
-        <button type="button" class="primary-btn">Add Source</button>
-      }
-    </div>
   </section>
 
   <section class="overview-grid">
@@ -81,4 +73,10 @@
       </div>
     }
   </section>
+
+  @if (canManageUsers()) {
+    <section class="admin-users-section">
+      <app-user-management-page />
+    </section>
+  }
 </main>

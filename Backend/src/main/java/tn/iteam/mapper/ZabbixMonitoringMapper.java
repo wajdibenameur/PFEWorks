@@ -8,6 +8,8 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.util.MonitoringNormalizeUtils;
 
+import java.time.Instant;
+
 /**
  * Mapper for converting Zabbix domain objects to unified monitoring DTOs.
  */
@@ -51,9 +53,20 @@ public class ZabbixMonitoringMapper {
                 .status(entity.getStatus())
                 .units(entity.getUnits())
                 .value(entity.getValue())
-                .timestamp(entity.getTimestamp())
+                .timestamp(resolveDisplayTimestamp(entity))
                 .ip(MonitoringNormalizeUtils.normalizeIp(entity.getIp()))
                 .port(entity.getPort())
                 .build();
+    }
+
+    private Long resolveDisplayTimestamp(ZabbixMetric entity) {
+        Instant updatedAt = entity.getUpdatedAt();
+        if (updatedAt != null) {
+            long epochSeconds = updatedAt.getEpochSecond();
+            if (epochSeconds > 0L) {
+                return epochSeconds;
+            }
+        }
+        return entity.getTimestamp();
     }
 }

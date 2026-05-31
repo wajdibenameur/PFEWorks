@@ -28,7 +28,15 @@ export function extractApiErrorMessage(
     return fallback;
   }
 
+  const rawMessage = apiError.message ?? fallback;
+  if (rawMessage.includes('Transition from') && rawMessage.includes('is not allowed')) {
+    return 'Action impossible pour le statut actuel du ticket. Utilisez le bouton Valider/Rejeter ou choisissez un statut autorise.';
+  }
+  if (rawMessage.includes('TICKET_NOT_FOUND')) {
+    return 'Le ticket est introuvable ou a ete supprime.';
+  }
+
   const sourcePrefix = apiError.source ? `${apiError.source}: ` : '';
-  return `${sourcePrefix}${apiError.message ?? fallback}`;
+  return `${sourcePrefix}${rawMessage}`;
 }
 

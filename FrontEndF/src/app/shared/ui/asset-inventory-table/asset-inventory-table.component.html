@@ -1,7 +1,7 @@
 <article class="panel">
   <header class="panel-header">
     <h2>Monitored Assets Inventory</h2>
-    <small>Hostnames, last checks, IPs, status, source, category</small>
+    <small>Hostnames, last checks, metric freshness state, source, category</small>
   </header>
 
   <div class="filters">
@@ -40,6 +40,7 @@
             <th>IP</th>
             <th>Source</th>
             <th>Category</th>
+            <th>Realtime</th>
             <th>Status</th>
             <th>Alerts</th>
           </tr>
@@ -52,6 +53,15 @@
               <td>{{ asset.ip }}</td>
               <td>{{ asset.source }}</td>
               <td>{{ asset.category }}</td>
+              <td>
+                <span
+                  class="realtime-state realtime-{{ asset.realtimeState }}"
+                  [title]="asset.lastMetricLabel"
+                >
+                  {{ asset.realtimeLabel }}
+                </span>
+                <small class="metric-label">{{ asset.lastMetricLabel }}</small>
+              </td>
               <td>
                 <span class="status status-{{ asset.status }}">{{ asset.status }}</span>
               </td>

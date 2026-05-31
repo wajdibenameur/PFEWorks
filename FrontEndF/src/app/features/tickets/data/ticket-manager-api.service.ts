@@ -21,6 +21,7 @@ export interface TicketFilters {
   status?: TicketStatus | '';
   priority?: TicketPriority | '';
   source?: string;
+  archived?: 'active' | 'archived' | 'all';
   page?: number;
   size?: number;
 }
@@ -69,6 +70,9 @@ export class TicketManagerApiService {
     if (filters.source?.trim()) {
       params = params.set('source', filters.source.trim().toUpperCase());
     }
+    if (filters.archived) {
+      params = params.set('archived', filters.archived);
+    }
 
     return this.http.get<PageResponse<Ticket>>(this.ticketsBaseUrl, { params });
   }
@@ -103,6 +107,14 @@ export class TicketManagerApiService {
 
   rejectTicket(ticketId: number, payload: TicketDecisionPayload): Observable<Ticket> {
     return this.http.put<Ticket>(`${this.ticketsBaseUrl}/${ticketId}/reject`, payload);
+  }
+
+  archiveTicket(ticketId: number): Observable<Ticket> {
+    return this.http.put<Ticket>(`${this.ticketsBaseUrl}/${ticketId}/archive`, {});
+  }
+
+  unarchiveTicket(ticketId: number): Observable<Ticket> {
+    return this.http.put<Ticket>(`${this.ticketsBaseUrl}/${ticketId}/unarchive`, {});
   }
 }
 

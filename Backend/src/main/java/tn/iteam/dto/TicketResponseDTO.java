@@ -15,6 +15,9 @@ public class TicketResponseDTO {
     String description;
     LocalDateTime creationDate;
     String status;
+    LocalDateTime statusChangedAt;
+    LocalDateTime resolvedAt;
+    LocalDateTime validatedAt;
     String priority;
     Boolean externalProblem;
     String monitoringSource;
@@ -22,6 +25,7 @@ public class TicketResponseDTO {
     String resourceRef;
     String resolution;
     Boolean archived;
+    LocalDateTime archivedAt;
     TicketUserDTO createdBy;
     TicketUserDTO assignedTo;
     TicketUserDTO validatedBy;

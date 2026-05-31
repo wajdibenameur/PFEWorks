@@ -11,13 +11,14 @@ import { AUTH_CONTEXT } from './core/auth/auth-context.port';
 import { RealAuthContextService } from './core/auth/real-auth-context.service';
 import { authHeaderInterceptor } from './core/http/auth-header.interceptor';
 import { authErrorInterceptor } from './core/http/auth-error.interceptor';
+import { xsrfAuthInterceptor } from './core/http/xsrf-auth.interceptor';
 
 export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideZoneChangeDetection({ eventCoalescing: true }),
     provideRouter(routes),
-    provideHttpClient(withInterceptors([authHeaderInterceptor, authErrorInterceptor])),
+    provideHttpClient(withInterceptors([xsrfAuthInterceptor, authHeaderInterceptor, authErrorInterceptor])),
     { provide: APP_CONFIG, useValue: appConfigValue },
     { provide: AUTH_CONTEXT, useClass: RealAuthContextService }
   ]

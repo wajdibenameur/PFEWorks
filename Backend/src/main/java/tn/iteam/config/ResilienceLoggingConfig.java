@@ -61,13 +61,20 @@ public class ResilienceLoggingConfig {
 
     private void registerRetryLogging(Retry retry) {
         retry.getEventPublisher()
-                .onRetry(event -> log.warn(
-                        "Retry {} attempt {} after {} ms due to {}",
-                        event.getName(),
-                        event.getNumberOfRetryAttempts(),
-                        event.getWaitInterval().toMillis(),
-                        describeThrowable(event.getLastThrowable())
-                ))
+                .onRetry(event -> {
+                    String message = "Retry {} attempt {} after {} ms due to {}";
+                    Object[] args = new Object[] {
+                            event.getName(),
+                            event.getNumberOfRetryAttempts(),
+                            event.getWaitInterval().toMillis(),
+                            describeThrowable(event.getLastThrowable())
+                    };
+                    if ("zkbioApi".equalsIgnoreCase(event.getName())) {
+                        log.info(message, args);
+                    } else {
+                        log.warn(message, args);
+                    }
+                })
                 .onError(event -> log.warn(
                         "Retry {} exhausted after {} attempts due to {}",
                         event.getName(),

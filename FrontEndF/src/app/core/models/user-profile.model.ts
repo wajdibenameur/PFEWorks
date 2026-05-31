@@ -8,6 +8,7 @@ export interface UserProfile {
   zipCode?: string;
   phone?: string;
   avatar?: string;
+  position?: string;
   roles: string[];
   createdAt?: string;
   updatedAt?: string;
@@ -22,4 +23,5 @@ export interface UpdateProfileRequest {
   zipCode?: string;
   phone?: string;
   avatar?: string;
+  position?: string;
 }

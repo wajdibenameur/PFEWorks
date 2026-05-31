@@ -48,25 +48,29 @@ export class EditProfilePageComponent {
       address: ['', [Validators.required]],
       city: [''],
       zipCode: [''],
-      phone: ['']
+      phone: [''],
+      position: ['']
     });
   }
 
   private initializeForm(profile: UserProfile): void {
-    this.profileForm.patchValue({
-      firstName: profile.firstName || '',
-      lastName: profile.lastName || '',
-      email: profile.email || '',
-      address: profile.address || '',
-      city: profile.city || '',
-      zipCode: profile.zipCode || '',
-      phone: profile.phone || ''
-    });
 
-    if (profile.avatar) {
-      this.previewUrl.set(profile.avatar);
-    }
+  console.log('POSITION:', profile.position);  
+  this.profileForm.patchValue({
+  firstName: profile.firstName || '',
+  lastName: profile.lastName || '',
+  email: profile.email || '',
+  address: profile.address || '',
+  city: profile.city || '',
+  zipCode: profile.zipCode || '',
+  phone: profile.phone || '',
+  position: profile.position || ''
+});
+
+  if (profile.avatar) {
+    this.previewUrl.set(profile.avatar);
   }
+}
 
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
@@ -100,9 +104,14 @@ export class EditProfilePageComponent {
           profileData.avatar = avatarResult.url;
         }
       }
+      const updatedProfile = await firstValueFrom(
+        this.profileService.updateProfile(profileData)
+      );
 
-      await firstValueFrom(this.profileService.updateProfile(profileData));
+      this.initializeForm(updatedProfile);
+
       this.successMessage.set('Profil mis a jour avec succes.');
+
       setTimeout(() => this.router.navigate(['/dashboard']), 2000);
     } catch (error) {
       this.errorMessage.set(extractApiErrorMessage(error, 'Erreur lors de la mise a jour du profil.'));

@@ -21,7 +21,7 @@ import java.io.IOException;
 
 @RestController
 @RequiredArgsConstructor
-@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_DASHBOARD)")
+@PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ZABBIX)")
 @Tag(name = "Prédiction ML", description = "API de prédiction basée sur le modèle TorchScript")
 public class TorchScriptPredictionController {
 

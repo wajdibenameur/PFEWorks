@@ -1,6 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { AUTH_CONTEXT } from '../../../core/auth/auth-context.port';
 import {
   AdminCreateUserPayload,
@@ -9,16 +10,22 @@ import {
   AdminUser,
   LocalAdminUserView,
   MergedAdminUser,
+  SyncAllLocalUsersResponse,
   UserPermissionsView
 } from '../../../core/models/admin-user.model';
 import { AdminApiService } from '../../admin/data/admin-api.service';
-import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
+import { extractApiError, extractApiErrorMessage } from '../../../core/http/http-error.utils';
 
 type UserStatus = 'ACTIVE' | 'INACTIVE';
 type EditorMode = 'create' | 'edit';
 
 const ALL_PERMISSIONS = [
   'VIEW_DASHBOARD',
+  'VIEW_ZABBIX',
+  'VIEW_OBSERVIUM',
+  'VIEW_CAMERA',
+  'VIEW_ZKBIO',
+  'VIEW_ACCESS_POINT',
   'VIEW_METRICS',
   'VIEW_ALERTS',
   'VIEW_LOGS',
@@ -62,15 +69,20 @@ const ALL_PERMISSIONS = [
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class UserManagementPageComponent implements OnInit {
+  private static readonly USERNAME_NO_SPACE_PATTERN = /^\S+$/;
+  private static readonly PASSWORD_SPECIAL_CHAR_PATTERN = /^(?=.*[^A-Za-z0-9]).+$/;
+
   private readonly adminApi = inject(AdminApiService);
   private readonly formBuilder = inject(FormBuilder);
   private readonly auth = inject(AUTH_CONTEXT);
+  private readonly destroyRef = inject(DestroyRef);
 
   readonly users = signal<MergedAdminUser[]>([]);
   readonly roles = signal<AdminRole[]>([]);
   readonly localUserViews = signal<LocalAdminUserView[]>([]);
   readonly isLoading = signal(false);
   readonly isSaving = signal(false);
+  readonly isSyncAllRunning = signal(false);
   readonly isPermissionsSaving = signal(false);
   readonly errorMessage = signal<string | null>(null);
   readonly successMessage = signal<string | null>(null);
@@ -81,21 +93,30 @@ export class UserManagementPageComponent implements OnInit {
   readonly selectedPermissionUser = signal<MergedAdminUser | null>(null);
   readonly selectedGrantPermission = signal<string>(ALL_PERMISSIONS[0]);
   readonly selectedRevokePermission = signal<string>(ALL_PERMISSIONS[0]);
+  readonly currentAuthUsername = signal<string | null>(null);
 
   readonly roleFilter = signal<string>('ALL');
   readonly statusFilter = signal<string>('ALL');
 
   readonly userForm = this.formBuilder.nonNullable.group({
-    username: ['', [Validators.required]],
+    username: [
+      '',
+      [Validators.required, Validators.minLength(8), Validators.pattern(UserManagementPageComponent.USERNAME_NO_SPACE_PATTERN)]
+    ],
     email: ['', [Validators.required, Validators.email]],
     firstName: [''],
     lastName: [''],
+    phone: [''],
+    position: [''],
     role: ['VIEWER', [Validators.required]],
-    enabled: [true],
-    password: ['', [Validators.minLength(8)]]
+    enabled: [false],
+    password: ['', [Validators.minLength(8), Validators.pattern(UserManagementPageComponent.PASSWORD_SPECIAL_CHAR_PATTERN)]]
   });
 
   ngOnInit(): void {
+    this.auth.user$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((user) => {
+      this.currentAuthUsername.set(user?.username ?? null);
+    });
     this.loadReferenceData();
   }
 
@@ -112,28 +133,29 @@ export class UserManagementPageComponent implements OnInit {
     })
   );
 
-  readonly activeCount = computed(() => this.users().filter((user) => user.enabled).length);
-  readonly inactiveCount = computed(() => this.users().filter((user) => !user.enabled).length);
+  readonly activeCount = computed(() => this.users().filter((user) => user.enabled === true).length);
+  readonly inactiveCount = computed(() => this.users().filter((user) => user.enabled !== true).length);
   readonly adminCount = computed(() =>
     this.users().filter((user) => ['SUPERADMIN', 'ADMIN'].includes(this.primaryRole(user))).length
   );
 
   readonly drawerTitle = computed(() =>
-    this.editorMode() === 'create' ? 'Ajouter un utilisateur' : 'Modifier un utilisateur'
+    this.editorMode() === 'create' ? 'Add a user' : 'Edit user'
   );
 
   readonly submitLabel = computed(() =>
-    this.editorMode() === 'create' ? 'Creer le compte' : 'Enregistrer les modifications'
+    this.editorMode() === 'create' ? 'Create account' : 'Save changes'
   );
 
   readonly permissionChoices = computed(() => ALL_PERMISSIONS);
 
   protected primaryRole(user: MergedAdminUser): string {
-    return user.roles[0] ?? user.localRole ?? 'VIEWER';
+    const roles = Array.isArray(user.roles) ? user.roles : [];
+    return roles[0] ?? user.localRole ?? 'VIEWER';
   }
 
   protected userStatus(user: MergedAdminUser): UserStatus {
-    return user.enabled ? 'ACTIVE' : 'INACTIVE';
+    return user.enabled === true ? 'ACTIVE' : 'INACTIVE';
   }
 
   protected displayName(user: MergedAdminUser): string {
@@ -142,7 +164,47 @@ export class UserManagementPageComponent implements OnInit {
   }
 
   protected localSyncState(user: MergedAdminUser): string {
-    return user.localUserId ? `Local #${user.localUserId}` : 'Not yet synced in Backend';
+    return user.localUserId ? `Local #${user.localUserId}` : 'Not yet synced in backend';
+  }
+
+  protected syncAllLocalUsers(): void {
+    if (!this.canManageUsers()) {
+      this.errorMessage.set('You are not allowed to manage users.');
+      return;
+    }
+
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.isSyncAllRunning.set(true);
+
+    this.adminApi.syncAllLocalUsers().subscribe({
+      next: (result) => {
+        this.successMessage.set(this.formatSyncAllMessage(result));
+        this.loadReferenceData();
+        this.isSyncAllRunning.set(false);
+      },
+      error: (error) => {
+        this.errorMessage.set(extractApiErrorMessage(error, 'Unable to synchronize users from Keycloak.'));
+        this.isSyncAllRunning.set(false);
+      }
+    });
+  }
+
+  protected connectionStatus(user: MergedAdminUser): string {
+    return this.isUserConnected(user) ? 'CONNECTED' : 'OFFLINE';
+  }
+
+  protected isUserConnected(user: MergedAdminUser): boolean {
+    if (user.connected === true) {
+      return true;
+    }
+
+    const currentUsername = this.currentAuthUsername();
+    if (!currentUsername) {
+      return false;
+    }
+
+    return currentUsername.trim().toLowerCase() === (user.username ?? '').trim().toLowerCase();
   }
 
   protected openCreateDrawer(): void {
@@ -159,11 +221,17 @@ export class UserManagementPageComponent implements OnInit {
       email: '',
       firstName: '',
       lastName: '',
+      phone: '',
+      position: '',
       role: 'VIEWER',
-      enabled: true,
+      enabled: false,
       password: ''
     });
-    this.userForm.controls.password.addValidators([Validators.required, Validators.minLength(8)]);
+    this.userForm.controls.password.addValidators([
+      Validators.required,
+      Validators.minLength(8),
+      Validators.pattern(UserManagementPageComponent.PASSWORD_SPECIAL_CHAR_PATTERN)
+    ]);
     this.userForm.controls.password.updateValueAndValidity();
     this.drawerOpen.set(true);
   }
@@ -182,12 +250,17 @@ export class UserManagementPageComponent implements OnInit {
       email: user.email,
       firstName: user.firstName ?? '',
       lastName: user.lastName ?? '',
+      phone: user.phone ?? '',
+      position: user.position ?? '',
       role: this.primaryRole(user),
       enabled: user.enabled,
       password: ''
     });
     this.userForm.controls.password.removeValidators(Validators.required);
-    this.userForm.controls.password.addValidators([Validators.minLength(8)]);
+    this.userForm.controls.password.addValidators([
+      Validators.minLength(8),
+      Validators.pattern(UserManagementPageComponent.PASSWORD_SPECIAL_CHAR_PATTERN)
+    ]);
     this.userForm.controls.password.updateValueAndValidity();
     this.drawerOpen.set(true);
   }
@@ -197,7 +270,7 @@ export class UserManagementPageComponent implements OnInit {
   }
 
   protected openPermissionsDrawer(user: MergedAdminUser): void {
-    if (!this.canManagePermissions() || !user.localUserId) {
+    if (!this.canManagePermissions()) {
       return;
     }
 
@@ -208,11 +281,37 @@ export class UserManagementPageComponent implements OnInit {
     this.errorMessage.set(null);
     this.successMessage.set(null);
 
-    this.adminApi.getUserPermissions(user.localUserId).subscribe({
+    if (user.localUserId) {
+      this.loadUserPermissions(user.localUserId);
+      return;
+    }
+
+    this.adminApi
+      .syncLocalUser({
+        username: user.username,
+        email: user.email,
+        role: this.primaryRole(user)
+      })
+      .subscribe({
+        next: (permissions) => {
+          this.applyPermissionUpdate(permissions);
+        },
+        error: (error) => {
+          this.permissionDrawerOpen.set(false);
+          this.selectedPermissionUser.set(null);
+          this.errorMessage.set(extractApiErrorMessage(error, 'Unable to synchronize local user permissions.'));
+        }
+      });
+  }
+
+  private loadUserPermissions(localUserId: number): void {
+    this.adminApi.getUserPermissions(localUserId).subscribe({
       next: (permissions) => {
         this.applyPermissionUpdate(permissions);
       },
       error: (error) => {
+        this.permissionDrawerOpen.set(false);
+        this.selectedPermissionUser.set(null);
         this.errorMessage.set(extractApiErrorMessage(error, 'Unable to load user permissions.'));
       }
     });
@@ -225,7 +324,7 @@ export class UserManagementPageComponent implements OnInit {
 
   protected submitForm(): void {
     if (!this.canManageUsers()) {
-      this.errorMessage.set('Cette action requiert MANAGE_USERS.');
+      this.errorMessage.set('You are not allowed to manage users.');
       return;
     }
 
@@ -234,6 +333,7 @@ export class UserManagementPageComponent implements OnInit {
     this.userForm.markAllAsTouched();
 
     if (this.userForm.invalid) {
+      this.errorMessage.set(this.buildUserFormValidationMessage());
       return;
     }
 
@@ -247,6 +347,8 @@ export class UserManagementPageComponent implements OnInit {
         password: rawValue.password,
         firstName: this.nullableValue(rawValue.firstName),
         lastName: this.nullableValue(rawValue.lastName),
+        phone: this.nullableValue(rawValue.phone),
+        position: this.nullableValue(rawValue.position),
         role: rawValue.role,
         enabled: rawValue.enabled
       };
@@ -254,12 +356,22 @@ export class UserManagementPageComponent implements OnInit {
       this.adminApi.createUser(payload).subscribe({
         next: (createdUser) => {
           this.rebuildUsers([createdUser, ...this.users()]);
-          this.successMessage.set(`Utilisateur ${createdUser.username} cree avec succes.`);
+          this.successMessage.set(`User ${createdUser.username} was created successfully.`);
           this.isSaving.set(false);
-          this.drawerOpen.set(false);
+          this.userForm.reset({
+            username: '',
+            email: '',
+            firstName: '',
+            lastName: '',
+            phone: '',
+            position: '',
+            role: 'VIEWER',
+            enabled: false,
+            password: ''
+          });
         },
         error: (error) => {
-          this.errorMessage.set(extractApiErrorMessage(error, 'Unable to create user.'));
+          this.errorMessage.set(this.mapUserMutationError(error, 'create'));
           this.isSaving.set(false);
         }
       });
@@ -278,6 +390,8 @@ export class UserManagementPageComponent implements OnInit {
       email: rawValue.email.trim(),
       firstName: this.nullableValue(rawValue.firstName),
       lastName: this.nullableValue(rawValue.lastName),
+      phone: this.nullableValue(rawValue.phone),
+      position: this.nullableValue(rawValue.position),
       role: rawValue.role,
       enabled: rawValue.enabled
     };
@@ -289,12 +403,11 @@ export class UserManagementPageComponent implements OnInit {
     this.adminApi.updateUser(userId, payload).subscribe({
       next: (updatedUser) => {
         this.replaceAuthUser(updatedUser);
-        this.successMessage.set(`Utilisateur ${updatedUser.username} mis a jour avec succes.`);
+        this.successMessage.set(`User ${updatedUser.username} was updated successfully.`);
         this.isSaving.set(false);
-        this.drawerOpen.set(false);
       },
       error: (error) => {
-        this.errorMessage.set(extractApiErrorMessage(error, 'Unable to update user.'));
+        this.errorMessage.set(this.mapUserMutationError(error, 'edit'));
         this.isSaving.set(false);
       }
     });
@@ -302,24 +415,94 @@ export class UserManagementPageComponent implements OnInit {
 
   protected toggleUserStatus(user: MergedAdminUser): void {
     if (!this.canManageUsers()) {
-      this.errorMessage.set('Cette action requiert MANAGE_USERS.');
+      this.errorMessage.set('You are not allowed to manage users.');
       return;
     }
 
     this.successMessage.set(null);
     this.errorMessage.set(null);
 
-    this.adminApi.updateUserStatus(user.id, !user.enabled).subscribe({
+    this.adminApi.updateUserStatus(user.id, user.enabled !== true).subscribe({
       next: (updatedUser) => {
-        this.replaceAuthUser(updatedUser);
-        this.successMessage.set(
-          `Utilisateur ${updatedUser.username} ${updatedUser.enabled ? 'active' : 'desactive'} avec succes.`
-        );
+        this.loadUsers();
+        if (updatedUser.enabled) {
+          this.successMessage.set(
+            `User ${updatedUser.username} was activated successfully. Information email was sent.`
+          );
+        } else {
+          this.successMessage.set(`User ${updatedUser.username} was deactivated successfully.`);
+        }
       },
       error: (error) => {
         this.errorMessage.set(extractApiErrorMessage(error, 'Unable to update user status.'));
       }
     });
+  }
+
+  protected forceLogout(user: MergedAdminUser): void {
+    if (!this.canManageUsers()) {
+      this.errorMessage.set('You are not allowed to manage users.');
+      return;
+    }
+
+    this.successMessage.set(null);
+    this.errorMessage.set(null);
+
+    this.adminApi.forceLogoutUser(user.id).subscribe({
+      next: (updatedUser) => {
+        this.replaceAuthUser(updatedUser);
+        this.successMessage.set(
+          `User ${updatedUser.username} was logged out successfully. Their active sessions were terminated and they must sign in again.`
+        );
+      },
+      error: (error) => {
+        this.errorMessage.set(this.mapForceLogoutError(error, user.username));
+      }
+    });
+  }
+
+  protected deleteUser(user: MergedAdminUser): void {
+    if (!this.canManageUsers()) {
+      this.errorMessage.set('You are not allowed to manage users.');
+      return;
+    }
+
+    if (this.isSystemTechnicalUser(user)) {
+      this.errorMessage.set('The SYSTEM technical account cannot be deleted.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Confirm deletion of user "${user.username}"? This action cannot be undone.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    this.successMessage.set(null);
+    this.errorMessage.set(null);
+
+    this.adminApi.deleteUser(user.id).subscribe({
+      next: () => {
+        this.loadReferenceData();
+        this.successMessage.set(`User ${user.username} was deleted successfully.`);
+      },
+      error: (error) => {
+        this.errorMessage.set(extractApiErrorMessage(error, 'Unable to delete user.'));
+      }
+    });
+  }
+
+  protected isSystemTechnicalUser(user: MergedAdminUser): boolean {
+    const normalizedUsername = (user.username ?? '').trim().toUpperCase();
+    const normalizedEmail = (user.email ?? '').trim().toLowerCase();
+    const normalizedRole = this.primaryRole(user).trim().toUpperCase();
+
+    return (
+      normalizedUsername === 'SYSTEM' ||
+      normalizedEmail === 'system@monitoring.local' ||
+      normalizedRole === 'SYSTEM'
+    );
   }
 
   protected grantSelectedPermission(): void {
@@ -332,7 +515,7 @@ export class UserManagementPageComponent implements OnInit {
     this.adminApi.grantUserPermission(user.localUserId, this.selectedGrantPermission()).subscribe({
       next: (permissions) => {
         this.applyPermissionUpdate(permissions);
-        this.successMessage.set(`Permission ${this.selectedGrantPermission()} ajoutee a ${user.username}.`);
+        this.successMessage.set(`Permission ${this.selectedGrantPermission()} was granted to ${user.username}.`);
         this.isPermissionsSaving.set(false);
       },
       error: (error) => {
@@ -352,7 +535,7 @@ export class UserManagementPageComponent implements OnInit {
     this.adminApi.revokeUserPermission(user.localUserId, this.selectedRevokePermission()).subscribe({
       next: (permissions) => {
         this.applyPermissionUpdate(permissions);
-        this.successMessage.set(`Permission ${this.selectedRevokePermission()} retiree a ${user.username}.`);
+        this.successMessage.set(`Permission ${this.selectedRevokePermission()} was revoked from ${user.username}.`);
         this.isPermissionsSaving.set(false);
       },
       error: (error) => {
@@ -372,7 +555,7 @@ export class UserManagementPageComponent implements OnInit {
     this.adminApi.removeGrantedPermission(user.localUserId, permission).subscribe({
       next: (permissions) => {
         this.applyPermissionUpdate(permissions);
-        this.successMessage.set(`Ajout personnalise ${permission} annule pour ${user.username}.`);
+        this.successMessage.set(`Custom granted permission ${permission} was removed for ${user.username}.`);
         this.isPermissionsSaving.set(false);
       },
       error: (error) => {
@@ -392,7 +575,7 @@ export class UserManagementPageComponent implements OnInit {
     this.adminApi.removeRevokedPermission(user.localUserId, permission).subscribe({
       next: (permissions) => {
         this.applyPermissionUpdate(permissions);
-        this.successMessage.set(`Retrait personnalise ${permission} annule pour ${user.username}.`);
+        this.successMessage.set(`Custom revoked permission ${permission} was cleared for ${user.username}.`);
         this.isPermissionsSaving.set(false);
       },
       error: (error) => {
@@ -425,16 +608,13 @@ export class UserManagementPageComponent implements OnInit {
       this.isLoading.set(false);
     };
 
-    this.adminApi.getUsers().subscribe({
-      next: (users) => {
+    this.loadUsers(
+      (users) => {
         authUsers = users;
         tryFinalize();
       },
-      error: (error) => {
-        this.errorMessage.set(extractApiErrorMessage(error, 'Unable to load admin users.'));
-        this.isLoading.set(false);
-      }
-    });
+      () => this.isLoading.set(false)
+    );
 
     this.adminApi.getRoles().subscribe({
       next: (incomingRoles) => {
@@ -471,9 +651,27 @@ export class UserManagementPageComponent implements OnInit {
     this.users.set(mergedUsers);
   }
 
+  private loadUsers(onLoaded?: (users: AdminUser[]) => void, onError?: () => void): void {
+    this.adminApi.getUsers().subscribe({
+      next: (users) => {
+        this.rebuildUsers(users);
+        onLoaded?.(users);
+      },
+      error: (error) => {
+        this.errorMessage.set(extractApiErrorMessage(error, 'Unable to load admin users.'));
+        onError?.();
+      }
+    });
+  }
+
   private mergeUser(authUser: AdminUser, localUser: LocalAdminUserView | null): MergedAdminUser {
+    const normalizedRoles = Array.isArray(authUser.roles)
+      ? authUser.roles.filter((role): role is string => typeof role === 'string' && role.trim().length > 0)
+      : [];
+
     return {
       ...authUser,
+      roles: normalizedRoles,
       localUserId: localUser?.id ?? null,
       localRole: localUser?.role ?? null,
       rolePermissions: localUser?.rolePermissions ?? [],
@@ -544,8 +742,100 @@ export class UserManagementPageComponent implements OnInit {
     );
   }
 
+  private formatSyncAllMessage(result: SyncAllLocalUsersResponse): string {
+    return (
+      `Synchronization completed: ${result.synchronizedUsers}/${result.totalKeycloakUsers} users synchronized ` +
+      `(created=${result.createdUsers}, updated=${result.updatedUsers}, skipped=${result.skippedUsers}, failed=${result.failedUsers}).`
+    );
+  }
+
   private nullableValue(value: string): string | null {
     const trimmed = value.trim();
     return trimmed ? trimmed : null;
+  }
+
+  private buildUserFormValidationMessage(): string {
+    const usernameErrors = this.userForm.controls.username.errors;
+    if (usernameErrors?.['required']) {
+      return 'Username is required.';
+    }
+    if (usernameErrors?.['minlength']) {
+      return 'Username must be at least 8 characters long.';
+    }
+    if (usernameErrors?.['pattern']) {
+      return 'Username must not contain spaces.';
+    }
+
+    const emailErrors = this.userForm.controls.email.errors;
+    if (emailErrors?.['required']) {
+      return 'Email is required.';
+    }
+    if (emailErrors?.['email']) {
+      return 'Email format is invalid.';
+    }
+
+    const passwordErrors = this.userForm.controls.password.errors;
+    if (passwordErrors?.['required'] && this.editorMode() === 'create') {
+      return 'Password is required.';
+    }
+    if (passwordErrors?.['minlength']) {
+      return 'Password must be at least 8 characters long.';
+    }
+    if (passwordErrors?.['pattern']) {
+      return 'Password must include at least one special character.';
+    }
+
+    return 'Some fields are invalid. Please check your input and try again.';
+  }
+
+  private mapUserMutationError(error: unknown, mode: EditorMode): string {
+    const apiError = extractApiError(error);
+    const sourceText = `${apiError?.source ?? ''}`.toLowerCase();
+    const codeText = `${apiError?.errorCode ?? ''}`.toLowerCase();
+    const messageText = `${apiError?.message ?? ''}`.toLowerCase();
+    const combined = `${sourceText} ${codeText} ${messageText}`;
+
+    if (combined.includes('email') && (combined.includes('exist') || combined.includes('already'))) {
+      return 'This email already exists. Please use another email.';
+    }
+
+    if (
+      (combined.includes('username') || combined.includes('user name') || combined.includes('login')) &&
+      (combined.includes('exist') || combined.includes('already') || combined.includes('duplicate') || combined.includes('taken'))
+    ) {
+      return 'This username already exists. Please choose another username.';
+    }
+
+    const fallback =
+      mode === 'create'
+        ? 'Unable to create user.'
+        : 'Unable to update user.';
+    return extractApiErrorMessage(error, fallback);
+  }
+
+  private mapForceLogoutError(error: unknown, username: string): string {
+    const apiError = extractApiError(error);
+    const sourceText = `${apiError?.source ?? ''}`.toLowerCase();
+    const codeText = `${apiError?.errorCode ?? ''}`.toLowerCase();
+    const messageText = `${apiError?.message ?? ''}`.toLowerCase();
+    const combined = `${sourceText} ${codeText} ${messageText}`;
+
+    if (combined.includes('forbidden') || combined.includes('access denied') || combined.includes('not allowed')) {
+      return `Unable to force logout for ${username}: you do not have permission to perform this action.`;
+    }
+
+    if (
+      combined.includes('not found') ||
+      combined.includes('user_not_found') ||
+      combined.includes('resource_not_found')
+    ) {
+      return `Unable to force logout for ${username}: user was not found in the identity provider.`;
+    }
+
+    if (combined.includes('session') && (combined.includes('not found') || combined.includes('already'))) {
+      return `Unable to force logout for ${username}: no active session was found to terminate.`;
+    }
+
+    return extractApiErrorMessage(error, `Unable to force logout for ${username}. Please try again.`);
   }
 }

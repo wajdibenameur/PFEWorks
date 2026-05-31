@@ -1,6 +1,6 @@
 {
   "/api/auth/*": {
-    "target": "http://localhost:8081",
+    "target": "http://localhost:8099",
     "secure": false,
     "changeOrigin": true,
     "logLevel": "debug"

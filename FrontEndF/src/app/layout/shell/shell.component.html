@@ -13,6 +13,18 @@
       (closeRequested)="closeDrawer()"
     ></app-sidebar>
     <main class="content">
+      @if (platformAlert.alert(); as alert) {
+        <section class="platform-alert-card" role="alert" aria-live="assertive">
+          <div class="platform-alert-card__badge">Platform Alert</div>
+          <div class="platform-alert-card__body">
+            <strong>{{ alert.title }}</strong>
+            <p>{{ alert.message }}</p>
+          </div>
+          <button type="button" class="platform-alert-card__close" (click)="platformAlert.dismiss()" aria-label="Fermer">
+            Fermer
+          </button>
+        </section>
+      }
       <router-outlet></router-outlet>
     </main>
   </div>

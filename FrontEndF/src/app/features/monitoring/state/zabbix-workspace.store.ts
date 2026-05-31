@@ -6,6 +6,7 @@ import { CollectionTarget } from '../../../core/models/collection-target.model';
 import { DashboardAnomaly } from '../../../core/models/dashboard-anomaly.model';
 import { DashboardOverview } from '../../../core/models/dashboard-overview.model';
 import { DashboardPrediction } from '../../../core/models/dashboard-prediction.model';
+import { MonitoringHost } from '../../../core/models/monitoring-host.model';
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
@@ -43,6 +44,7 @@ export class ZabbixWorkspaceStore {
   readonly hostSearch = signal('');
   readonly selectedHostKey = signal<string | null>(null);
 
+  readonly monitoredHosts = signal<MonitoringHost[]>([]);
   readonly problems = signal<ZabbixProblem[]>([]);
   readonly metrics = signal<ZabbixMetric[]>([]);
   readonly predictions = signal<DashboardPrediction[]>([]);
@@ -64,10 +66,17 @@ export class ZabbixWorkspaceStore {
     const hostKeys = new Set<string>();
     const downHostKeys = new Set<string>();
 
+    for (const host of this.monitoredHosts()) {
+      const key = this.hostKey(host.hostId, host.name);
+      hostKeys.add(key);
+      if ((host.status ?? '').toUpperCase() === 'DOWN') {
+        downHostKeys.add(key);
+      }
+    }
+
     for (const problem of this.problems()) {
       const key = this.hostKey(problem.hostId, problem.host);
       hostKeys.add(key);
-      downHostKeys.add(key);
     }
 
     for (const metric of this.metrics()) {
@@ -131,7 +140,8 @@ export class ZabbixWorkspaceStore {
           .filter(Boolean)
           .some((value) => String(value).toLowerCase().includes(search));
       const matchesSeverity = severity === 'ALL' || problem.severity === severity;
-      const matchesStatus = status === 'ALL' || problem.statusLabel === status;
+      const normalizedStatus = this.normalizeProblemStatus(problem.statusLabel, problem.active);
+      const matchesStatus = status === 'ALL' || normalizedStatus === status;
       return matchesSearch && matchesSeverity && matchesStatus;
     });
   });
@@ -191,6 +201,27 @@ export class ZabbixWorkspaceStore {
       }
     >();
 
+    for (const host of this.monitoredHosts()) {
+      const key = this.hostKey(host.hostId, host.name);
+      const hostLastCheckTs = this.parseHostLastCheck(host.lastCheck);
+      const existing = hosts.get(key) ?? {
+        key,
+        hostId: host.hostId,
+        hostName: host.name || host.hostId || 'Unknown host',
+        ip: host.ip,
+        metricCount: 0,
+        totalProblems: 0,
+        activeProblems: 0,
+        anomalyCount: 0,
+        latestTimestamp: hostLastCheckTs,
+        riskStatus: 'Prediction unavailable' as const
+      };
+
+      existing.ip = existing.ip || host.ip;
+      existing.latestTimestamp = Math.max(existing.latestTimestamp ?? 0, hostLastCheckTs ?? 0) || null;
+      hosts.set(key, existing);
+    }
+
     for (const metric of this.metrics()) {
       const key = this.hostKey(metric.hostId, metric.hostName);
       const existing = hosts.get(key) ?? {
@@ -228,7 +259,7 @@ export class ZabbixWorkspaceStore {
       };
 
       existing.totalProblems += 1;
-      if (problem.active || (problem.status ?? 'ACTIVE') === 'ACTIVE') {
+      if (this.isProblemActive(problem.status, problem.active)) {
         existing.activeProblems += 1;
       }
       existing.ip = existing.ip || problem.ip;
@@ -418,6 +449,7 @@ export class ZabbixWorkspaceStore {
       .sort((left, right) => right.anomalyScore - left.anomalyScore)
       .map((anomaly) => ({
         ...anomaly,
+        metricName: this.metricLabel(anomaly.metricName),
         scorePercent: Math.round(anomaly.anomalyScore * 100)
       }))
   );
@@ -435,6 +467,14 @@ export class ZabbixWorkspaceStore {
     this.errorMessage.set(null);
 
     forkJoin({
+      hostsResponse: this.api.getMonitoringHostsResponse().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load Zabbix hosts snapshot.')
+          );
+          return of({ data: [] as MonitoringHost[], degraded: true, freshness: {}, coverage: {} });
+        })
+      ),
       problemsResponse: this.api.getMonitoringProblemsResponse().pipe(
         catchError((error) => {
           this.errorMessage.set(
@@ -484,11 +524,12 @@ export class ZabbixWorkspaceStore {
         })
       )
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ problemsResponse, metricsResponse, predictions, anomalies, sourceHealth, overview }) => {
+      next: ({ hostsResponse, problemsResponse, metricsResponse, predictions, anomalies, sourceHealth, overview }) => {
         if (currentLoadGeneration !== this.loadGeneration) {
           return;
         }
 
+        this.monitoredHosts.set(this.toZabbixHosts(hostsResponse.data));
         this.problems.set(this.mergeProblems([], this.toZabbixProblems(problemsResponse.data)));
         this.metrics.set(this.mergeMetrics([], this.toZabbixMetrics(metricsResponse.data)));
         this.predictions.set(predictions);
@@ -636,7 +677,7 @@ export class ZabbixWorkspaceStore {
 
   private toZabbixProblems(problems: MonitoringProblem[]): ZabbixProblem[] {
     return problems
-      .filter((problem) => problem.source === 'ZABBIX')
+      .filter((problem) => (problem.source ?? '').toUpperCase() === 'ZABBIX')
       .map((problem) => ({
         problemId: problem.problemId ?? problem.id,
         host: problem.hostName ?? problem.hostId ?? 'UNKNOWN',
@@ -656,9 +697,13 @@ export class ZabbixWorkspaceStore {
       }));
   }
 
+  private toZabbixHosts(hosts: MonitoringHost[]): MonitoringHost[] {
+    return hosts.filter((host) => (host.source ?? '').toUpperCase() === 'ZABBIX');
+  }
+
   private toZabbixMetrics(metrics: UnifiedMonitoringMetric[]): ZabbixMetric[] {
     return metrics
-      .filter((metric) => metric.source === 'ZABBIX')
+      .filter((metric) => String(metric.source ?? '').toUpperCase() === 'ZABBIX')
       .map((metric) => ({
         hostId: metric.hostId,
         hostName: metric.hostName,
@@ -716,7 +761,24 @@ export class ZabbixWorkspaceStore {
   }
 
   private hostKey(hostId: string | null | undefined, hostName: string | null | undefined): string {
-    return hostId || hostName || 'UNKNOWN_HOST';
+    const normalizedHostId = hostId?.trim();
+    if (normalizedHostId) {
+      return normalizedHostId;
+    }
+    const normalizedHostName = hostName?.trim();
+    return normalizedHostName || 'UNKNOWN_HOST';
+  }
+
+  private parseHostLastCheck(lastCheck: string | null | undefined): number | null {
+    if (!lastCheck || !lastCheck.trim()) {
+      return null;
+    }
+
+    const epochMs = Date.parse(lastCheck);
+    if (!Number.isFinite(epochMs) || epochMs <= 0) {
+      return null;
+    }
+    return Math.floor(epochMs / 1000);
   }
 
   private ensureSelection(): void {
@@ -740,7 +802,15 @@ export class ZabbixWorkspaceStore {
     if (key.includes('memory') || key.includes('mem') || key.includes('swap')) {
       return 'Memory';
     }
-    if (key.includes('net') || key.includes('if.') || key.includes('interface') || key.includes('traffic')) {
+    if (
+      key.includes('net') ||
+      key.includes('if.') ||
+      key.includes('interface') ||
+      key.includes('traffic') ||
+      key.includes('icmpping') ||
+      key.includes('latency') ||
+      key.includes('loss')
+    ) {
       return 'Network';
     }
     if (key.includes('disk') || key.includes('fs') || key.includes('vfs')) {
@@ -753,6 +823,38 @@ export class ZabbixWorkspaceStore {
   }
 
   private metricLabel(metricKey: string): string {
+    const key = metricKey.toLowerCase();
+    const catalog: Array<{ test: (k: string) => boolean; label: string }> = [
+      { test: (k) => k.startsWith('system.cpu.util'), label: 'CPU Utilization (%)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg1]'), label: 'CPU Load (1 min)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg5]'), label: 'CPU Load (5 min)' },
+      { test: (k) => k.startsWith('system.cpu.load[percpu,avg15]'), label: 'CPU Load (15 min)' },
+      { test: (k) => k.startsWith('system.cpu.load'), label: 'CPU Load' },
+      { test: (k) => k.startsWith('vm.memory.size[pavailable]'), label: 'Memory Available (%)' },
+      { test: (k) => k.startsWith('vm.memory.size[available]'), label: 'Memory Available' },
+      { test: (k) => k.startsWith('vm.memory.size[used]'), label: 'Memory Used' },
+      { test: (k) => k.startsWith('vm.memory.util'), label: 'Memory Utilization (%)' },
+      { test: (k) => k.startsWith('system.swap'), label: 'Swap Usage' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,pused]'), label: 'Disk Used (%)' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,free]'), label: 'Disk Free Space' },
+      { test: (k) => k.startsWith('vfs.fs.size[/,used]'), label: 'Disk Used Space' },
+      { test: (k) => k.startsWith('icmppingsec'), label: 'Network Latency (s)' },
+      { test: (k) => k.startsWith('icmppingloss'), label: 'Packet Loss (%)' },
+      { test: (k) => k.startsWith('icmpping'), label: 'Ping Availability' },
+      { test: (k) => k.startsWith('net.if.in.errors'), label: 'Inbound Network Errors' },
+      { test: (k) => k.startsWith('net.if.out.errors'), label: 'Outbound Network Errors' },
+      { test: (k) => k.startsWith('net.if.in'), label: 'Inbound Throughput' },
+      { test: (k) => k.startsWith('net.if.out'), label: 'Outbound Throughput' },
+      { test: (k) => k.startsWith('system.uptime'), label: 'System Uptime' },
+      { test: (k) => k.startsWith('proc.num'), label: 'Process Count' },
+      { test: (k) => k.startsWith('agent.ping'), label: 'Agent Availability' }
+    ];
+
+    const match = catalog.find((entry) => entry.test(key));
+    if (match) {
+      return match.label;
+    }
+
     return metricKey
       .replace(/[\[\]\._]/g, ' ')
       .replace(/\s+/g, ' ')
@@ -875,9 +977,7 @@ export class ZabbixWorkspaceStore {
     explanation: string;
   } {
     const hostProblems = this.problems().filter((problem) => this.hostKey(problem.hostId, problem.host) === hostKey);
-    const activeProblems = hostProblems.filter(
-      (problem) => problem.active || (problem.status ?? 'ACTIVE') === 'ACTIVE'
-    );
+    const activeProblems = hostProblems.filter((problem) => this.isProblemActive(problem.status, problem.active));
     const hostMetrics = this.metrics().filter(
       (metric) => this.hostKey(metric.hostId, metric.hostName) === hostKey
     );
@@ -1047,6 +1147,24 @@ export class ZabbixWorkspaceStore {
       default:
         return 'neutral';
     }
+  }
+
+  private normalizeProblemStatus(
+    status: string | null | undefined,
+    active: boolean | null | undefined
+  ): 'ACTIVE' | 'RESOLVED' {
+    const normalized = (status ?? '').trim().toUpperCase();
+    if (['ACTIVE', 'PROBLEM', 'OPEN', 'TRIGGERED'].includes(normalized)) {
+      return 'ACTIVE';
+    }
+    if (['RESOLVED', 'OK', 'CLOSED'].includes(normalized)) {
+      return 'RESOLVED';
+    }
+    return active ? 'ACTIVE' : 'RESOLVED';
+  }
+
+  private isProblemActive(status: string | null | undefined, active: boolean | null | undefined): boolean {
+    return this.normalizeProblemStatus(status, active) === 'ACTIVE';
   }
 
   private scheduleSnapshotRefresh(): void {

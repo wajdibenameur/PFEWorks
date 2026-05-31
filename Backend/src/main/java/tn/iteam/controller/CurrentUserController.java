@@ -4,11 +4,14 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tn.iteam.domain.User;
+import tn.iteam.dto.CurrentUserResponse;
 import tn.iteam.dto.CurrentUserPermissionsResponse;
 import tn.iteam.enums.Permission;
 import tn.iteam.enums.RoleName;
@@ -23,9 +26,42 @@ import java.util.TreeSet;
 @RequiredArgsConstructor
 @Tag(name = "Current User", description = "API pour consulter le contexte de securite de l utilisateur courant")
 public class CurrentUserController {
+    private static final Logger log = LoggerFactory.getLogger(CurrentUserController.class);
 
     private final AuthenticatedUserService authenticatedUserService;
     private final EffectiveUserPermissionService effectiveUserPermissionService;
+
+    @GetMapping
+    @Operation(
+            summary = "Recuperer le profil de l utilisateur courant",
+            description = "Retourne l identite applicative synchronisee de l utilisateur courant."
+    )
+    @ApiResponse(responseCode = "200", description = "Profil courant recupere avec succes")
+    public ResponseEntity<CurrentUserResponse> getCurrentUser() {
+        User user = authenticatedUserService.getCurrentUser();
+        Set<RoleName> roles = authenticatedUserService.getCurrentRoles();
+
+        log.info(
+                "AUTH TRACE /api/auth/me user={} keycloakId={} enabled={} roles={}",
+                user.getUsername(),
+                user.getKeycloakId(),
+                user.isEnabled(),
+                roles
+        );
+
+        CurrentUserResponse response = new CurrentUserResponse(
+                user.getId(),
+                user.getKeycloakId(),
+                user.getUsername(),
+                user.getEmail(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.isEnabled(),
+                toRoleNames(roles)
+        );
+
+        return ResponseEntity.ok(response);
+    }
 
     @GetMapping("/permissions")
     @Operation(
@@ -37,6 +73,14 @@ public class CurrentUserController {
         Set<RoleName> roles = authenticatedUserService.getCurrentRoles();
         User user = authenticatedUserService.getCurrentUser();
         Set<Permission> effectivePermissions = effectiveUserPermissionService.resolveEffectivePermissions(roles, user);
+
+        log.info(
+                "AUTH TRACE /api/auth/me/permissions user={} keycloakId={} roles={} effectivePermissions={}",
+                user.getUsername(),
+                user.getKeycloakId(),
+                roles,
+                effectivePermissions
+        );
 
         CurrentUserPermissionsResponse response = new CurrentUserPermissionsResponse(
                 user.getUsername(),

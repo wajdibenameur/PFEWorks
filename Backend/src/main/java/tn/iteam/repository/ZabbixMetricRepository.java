@@ -28,4 +28,19 @@ public interface ZabbixMetricRepository extends JpaRepository<ZabbixMetric, Long
             Collection<Long> timestamps
     );
 
+    @Query("""
+            select m from ZabbixMetric m
+            where m.hostId is not null
+              and m.hostId <> ''
+              and m.itemId is not null
+              and m.itemId <> ''
+              and m.timestamp = (
+                  select max(m2.timestamp)
+                  from ZabbixMetric m2
+                  where m2.hostId = m.hostId
+                    and m2.itemId = m.itemId
+              )
+            """)
+    List<ZabbixMetric> findLatestByHostAndItem();
+
 }

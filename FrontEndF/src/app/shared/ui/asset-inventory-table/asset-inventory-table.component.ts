@@ -10,6 +10,9 @@ export interface GlobalAssetVm {
   category: string;
   status: string;
   problemCount: number;
+  realtimeState: 'fresh' | 'unchanged' | 'stale' | 'disconnected' | 'offline';
+  realtimeLabel: string;
+  lastMetricLabel: string;
 }
 
 @Component({
@@ -41,7 +44,7 @@ export class AssetInventoryTableComponent {
         return true;
       }
 
-      const fingerprint = `${asset.hostname} ${asset.lastCheck ?? ''} ${asset.ip} ${asset.source}`.toLowerCase();
+      const fingerprint = `${asset.hostname} ${asset.lastCheck ?? ''} ${asset.ip} ${asset.source} ${asset.realtimeLabel}`.toLowerCase();
       return fingerprint.includes(filterText);
     });
   });

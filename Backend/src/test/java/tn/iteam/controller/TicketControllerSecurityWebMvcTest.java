@@ -105,7 +105,7 @@ class TicketControllerSecurityWebMvcTest {
 
     @Test
     void userWithViewTicketsPermissionCanListTickets() throws Exception {
-        when(ticketService.search(any(), any(), any(), any()))
+        when(ticketService.search(any(), any(), any(), any(), any()))
                 .thenReturn(new PageImpl<>(List.of()));
 
         mockMvc.perform(get("/api/tickets")

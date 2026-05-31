@@ -8,16 +8,13 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-import tn.iteam.adapter.zabbix.ZabbixClient;
 import tn.iteam.domain.MonitoredHost;
 import tn.iteam.dto.ZabbixMetricDTO;
 import tn.iteam.service.ZabbixHostSyncService;
 import tn.iteam.util.IntegrationClientSupport;
 import tn.iteam.util.MonitoringConstants;
-import tn.iteam.service.ZabbixHostSyncService;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -26,6 +23,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Collector dedicated to Zabbix metrics and history collection.
@@ -62,18 +60,28 @@ public class ZabbixMetricsCollector {
     private static final String METRIC_COUNT_LOG_TEMPLATE = LOG_PREFIX + "Final mapped metrics count={}";
     private static final String FLOAT_BATCH_ERROR_TEMPLATE = LOG_PREFIX + "Failed float history batch size={}, skipping batch";
     private static final String INT_BATCH_ERROR_TEMPLATE = LOG_PREFIX + "Failed int history batch size={}, skipping batch";
+    private static final String FULL_FETCH_START_LOG = LOG_PREFIX + "FULL FETCH START metrics";
+    private static final String INCREMENTAL_FETCH_START_LOG = LOG_PREFIX + "INCREMENTAL FETCH START metrics";
+    private static final String LASTCLOCK_USED_LOG = LOG_PREFIX + "LASTCLOCK USED metrics={}";
+    private static final String ITEMS_SKIPPED_OLD_LOG = LOG_PREFIX + "ITEMS SKIPPED OLD LASTCLOCK={}";
+    private static final String NEW_ITEMS_DETECTED_LOG = LOG_PREFIX + "NEW ITEMS DETECTED={}";
+    private static final String DELTA_FETCH_DONE_LOG = LOG_PREFIX + "DELTA FETCH DONE durationMs={} fetched={} skippedOld={} deltaRatio={} payloadApproxBytes={}";
+    private static final String FALLBACK_FULL_RESYNC_LOG = LOG_PREFIX + "FALLBACK FULL RESYNC metrics reason={}";
+    private static final String NO_CHANGES_SKIP_LOG = LOG_PREFIX + "NO CHANGES DETECTED latestClock={} lastSuccessfulClock={} -> SKIP heavy metrics collection";
 
     private static final String UNKNOWN_SOURCE_LABEL = MonitoringConstants.SOURCE_LABEL_ZABBIX;
 
     private final ZabbixClient zabbixClient;
 
     private final ZabbixHostSyncService syncService;
+    private final ZabbixSyncStateService syncStateService;
     @Value("${zabbix.metrics.host-batch-size:2}")
     private int configuredHostItemsBatchSize;
 
-    public ZabbixMetricsCollector(ZabbixClient zabbixClient, ZabbixHostSyncService syncService) {
+    public ZabbixMetricsCollector(ZabbixClient zabbixClient, ZabbixHostSyncService syncService, ZabbixSyncStateService syncStateService) {
         this.zabbixClient = zabbixClient;
         this.syncService = syncService;
+        this.syncStateService = syncStateService;
     }
 
     /**
@@ -135,10 +143,45 @@ public class ZabbixMetricsCollector {
         AtomicInteger successfulItemBatches = new AtomicInteger();
         AtomicInteger receivedItemsCount = new AtomicInteger();
         AtomicBoolean partialCollection = new AtomicBoolean(false);
+        long startedAtMs = System.currentTimeMillis();
         long now = Instant.now().getEpochSecond();
-        long windowStart = now - HISTORY_FALLBACK_WINDOW_SECONDS;
+        long lastSuccessfulMetricsClock = syncStateService.getLastSuccessfulMetricsClock();
+        boolean fullResync = lastSuccessfulMetricsClock <= 0 || syncStateService.shouldRunFullResync("metrics");
+        if (fullResync) {
+            log.info(FULL_FETCH_START_LOG);
+            syncStateService.markFullSyncDoneNow("metrics");
+        } else {
+            log.info(INCREMENTAL_FETCH_START_LOG);
+            log.info(LASTCLOCK_USED_LOG, lastSuccessfulMetricsClock);
+        }
+        long windowStart = fullResync
+                ? now - HISTORY_FALLBACK_WINDOW_SECONDS
+                : Math.max(lastSuccessfulMetricsClock, now - HISTORY_FALLBACK_WINDOW_SECONDS);
+        AtomicInteger skippedOldItemsCount = new AtomicInteger();
+        AtomicInteger newItemsCount = new AtomicInteger();
+        AtomicLong maxClockSeen = new AtomicLong(lastSuccessfulMetricsClock);
 
-        return Flux.fromIterable(hostBatches)
+        Mono<Boolean> shouldSkipCollectionMono = fullResync
+                ? Mono.just(false)
+                : zabbixClient.getLatestMetricClock()
+                .map(this::extractLatestItemClock)
+                .map(latestClock -> {
+                    if (latestClock <= 0L || latestClock > lastSuccessfulMetricsClock) {
+                        return false;
+                    }
+                    log.info(NO_CHANGES_SKIP_LOG, latestClock, lastSuccessfulMetricsClock);
+                    return true;
+                })
+                .onErrorResume(ex -> {
+                    log.warn(LOG_PREFIX + "Latest-clock precheck failed, continuing incremental fetch: {}", ex.getMessage());
+                    return Mono.just(false);
+                });
+
+        return shouldSkipCollectionMono.flatMap(shouldSkipCollection -> {
+            if (shouldSkipCollection) {
+                return Mono.just(new ZabbixMetricsCollectionResult(List.of(), false));
+            }
+            return Flux.fromIterable(hostBatches)
                 .index()
                 .concatMap(batchTuple -> processMetricBatch(
                         batchTuple.getT1().intValue(),
@@ -157,7 +200,12 @@ public class ZabbixMetricsCollector {
                         itemUnitsMap,
                         successfulItemBatches,
                         receivedItemsCount,
-                        lastBatchException
+                        lastBatchException,
+                        fullResync,
+                        lastSuccessfulMetricsClock,
+                        skippedOldItemsCount,
+                        newItemsCount,
+                        maxClockSeen
                 ))
                 .onErrorResume(exception -> {
                     partialCollection.set(successfulItemBatches.get() > 0 || !metricsByKey.isEmpty());
@@ -220,12 +268,28 @@ public class ZabbixMetricsCollector {
                     }).then(Mono.fromSupplier(() -> {
                         List<ZabbixMetricDTO> metrics = new ArrayList<>(metricsByKey.values());
                         log.info(METRIC_COUNT_LOG_TEMPLATE, metrics.size());
+                        if (!fullResync && metrics.isEmpty()) {
+                            log.info(FALLBACK_FULL_RESYNC_LOG, "empty incremental result");
+                            syncStateService.requestFullSync("metrics");
+                        }
+                        log.info(ITEMS_SKIPPED_OLD_LOG, skippedOldItemsCount.get());
+                        log.info(NEW_ITEMS_DETECTED_LOG, newItemsCount.get());
+                        if (maxClockSeen.get() > lastSuccessfulMetricsClock) {
+                            syncStateService.markMetricsClock(maxClockSeen.get());
+                        }
+                        long durationMs = System.currentTimeMillis() - startedAtMs;
+                        int fetched = receivedItemsCount.get();
+                        int skipped = skippedOldItemsCount.get();
+                        double ratio = fetched <= 0 ? 0.0 : (double) newItemsCount.get() / (double) fetched;
+                        long payloadApproxBytes = (long) fetched * 256L;
+                        log.info(DELTA_FETCH_DONE_LOG, durationMs, fetched, skipped, String.format("%.4f", ratio), payloadApproxBytes);
                         if (partialCollection.get() && !metrics.isEmpty()) {
                             log.warn(LOG_PREFIX + "Partial Zabbix metrics collected");
                         }
                         return new ZabbixMetricsCollectionResult(List.copyOf(metrics), partialCollection.get());
                     }));
                 }));
+        });
     }
 
     private Mono<Void> processMetricBatch(
@@ -245,12 +309,20 @@ public class ZabbixMetricsCollector {
             Map<String, String> itemUnitsMap,
             AtomicInteger successfulItemBatches,
             AtomicInteger receivedItemsCount,
-            AtomicReference<RuntimeException> lastBatchException
+            AtomicReference<RuntimeException> lastBatchException,
+            boolean fullResync,
+            long lastSuccessfulMetricsClock,
+            AtomicInteger skippedOldItemsCount,
+            AtomicInteger newItemsCount,
+            AtomicLong maxClockSeen
     ) {
         long batchStartedAt = System.nanoTime();
         log.info(FETCHING_ITEMS_BATCH_LOG_TEMPLATE, batchIndex + 1, totalBatches, hostBatch.size());
 
-        return zabbixClient.getItemsByHosts(hostBatch)
+        Mono<JsonNode> itemsMono = fullResync
+                ? zabbixClient.getItemsByHosts(hostBatch)
+                : zabbixClient.getItemsByHostsIncremental(hostBatch);
+        return itemsMono
                 .doOnNext(items -> {
                     long durationMs = nanosToMillis(System.nanoTime() - batchStartedAt);
                     if (items == null || !items.isArray()) {
@@ -273,6 +345,15 @@ public class ZabbixMetricsCollector {
                         String itemId = item.path(ITEM_ID_FIELD).asText();
                         int valueType = item.path(VALUE_TYPE_FIELD).asInt();
                         String hostId = item.path(MonitoringConstants.HOST_ID_FIELD).asText();
+                        long itemLastClock = item.path(LAST_CLOCK_FIELD).asLong(0L);
+                        if (!fullResync && itemLastClock > 0 && itemLastClock <= lastSuccessfulMetricsClock) {
+                            skippedOldItemsCount.incrementAndGet();
+                            continue;
+                        }
+                        if (itemLastClock > 0) {
+                            maxClockSeen.accumulateAndGet(itemLastClock, Math::max);
+                        }
+                        newItemsCount.incrementAndGet();
                         String itemName = item.path(MonitoringConstants.NAME_FIELD).asText(key);
                         String status = resolveMetricStatus(item);
                         String units = normalizeUnits(item.path(UNITS_FIELD).asText(null));
@@ -399,12 +480,26 @@ public class ZabbixMetricsCollector {
      * @return true if useful
      */
     public boolean isUsefulMetric(String key) {
-        return key.startsWith("system.cpu.util")
-                || key.startsWith("vm.memory.util")
-                || key.startsWith("icmpping")
-                || key.startsWith("icmppingloss")
-                || key.startsWith("icmppingsec")
-                || key.startsWith("vfs.fs");
+        if (key == null || key.isBlank()) {
+            return false;
+        }
+
+        String normalized = key.toLowerCase();
+        return normalized.startsWith("system.cpu.util")
+                || normalized.startsWith("system.cpu.load")
+                || normalized.startsWith("system.cpu.num")
+                || normalized.startsWith("vm.memory.util")
+                || normalized.startsWith("vm.memory.size")
+                || normalized.startsWith("system.swap")
+                || normalized.startsWith("icmpping")
+                || normalized.startsWith("icmppingloss")
+                || normalized.startsWith("icmppingsec")
+                || normalized.startsWith("vfs.fs")
+                || normalized.startsWith("net.if.in")
+                || normalized.startsWith("net.if.out")
+                || normalized.startsWith("system.uptime")
+                || normalized.startsWith("proc.num")
+                || normalized.startsWith("agent.ping");
     }
 
     private void mapHistoryFallback(
@@ -531,6 +626,14 @@ public class ZabbixMetricsCollector {
         } catch (NumberFormatException ex) {
             return null;
         }
+    }
+
+    private long extractLatestItemClock(JsonNode items) {
+        if (items == null || !items.isArray() || items.isEmpty()) {
+            return 0L;
+        }
+        Long parsed = parseEpoch(items.get(0).path(LAST_CLOCK_FIELD).asText(null));
+        return parsed != null ? parsed : 0L;
     }
 
     private Double parseNumericValue(String raw) {
