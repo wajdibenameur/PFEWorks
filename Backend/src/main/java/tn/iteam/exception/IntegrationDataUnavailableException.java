@@ -18,8 +18,8 @@ public class IntegrationDataUnavailableException extends IntegrationException {
         return new IntegrationDataUnavailableException(source, message);
     }
 
-    public static IntegrationDataUnavailableException forObservium(String message) {
-        return forSource("OBSERVIUM", message);
+    public static IntegrationDataUnavailableException forSnmp(String message) {
+        return forSource("SNMP", message);
     }
 
     public static IntegrationDataUnavailableException forZabbix(String message) {

@@ -12,9 +12,9 @@ import org.springframework.context.annotation.Configuration;
         info = @Info(
                 title = "API de supervision et de gestion des tickets",
                 version = "1.0",
-                description = "Documentation des API de supervision, d'agrégation des sources, de gestion des tickets, "
-                        + "de collecte manuelle et de prédiction ML.",
-                contact = @Contact(name = "Équipe ITEAM"),
+                description = "Documentation des API de supervision, d'agregation des sources, de gestion des tickets, "
+                        + "de collecte manuelle et de prediction ML.",
+                contact = @Contact(name = "Equipe ITEAM"),
                 license = @License(name = "Usage interne")
         ),
         servers = {

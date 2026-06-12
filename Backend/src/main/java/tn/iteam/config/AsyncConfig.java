@@ -33,17 +33,17 @@ public class AsyncConfig {
         return executor;
     }
 
-    @Bean(name = "observiumSnmpTaskExecutor")
-    public ThreadPoolTaskExecutor observiumSnmpTaskExecutor() {
+    @Bean(name = "snmpTaskExecutor")
+    public ThreadPoolTaskExecutor snmpTaskExecutor(SnmpProperties snmpProperties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(4);
-        executor.setMaxPoolSize(12);
-        executor.setQueueCapacity(200);
-        executor.setThreadNamePrefix("observium-snmp-");
-        // Avoid task rejection under burst load; caller thread executes overflow tasks.
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setCorePoolSize(snmpProperties.resolveCorePoolSize());
+        executor.setMaxPoolSize(snmpProperties.resolveMaxPoolSize());
+        executor.setQueueCapacity(snmpProperties.resolveQueueCapacity());
+        executor.setThreadNamePrefix("snmp-");
+        executor.setAllowCoreThreadTimeOut(true);
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(10);
+        executor.setAwaitTerminationSeconds(15);
         executor.initialize();
         return executor;
     }

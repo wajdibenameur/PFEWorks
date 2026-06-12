@@ -23,6 +23,7 @@ import tn.iteam.service.ServiceStatusPersistenceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZkBioPersistenceService;
 import tn.iteam.service.ZkBioServiceInterface;
+import tn.iteam.service.support.DatabasePersistenceGuard;
 import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import tn.iteam.websocket.ZkBioWebSocketPublisher;
@@ -61,6 +62,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     private final ZkBioProblemRepository zkBioProblemRepository;
     private final ZkBioMetricRepository zkBioMetricRepository;
     private final MonitoringFreshnessService freshnessService;
+    private final DatabasePersistenceGuard databasePersistenceGuard;
 
     @Value("${app.monitoring.hosts.freshness-ms:300000}")
     private long hostsFreshnessMs;
@@ -100,7 +102,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> {
+            tryPersistToDatabase(source, DATASET_HOSTS, () -> {
                 if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
                     log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
                     return;
@@ -134,7 +136,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> {
+            tryPersistToDatabase(source, DATASET_PROBLEMS, () -> {
                 if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problems)) {
                     log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
                     return;
@@ -170,7 +172,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             .doOnNext(statuses -> {
                 List<ServiceStatusDTO> statusList = List.copyOf(statuses);
                 saveSnapshot(DATASET_HOSTS, source, statusList.stream().map(monitoringMapper::toHost).toList());
-                tryPersistToDatabase(() -> {
+                tryPersistToDatabase(source, DATASET_HOSTS, () -> {
                     if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statusList)) {
                         log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
                         return;
@@ -199,7 +201,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
             .doOnNext(problems -> {
                 List<ZkBioProblemDTO> problemList = List.copyOf(problems);
                 saveSnapshot(DATASET_PROBLEMS, source, problemList.stream().map(monitoringMapper::toProblem).toList());
-                tryPersistToDatabase(() -> {
+                tryPersistToDatabase(source, DATASET_PROBLEMS, () -> {
                     if (!freshnessService.hasPersistDelta(DATASET_PROBLEMS, source, problemList)) {
                         log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_PROBLEMS, source);
                         return;
@@ -230,7 +232,7 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
                     List<?> data = metrics.stream().map(monitoringMapper::toMetric).toList();
                     
                     // Step 3: Try DB persistence (non-blocking, wrapped)
-                    tryPersistToDatabase(() -> {
+                    tryPersistToDatabase(source, DATASET_METRICS, () -> {
                         if (!freshnessService.hasPersistDelta(DATASET_METRICS, source, metrics)) {
                             log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_METRICS, source);
                             return;
@@ -420,12 +422,12 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
     }
 
     private Object safeLoadPersistedFallback(String dataset) {
-        try {
-            return loadPersistedFallback(dataset);
-        } catch (Exception exception) {
-            log.warn("Unable to load persisted {} fallback: {}", dataset, safeMessage(exception));
-            return null;
-        }
+        return databasePersistenceGuard.safeLoad(
+                getSourceType().name(),
+                dataset + "-fallback-load",
+                () -> loadPersistedFallback(dataset),
+                null
+        );
     }
 
     private void saveFallbackSnapshot(String dataset, String source, Object data) {
@@ -456,14 +458,13 @@ public class ZkBioIntegrationService implements ZkBioIntegrationOperations {
                 : "Unknown integration error";
     }
 
-    private void tryPersistToDatabase(Runnable persistenceAction) {
+    private boolean tryPersistToDatabase(String source, String dataset, Runnable persistenceAction) {
         long startedAt = System.currentTimeMillis();
-        try {
-            persistenceAction.run();
+        boolean persisted = databasePersistenceGuard.safeRun(source, dataset + "-persistence", persistenceAction);
+        if (persisted) {
             log.info("ZKBio DB persistence done durationMs={}", System.currentTimeMillis() - startedAt);
-        } catch (Exception ex) {
-            log.warn("Database unavailable, skipping persistence: {}", ex.getMessage());
         }
+        return persisted;
     }
 
     private Exception toException(Throwable throwable) {

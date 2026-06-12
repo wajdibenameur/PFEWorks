@@ -45,10 +45,10 @@ public class WebClientConfig {
     ) {
         return buildWebClient(connectTimeoutMs, responseTimeoutMs, readTimeoutMs, writeTimeoutMs);
     }
-    @Bean("observiumWebClient")
-    public WebClient observiumWebClient(
+    @Bean("snmpWebClient")
+    public WebClient snmpWebClient(
             @Value("${integration.webclient.connect-timeout-ms:5000}") int connectTimeoutMs,
-            @Value("${observium.webclient.response-timeout-ms:10000}") long responseTimeoutMs,
+            @Value("${snmp.webclient.response-timeout-ms:10000}") long responseTimeoutMs,
             @Value("${integration.webclient.read-timeout-ms:10000}") long readTimeoutMs,
             @Value("${integration.webclient.write-timeout-ms:10000}") long writeTimeoutMs
     ) {

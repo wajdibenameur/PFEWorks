@@ -5,7 +5,7 @@ public enum Permission {
     // Dashboard
     VIEW_DASHBOARD,
     VIEW_ZABBIX,
-    VIEW_OBSERVIUM,
+    VIEW_SNMP,
     VIEW_CAMERA,
     VIEW_ZKBIO,
     VIEW_ACCESS_POINT,

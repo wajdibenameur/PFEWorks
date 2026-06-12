@@ -71,16 +71,27 @@ public class ResilienceLoggingConfig {
                     };
                     if ("zkbioApi".equalsIgnoreCase(event.getName())) {
                         log.info(message, args);
+                    } else if ("snmpApi".equalsIgnoreCase(event.getName())) {
+                        log.debug(message, args);
                     } else {
                         log.warn(message, args);
                     }
                 })
-                .onError(event -> log.warn(
-                        "Retry {} exhausted after {} attempts due to {}",
-                        event.getName(),
-                        event.getNumberOfRetryAttempts(),
-                        describeThrowable(event.getLastThrowable())
-                ))
+                .onError(event -> {
+                    String message = "Retry {} exhausted after {} attempts due to {}";
+                    Object[] args = new Object[] {
+                            event.getName(),
+                            event.getNumberOfRetryAttempts(),
+                            describeThrowable(event.getLastThrowable())
+                    };
+                    if ("snmpApi".equalsIgnoreCase(event.getName())) {
+                        log.debug(message, args);
+                    } else if ("zkbioApi".equalsIgnoreCase(event.getName())) {
+                        log.info(message, args);
+                    } else {
+                        log.warn(message, args);
+                    }
+                })
                 .onIgnoredError(event -> log.debug(
                         "Retry {} ignored non-retryable error {}",
                         event.getName(),

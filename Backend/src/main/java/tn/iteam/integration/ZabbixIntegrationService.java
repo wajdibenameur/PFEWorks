@@ -24,6 +24,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.snapshot.SnapshotStore;
 import tn.iteam.monitoring.snapshot.StoredSnapshot;
 import tn.iteam.service.*;
+import tn.iteam.service.support.DatabasePersistenceGuard;
 import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.util.MonitoringConstants;
 
@@ -56,6 +57,7 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     private final MonitoredHostSnapshotService monitoredHostSnapshotService;
     private final ZabbixHostSyncService zabbixSyncService;
     private final MonitoringFreshnessService freshnessService;
+    private final DatabasePersistenceGuard databasePersistenceGuard;
     private final Object hostsSnapshotLock = new Object();
     private volatile JsonNode lastHostsSnapshot;
     private volatile long lastHostsSnapshotAt;
@@ -111,7 +113,12 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
             
             // Step 2: Save snapshot FIRST (always succeeds, in-memory)
             zabbixSyncService.loadHostMap(hosts);
-            List<UnifiedMonitoringHostDTO> persistedHostsSnapshot = monitoredHostSnapshotService.loadHosts(getSourceType());
+            List<UnifiedMonitoringHostDTO> persistedHostsSnapshot = databasePersistenceGuard.safeLoad(
+                    source,
+                    DATASET_HOSTS + "-snapshot-load",
+                    () -> monitoredHostSnapshotService.loadHosts(getSourceType()),
+                    statuses.stream().map(this::toFallbackHost).toList()
+            );
             long persistedHostsWithIds = persistedHostsSnapshot.stream()
                     .filter(host -> host.getHostId() != null && !host.getHostId().isBlank())
                     .count();
@@ -124,7 +131,7 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
             );
             
             // Step 3: Try DB persistence (non-blocking, wrapped)
-            tryPersistToDatabase(() -> {
+            tryPersistToDatabase(source, DATASET_HOSTS, () -> {
                 if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
                     log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
                     return;
@@ -162,7 +169,12 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                     : zabbixProblemService.synchronizeActiveProblemsFromZabbix());
             
             // Step 2: Save snapshot FIRST (always succeeds, in-memory)
-            List<ZabbixProblemDTO> recentProblems = List.copyOf(zabbixProblemService.getPersistedRecentProblems());
+            List<ZabbixProblemDTO> recentProblems = List.copyOf(databasePersistenceGuard.safeLoad(
+                    source,
+                    DATASET_PROBLEMS + "-snapshot-load",
+                    zabbixProblemService::getPersistedRecentProblems,
+                    problems
+            ));
             saveSnapshot(
                     DATASET_PROBLEMS,
                     source,
@@ -185,7 +197,12 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
         }
         try {
             zabbixProblemService.synchronizeActiveProblems(problems);
-            List<ZabbixProblemDTO> synchronizedProblems = List.copyOf(zabbixProblemService.getPersistedRecentProblems());
+            List<ZabbixProblemDTO> synchronizedProblems = List.copyOf(databasePersistenceGuard.safeLoad(
+                    source,
+                    DATASET_PROBLEMS + "-snapshot-load",
+                    zabbixProblemService::getPersistedRecentProblems,
+                    problems
+            ));
             saveSnapshot(
                     DATASET_PROBLEMS,
                     source,
@@ -358,11 +375,35 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
         return statuses;
     }
 
+    private UnifiedMonitoringHostDTO toFallbackHost(ServiceStatusDTO status) {
+        String hostId = status.getHostId() != null && !status.getHostId().isBlank()
+                ? status.getHostId()
+                : (status.getIp() != null && !status.getIp().isBlank() ? status.getIp() : status.getName());
+
+        return UnifiedMonitoringHostDTO.builder()
+                .id(MonitoringSourceType.ZABBIX + ":" + hostId)
+                .source(MonitoringSourceType.ZABBIX)
+                .hostId(hostId)
+                .name(status.getName())
+                .ip(status.getIp())
+                .port(status.getPort())
+                .protocol(status.getProtocol())
+                .status(status.getStatus())
+                .category(status.getCategory())
+                .lastCheck(status.getLastCheck())
+                .build();
+    }
+
     private void refreshHosts(JsonNode hosts, List<ServiceStatusDTO> statuses) {
         String source = getSourceType().name();
         try {
             zabbixSyncService.loadHostMap(hosts);
-            List<UnifiedMonitoringHostDTO> persistedHostsSnapshot = monitoredHostSnapshotService.loadHosts(getSourceType());
+            List<UnifiedMonitoringHostDTO> persistedHostsSnapshot = databasePersistenceGuard.safeLoad(
+                    source,
+                    DATASET_HOSTS + "-snapshot-load",
+                    () -> monitoredHostSnapshotService.loadHosts(getSourceType()),
+                    statuses.stream().map(this::toFallbackHost).toList()
+            );
             long persistedHostsWithIds = persistedHostsSnapshot.stream()
                     .filter(host -> host.getHostId() != null && !host.getHostId().isBlank())
                     .count();
@@ -373,7 +414,7 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                     source,
                     persistedHostsSnapshot
             );
-            tryPersistToDatabase(() -> {
+            tryPersistToDatabase(source, DATASET_HOSTS, () -> {
                 if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
                     log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
                     return;
@@ -472,12 +513,12 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
     }
 
     private List<?> safeLoadPersistedFallback(String dataset) {
-        try {
-            return loadPersistedFallback(dataset);
-        } catch (Exception exception) {
-            log.warn("Unable to load persisted {} fallback: {}", dataset, safeMessage(exception));
-            return List.of();
-        }
+        return databasePersistenceGuard.safeLoad(
+                getSourceType().name(),
+                dataset + "-fallback-load",
+                () -> loadPersistedFallback(dataset),
+                List.of()
+        );
     }
 
     private void saveFallbackSnapshot(String dataset, String source, List<?> data) {
@@ -504,14 +545,13 @@ public class ZabbixIntegrationService implements AsyncIntegrationService {
                 : "Unknown integration error";
     }
 
-    private void tryPersistToDatabase(Runnable persistenceAction) {
+    private boolean tryPersistToDatabase(String source, String dataset, Runnable persistenceAction) {
         long startedAt = System.currentTimeMillis();
-        try {
-            persistenceAction.run();
+        boolean persisted = databasePersistenceGuard.safeRun(source, dataset + "-persistence", persistenceAction);
+        if (persisted) {
             log.info("Zabbix DB persistence done durationMs={}", System.currentTimeMillis() - startedAt);
-        } catch (Exception ex) {
-            log.warn("Database unavailable, skipping persistence: {}", ex.getMessage());
         }
+        return persisted;
     }
 
     private Exception toException(Throwable throwable) {
