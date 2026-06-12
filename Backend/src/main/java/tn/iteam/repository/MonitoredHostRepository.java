@@ -12,4 +12,5 @@ public interface MonitoredHostRepository extends JpaRepository<MonitoredHost, Lo
     Optional<MonitoredHost> findFirstByHostIdAndSource(String hostId, String source);
     List<MonitoredHost> findBySourceOrderByNameAsc(String source);
     List<MonitoredHost> findBySourceAndHostIdIn(String source, List<String> hostIds);
+    List<MonitoredHost> findBySource(String source);
 }

@@ -16,6 +16,8 @@ import tn.iteam.service.TicketService;
 import tn.iteam.service.ZabbixDataQualityService;
 import tn.iteam.service.ZabbixProblemService;
 import tn.iteam.service.support.IntegrationExecutionHelper;
+import tn.iteam.service.support.DatabasePersistenceGuard;
+import tn.iteam.service.support.MonitoringProblemNotificationService;
 import tn.iteam.service.support.ZabbixProblemSanitizer;
 import tn.iteam.util.MonitoringConstants;
 
@@ -49,6 +51,8 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
     private final IntegrationExecutionHelper executionHelper;
     private final ZabbixProblemSanitizer problemSanitizer;
     private final TransactionTemplate transactionTemplate;
+    private final MonitoringProblemNotificationService monitoringProblemNotificationService;
+    private final DatabasePersistenceGuard databasePersistenceGuard;
 
     @Override
     public List<ZabbixProblemDTO> getPersistedFilteredActiveProblems() {
@@ -80,7 +84,14 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 SYNCHRONIZATION_FAILED_TEMPLATE,
                 UNEXPECTED_ERROR_MESSAGE,
                 List.of(),
-                () -> executeInTransaction(() -> persistProblems(problems))
+                () -> {
+                    databasePersistenceGuard.safeSaveProblems(
+                            MonitoringConstants.SOURCE_ZABBIX,
+                            problems,
+                            () -> executeInTransaction(() -> persistProblems(problems))
+                    );
+                    return problems;
+                }
         );
     }
 
@@ -103,7 +114,12 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 () -> {
                     List<ZabbixProblemDTO> fetched =
                             hosts == null ? zabbixAdapter.fetchProblems() : zabbixAdapter.fetchProblems(hosts);
-                    return executeInTransaction(() -> persistProblems(fetched));
+                    databasePersistenceGuard.safeSaveProblems(
+                            MonitoringConstants.SOURCE_ZABBIX,
+                            fetched,
+                            () -> executeInTransaction(() -> persistProblems(fetched))
+                    );
+                    return fetched;
                 }
         );
     }
@@ -155,6 +171,12 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
 
             if (!existingList.isEmpty()) {
                 ZabbixProblem existing = existingList.get(existingList.size() - 1);
+                boolean reactivated = !Boolean.TRUE.equals(existing.getActive()) && Boolean.TRUE.equals(entity.getActive());
+                if (reactivated) {
+                    maybeNotifyProblem(sanitized, true);
+                } else if (Boolean.TRUE.equals(existing.getActive()) && Boolean.TRUE.equals(entity.getActive())) {
+                    maybeNotifyProblemReminder(existing, sanitized);
+                }
 
                 existing.setHostId(entity.getHostId());
                 existing.setHost(entity.getHost());
@@ -174,6 +196,7 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 }
                 entitiesToSave.add(existing);
             } else {
+                maybeNotifyProblem(sanitized, false);
                 entitiesToSave.add(entity);
             }
         }
@@ -189,6 +212,7 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
                 persistedActive.setResolvedAt(resolvedAt);
             }
             persistedActive.setStatus(MonitoringConstants.STATUS_RESOLVED);
+            maybeNotifyProblemResolved(persistedActive, resolvedAt);
             entitiesToSave.add(persistedActive);
         }
 
@@ -213,9 +237,80 @@ public class ZabbixProblemServiceImpl implements ZabbixProblemService {
         }
 
         try {
-            return Integer.parseInt(severity.trim()) >= 3;
+            return Integer.parseInt(severity.trim()) > 3;
         } catch (NumberFormatException ex) {
             return false;
         }
+    }
+
+    private void maybeNotifyProblem(ZabbixProblemDTO dto, boolean reactivated) {
+        if (dto == null || !Boolean.TRUE.equals(dto.getActive())) {
+            return;
+        }
+        monitoringProblemNotificationService.notifySuperadminsForProblem(
+                dto.getSource(),
+                dto.getProblemId(),
+                dto.getDescription(),
+                dto.getSeverity(),
+                resolveResourceRef(dto),
+                dto.getStartedAt(),
+                reactivated
+        );
+    }
+
+    private void maybeNotifyProblemReminder(ZabbixProblem existing, ZabbixProblemDTO dto) {
+        if (existing == null || dto == null || !Boolean.TRUE.equals(dto.getActive())) {
+            return;
+        }
+        monitoringProblemNotificationService.notifySuperadminsForProblemReminder(
+                dto.getSource(),
+                dto.getProblemId(),
+                dto.getDescription(),
+                dto.getSeverity(),
+                resolveResourceRef(dto),
+                existing.getStartedAt(),
+                Instant.now().getEpochSecond()
+        );
+    }
+
+    private void maybeNotifyProblemResolved(ZabbixProblem problem, long resolvedAt) {
+        if (problem == null) {
+            return;
+        }
+        monitoringProblemNotificationService.notifySuperadminsForProblemResolved(
+                problem.getSource(),
+                problem.getProblemId(),
+                problem.getDescription(),
+                problem.getSeverity(),
+                resolveResourceRef(problem),
+                problem.getStartedAt(),
+                resolvedAt
+        );
+    }
+
+    private String resolveResourceRef(ZabbixProblemDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        if (dto.getHost() != null && !dto.getHost().isBlank()) {
+            return dto.getHost();
+        }
+        if (dto.getIp() != null && !dto.getIp().isBlank()) {
+            return dto.getIp();
+        }
+        return dto.getHostId();
+    }
+
+    private String resolveResourceRef(ZabbixProblem problem) {
+        if (problem == null) {
+            return null;
+        }
+        if (problem.getHost() != null && !problem.getHost().isBlank()) {
+            return problem.getHost();
+        }
+        if (problem.getIp() != null && !problem.getIp().isBlank()) {
+            return problem.getIp();
+        }
+        return problem.getHostId() != null ? problem.getHostId().toString() : null;
     }
 }

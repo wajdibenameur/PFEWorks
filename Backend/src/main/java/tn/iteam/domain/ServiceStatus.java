@@ -17,7 +17,7 @@ import java.time.LocalDateTime;
         uniqueConstraints = @UniqueConstraint(columnNames = {"source", "name", "ip"}))
 public class ServiceStatus extends BaseEntity {
 
-    private String source;       // ZABBIX | OBSERVIUM | ZKBIO | CAMERA
+    private String source;       // ZABBIX | SNMP | ZKBIO | CAMERA
     private String name;         // Hostname / Camera name
     private String ip;
     private Integer port;

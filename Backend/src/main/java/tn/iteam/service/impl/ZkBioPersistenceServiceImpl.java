@@ -13,6 +13,7 @@ import tn.iteam.repository.ZkBioMetricRepository;
 import tn.iteam.repository.ZkBioProblemRepository;
 import tn.iteam.service.TicketService;
 import tn.iteam.service.ZkBioPersistenceService;
+import tn.iteam.service.support.MonitoringProblemNotificationService;
 import tn.iteam.util.MonitoringConstants;
 
 import java.time.Instant;
@@ -35,6 +36,7 @@ public class ZkBioPersistenceServiceImpl implements ZkBioPersistenceService {
     private final TicketService ticketService;
     private final ZkBioMetricRepository metricRepository;
     private final ZkBioMetricMapper metricMapper;
+    private final MonitoringProblemNotificationService monitoringProblemNotificationService;
 
     @Override
     @Transactional
@@ -67,11 +69,14 @@ public class ZkBioPersistenceServiceImpl implements ZkBioPersistenceService {
                     .toList();
 
             if (existingList.isEmpty()) {
+                maybeNotifyProblem(dto, false);
                 entitiesToSave.add(incoming);
                 continue;
             }
 
             ZkBioProblem existing = existingList.get(existingList.size() - 1);
+            boolean reactivated = !Boolean.TRUE.equals(existing.getActive()) && Boolean.TRUE.equals(incoming.getActive());
+            maybeNotifyProblem(dto, reactivated);
             existing.setProblemId(incoming.getProblemId());
             existing.setDevice(incoming.getDevice());
             existing.setDescription(incoming.getDescription());
@@ -111,10 +116,25 @@ public class ZkBioPersistenceServiceImpl implements ZkBioPersistenceService {
         }
 
         try {
-            return Integer.parseInt(severity.trim()) >= 3;
+            return Integer.parseInt(severity.trim()) > 3;
         } catch (NumberFormatException ex) {
             return false;
         }
+    }
+
+    private void maybeNotifyProblem(ZkBioProblemDTO dto, boolean reactivated) {
+        if (dto == null || !dto.isActive()) {
+            return;
+        }
+        monitoringProblemNotificationService.notifySuperadminsForProblem(
+                dto.getSource(),
+                dto.getProblemId(),
+                dto.getDescription(),
+                dto.getSeverity(),
+                dto.getHost(),
+                dto.getStartedAt(),
+                reactivated
+        );
     }
 
     @Override

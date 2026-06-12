@@ -22,6 +22,7 @@ import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZabbixDataQualityService;
 import tn.iteam.service.ZabbixMetricsService;
 import tn.iteam.service.ZabbixMetricsRefreshResult;
+import tn.iteam.service.support.DatabasePersistenceGuard;
 import tn.iteam.util.MonitoringConstants;
 
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -65,6 +67,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
     private final SourceAvailabilityService availabilityService;
     private final ZabbixDataQualityService dataQualityService;
     private final TransactionTemplate transactionTemplate;
+    private final DatabasePersistenceGuard databasePersistenceGuard;
 
     @Override
     public List<ZabbixMetric> getPersistedMetricsSnapshot() {
@@ -163,9 +166,15 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
             return new ZabbixMetricsRefreshResult(displaySnapshot, true);
         }
 
-        List<ZabbixMetric> persistedBatch = persistMetricsInTransaction(mappingResult.entitiesToSave());
-        List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(persistedBatch);
-        return new ZabbixMetricsRefreshResult(displaySnapshot, false);
+        AtomicReference<List<ZabbixMetric>> persistedBatchRef =
+                new AtomicReference<>(List.copyOf(mappingResult.entitiesToSave()));
+        boolean persisted = databasePersistenceGuard.safeRun(
+                MonitoringConstants.SOURCE_ZABBIX,
+                "metrics-persistence",
+                () -> persistedBatchRef.set(persistMetricsInTransaction(mappingResult.entitiesToSave()))
+        );
+        List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(persistedBatchRef.get());
+        return new ZabbixMetricsRefreshResult(displaySnapshot, !persisted);
     }
 
     private Mono<ZabbixMetricsCollectionResult> loadMetricCollection(JsonNode hosts) {

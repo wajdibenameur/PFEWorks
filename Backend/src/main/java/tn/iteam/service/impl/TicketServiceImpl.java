@@ -2,18 +2,20 @@ package tn.iteam.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import tn.iteam.domain.Intervention;
 import tn.iteam.domain.Role;
 import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
-import tn.iteam.dto.ObserviumProblemDTO;
+import tn.iteam.dto.SnmpProblemDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
 import tn.iteam.enums.Priority;
@@ -62,19 +64,19 @@ public class TicketServiceImpl implements TicketService {
 
     // ================= CREATE FROM ZABBIX =================
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Ticket createFromProblem(ZabbixProblemDTO problem) {
         return createFromProblem(problem, null);
     }
 
     @Override
-    @Transactional
-    public Ticket createFromProblem(ObserviumProblemDTO problem) {
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public Ticket createFromProblem(SnmpProblemDTO problem) {
         return createFromProblem(problem, null);
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Ticket createFromProblem(ZkBioProblemDTO problem) {
         return createFromProblem(problem, null);
     }
@@ -91,9 +93,9 @@ public class TicketServiceImpl implements TicketService {
         );
     }
 
-    private Ticket createFromProblem(ObserviumProblemDTO problem, User creator) {
+    private Ticket createFromProblem(SnmpProblemDTO problem, User creator) {
         return createMonitoringTicket(
-                normalizeSource(problem != null ? problem.getSource() : null, MonitoringConstants.SOURCE_OBSERVIUM),
+                normalizeSource(problem != null ? problem.getSource() : null, MonitoringConstants.SOURCE_SNMP),
                 problem != null ? problem.getProblemId() : null,
                 problem != null ? problem.getDescription() : null,
                 problem != null ? problem.getSeverity() : null,
@@ -289,10 +291,17 @@ public class TicketServiceImpl implements TicketService {
     private Role ensureSystemRole() {
         return roleRepository.findByName(RoleName.SYSTEM)
                 .orElseGet(() -> {
-                    Role role = new Role();
-                    role.setName(RoleName.SYSTEM);
-                    role.setPermissions(new ArrayList<>(RolePermissionMatrix.permissionsFor(RoleName.SYSTEM)));
-                    return roleRepository.save(role);
+                    try {
+                        Role role = new Role();
+                        role.setName(RoleName.SYSTEM);
+                        role.setPermissions(new ArrayList<>(RolePermissionMatrix.permissionsFor(RoleName.SYSTEM)));
+                        return roleRepository.save(role);
+                    } catch (DataIntegrityViolationException exception) {
+                        log.error(
+                                "Unable to persist SYSTEM role. Legacy schema likely does not allow role.name='SYSTEM'. Run the manual SQL migration for role.name before retrying monitoring ticket creation."
+                        );
+                        throw exception;
+                    }
                 });
     }
 

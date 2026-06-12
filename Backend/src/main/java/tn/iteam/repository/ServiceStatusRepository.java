@@ -20,4 +20,6 @@ public interface ServiceStatusRepository
     List<ServiceStatus> findBySourceOrderByIpAscPortAsc(String source);
 
     List<ServiceStatus> findBySource(String source);
+
+    void deleteAllBySourceAndIpNotIn(String source, List<String> ips);
 }
