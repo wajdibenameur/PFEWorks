@@ -36,7 +36,11 @@ public class MonitoringCacheService {
                 DATASET_PROBLEMS,
                 source,
                 items -> items.stream()
-                        .sorted(Comparator.comparing(UnifiedMonitoringProblemDTO::getStartedAt, Comparator.nullsLast(Long::compareTo)).reversed())
+                        .sorted(Comparator.comparing(
+                                (UnifiedMonitoringProblemDTO problem) ->
+                                        problem.getLastObservedAt() != null ? problem.getLastObservedAt() : problem.getStartedAt(),
+                                Comparator.nullsLast(Long::compareTo)
+                        ).reversed())
                         .toList()
         );
     }
@@ -113,7 +117,7 @@ public class MonitoringCacheService {
                     .toList();
         }
 
-        MonitoringSourceType requested = MonitoringSourceType.valueOf(source.trim().toUpperCase(Locale.ROOT));
+        MonitoringSourceType requested = MonitoringSourceType.fromValue(source);
         if (!requested.supportsDataset(dataset)) {
             return List.of();
         }

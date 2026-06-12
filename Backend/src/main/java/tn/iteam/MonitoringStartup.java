@@ -52,14 +52,14 @@ public class MonitoringStartup {
         refreshSafely("monitoring warmup", reactor.core.publisher.Mono.whenDelayError(
                 integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)
                         .refreshAsync(),
-                integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)
+                integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)
                         .refreshAsync(),
                 zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync(),
                 integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
         ).then(reactor.core.publisher.Mono.fromRunnable(() -> {
             snapshotPublicationService.publishMonitoringSnapshots(java.util.List.of(
                     MonitoringSourceType.ZABBIX,
-                    MonitoringSourceType.OBSERVIUM,
+                    MonitoringSourceType.SNMP,
                     MonitoringSourceType.ZKBIO
             ));
             snapshotPublicationService.publishZkBioSnapshots();

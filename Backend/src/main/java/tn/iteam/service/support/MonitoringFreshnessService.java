@@ -90,6 +90,19 @@ public class MonitoringFreshnessService {
         lastPublishHash.put(key, Objects.hashCode(payload));
     }
 
+    public void invalidateSource(String source) {
+        String normalizedSource = source == null ? "ALL" : source.trim().toUpperCase();
+        invalidateMapEntries(lastSuccessfulFetch, normalizedSource);
+        invalidateMapEntries(lastSuccessfulPersist, normalizedSource);
+        invalidateMapEntries(lastPublishTimestamp, normalizedSource);
+        invalidateMapEntries(lastPersistHash, normalizedSource);
+        invalidateMapEntries(lastPublishHash, normalizedSource);
+    }
+
+    private void invalidateMapEntries(Map<String, ?> map, String normalizedSource) {
+        map.keySet().removeIf(key -> key.endsWith(":" + normalizedSource));
+    }
+
     private boolean isFresh(Instant timestamp, Instant now, long ttlMs) {
         return timestamp != null && now.toEpochMilli() - timestamp.toEpochMilli() <= ttlMs;
     }

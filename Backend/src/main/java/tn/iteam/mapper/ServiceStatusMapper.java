@@ -26,7 +26,7 @@ public class ServiceStatusMapper {
         s.setStatus(dto.getStatus());
         // Utilisation de CategoryResolver pour déterminer la catégorie
         s.setCategory(categoryResolver.resolve(dto));
-        s.setLastCheck(LocalDateTime.now());
+        s.setLastCheck(dto.getLastCheck() != null ? dto.getLastCheck() : LocalDateTime.now());
         return s;
     }
 
@@ -38,7 +38,7 @@ public class ServiceStatusMapper {
         entity.setProtocol(dto.getProtocol());
         entity.setStatus(dto.getStatus());
         entity.setCategory(categoryResolver.resolve(dto));
-        entity.setLastCheck(LocalDateTime.now());
+        entity.setLastCheck(dto.getLastCheck() != null ? dto.getLastCheck() : LocalDateTime.now());
     }
 
 }

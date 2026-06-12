@@ -25,6 +25,8 @@ public class UnifiedMonitoringProblemDTO {
     private Integer port;
     private Long startedAt;
     private String startedAtFormatted;
+    private Long lastObservedAt;
+    private String lastObservedAtFormatted;
     private Long resolvedAt;
     private String resolvedAtFormatted;
 }

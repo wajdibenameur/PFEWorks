@@ -6,7 +6,10 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Mono;
 import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.InterfaceDTO;
@@ -19,8 +22,9 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
+import tn.iteam.service.SnmpInterfaceService;
 import tn.iteam.service.SourceAvailabilityService;
-import tn.iteam.service.ObserviumInterfaceService;
+import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
 import java.util.List;
@@ -36,7 +40,8 @@ public class MonitoringController {
     private final IntegrationServiceRegistry integrationServiceRegistry;
     private final ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
-    private final ObserviumInterfaceService observiumInterfaceService;
+    private final SnmpInterfaceService snmpInterfaceService;
+    private final MonitoringFreshnessService monitoringFreshnessService;
 
     @GetMapping("/problems")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ALERTS)")
@@ -70,7 +75,7 @@ public class MonitoringController {
 
     @GetMapping("/sources/health")
     @PreAuthorize(
-            "hasAnyAuthority('VIEW_DASHBOARD','VIEW_ZABBIX','VIEW_OBSERVIUM','VIEW_CAMERA','VIEW_ZKBIO','VIEW_ACCESS_POINT')"
+            "hasAnyAuthority('VIEW_DASHBOARD','VIEW_ZABBIX','VIEW_SNMP','VIEW_CAMERA','VIEW_ZKBIO','VIEW_ACCESS_POINT')"
     )
     @Operation(summary = "Consulter l'état des sources", description = "Retourne l'état de disponibilité de chaque source de supervision.")
     @ApiResponses({
@@ -82,31 +87,35 @@ public class MonitoringController {
 
     @GetMapping("/interfaces")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_METRICS)")
-    @Operation(summary = "Lister les interfaces réseau SNMP", description = "Retourne les interfaces Observium SNMP avec état, compteurs et bande passante calculée.")
+    @Operation(summary = "Lister les interfaces réseau SNMP", description = "Retourne les interfaces SNMP avec état, compteurs et bande passante calculée.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Interfaces récupérées avec succès")
     })
-    public List<InterfaceDTO> getObserviumInterfaces() {
-        return observiumInterfaceService.getAllInterfaces();
+    public List<InterfaceDTO> getSnmpInterfaces() {
+        return snmpInterfaceService.getAllInterfaces();
     }
 
     @PostMapping("/collect")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte complète", description = "Lance une collecte asynchrone pour Zabbix, Observium, ZKBio et Caméras.")
+    @Operation(summary = "Déclencher une collecte complète", description = "Lance une collecte asynchrone pour Zabbix, SNMP, ZKBio et Caméras.")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte globale déclenchée avec succès")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectAll() {
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZABBIX.name());
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.SNMP.name());
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZKBIO.name());
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.CAMERA.name());
         return Mono.whenDelayError(
                         integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX).refreshAsync(),
-                        integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshAsync(),
+                        integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP).refreshAsync(),
                         zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync(),
                         integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
                 )
                 .then(Mono.fromRunnable(() -> {
                     snapshotPublicationService.publishMonitoringSnapshots(List.of(
                             MonitoringSourceType.ZABBIX,
-                            MonitoringSourceType.OBSERVIUM,
+                            MonitoringSourceType.SNMP,
                             MonitoringSourceType.ZKBIO
                     ));
                     snapshotPublicationService.publishZkBioSnapshots();
@@ -127,6 +136,7 @@ public class MonitoringController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte Zabbix déclenchée avec succès")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectZabbix() {
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZABBIX.name());
         return integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX).refreshAsync()
                 .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.ZABBIX)))
                 .thenReturn(ResponseEntity.ok(
@@ -138,19 +148,20 @@ public class MonitoringController {
                 ));
     }
 
-    @PostMapping("/collect/observium")
+    @PostMapping("/collect/snmp")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte Observium", description = "Lance une collecte asynchrone complète pour la source Observium.")
+    @Operation(summary = "Déclencher une collecte SNMP", description = "Lance une collecte asynchrone complète pour la source SNMP.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte Observium déclenchée avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte SNMP déclenchée avec succès")
     })
-    public Mono<ResponseEntity<ApiResponse<Void>>> collectObservium() {
-        return integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM).refreshAsync()
-                .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.OBSERVIUM)))
+    public Mono<ResponseEntity<ApiResponse<Void>>> collectSnmp() {
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.SNMP.name());
+        return integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP).refreshAsync()
+                .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(MonitoringSourceType.SNMP)))
                 .thenReturn(ResponseEntity.ok(
                         ApiResponse.<Void>builder()
                                 .success(true)
-                                .message("OBSERVIUM COLLECTED")
+                                .message("SNMP COLLECTED")
                                 .source("SYSTEM")
                                 .build()
                 ));
@@ -163,6 +174,7 @@ public class MonitoringController {
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte caméras déclenchée avec succès")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectCamera() {
+        monitoringFreshnessService.invalidateSource(MonitoringSourceType.CAMERA.name());
         return integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
                 .thenReturn(ResponseEntity.ok(
                         ApiResponse.<Void>builder()

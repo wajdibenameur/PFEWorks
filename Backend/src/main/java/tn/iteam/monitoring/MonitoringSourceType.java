@@ -2,7 +2,7 @@ package tn.iteam.monitoring;
 
 public enum MonitoringSourceType {
     ZABBIX(true, true, true, "native"),
-    OBSERVIUM(true, true, true, "synthetic"),
+    SNMP(true, true, true, "synthetic"),
     ZKBIO(true, true, true, "synthetic"),
     CAMERA(true, false, false, "not_applicable");
 
@@ -34,5 +34,16 @@ public enum MonitoringSourceType {
 
     public String metricsCoverage() {
         return metricsCoverage;
+    }
+
+    public static MonitoringSourceType fromValue(String source) {
+        if (source == null || source.isBlank()) {
+            throw new IllegalArgumentException("Monitoring source must not be blank");
+        }
+        String normalized = source.trim().toUpperCase();
+        if ("SNMP".equals(normalized)) {
+            return SNMP;
+        }
+        return MonitoringSourceType.valueOf(normalized);
     }
 }

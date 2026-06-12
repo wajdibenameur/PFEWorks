@@ -9,7 +9,7 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.repository.MonitoredHostRepository;
 import tn.iteam.repository.ServiceStatusRepository;
 import tn.iteam.service.MonitoredHostSnapshotService;
-import tn.iteam.service.observium.ObserviumSubnetClassifier;
+import tn.iteam.service.snmp.SnmpSubnetClassifier;
 import tn.iteam.util.MonitoringConstants;
 import tn.iteam.util.MonitoringNormalizeUtils;
 
@@ -23,7 +23,7 @@ public class MonitoredHostSnapshotServiceImpl implements MonitoredHostSnapshotSe
 
     private final MonitoredHostRepository monitoredHostRepository;
     private final ServiceStatusRepository serviceStatusRepository;
-    private final ObserviumSubnetClassifier observiumSubnetClassifier;
+    private final SnmpSubnetClassifier snmpSubnetClassifier;
 
     @Override
     public List<UnifiedMonitoringHostDTO> loadHosts(MonitoringSourceType source) {
@@ -91,13 +91,13 @@ public class MonitoredHostSnapshotServiceImpl implements MonitoredHostSnapshotSe
     }
 
     private String normalizeCategory(String value, MonitoringSourceType source, String ip) {
-        if (source == MonitoringSourceType.OBSERVIUM) {
+        if (source == MonitoringSourceType.SNMP) {
             String normalizedIp = MonitoringNormalizeUtils.normalizeIp(ip);
             if (normalizedIp != null) {
-                if (!observiumSubnetClassifier.isIncludedInScope(normalizedIp)) {
+                if (!snmpSubnetClassifier.isIncludedInScope(normalizedIp)) {
                     return MonitoringConstants.UNKNOWN;
                 }
-                return observiumSubnetClassifier.resolveCategory(normalizedIp);
+                return snmpSubnetClassifier.resolveCategory(normalizedIp);
             }
         }
 

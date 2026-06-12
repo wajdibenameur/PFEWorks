@@ -52,7 +52,7 @@ public class MonitoringAggregationService {
             return allMetricsCoverage();
         }
 
-        MonitoringSourceType requested = MonitoringSourceType.valueOf(source.trim().toUpperCase());
+        MonitoringSourceType requested = MonitoringSourceType.fromValue(source);
         return Map.of(requested.name(), requested.metricsCoverage());
     }
 

@@ -11,8 +11,10 @@ import tn.iteam.service.MonitoredHostPersistenceService;
 import tn.iteam.util.MonitoringNormalizeUtils;
 
 import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -77,9 +79,25 @@ public class MonitoredHostPersistenceServiceImpl implements MonitoredHostPersist
             saved += monitoredHostRepository.saveAll(entitiesToSave.subList(index, end)).size();
         }
 
+        pruneObsoleteHosts(source, deduplicated.keySet());
+
         log.info("MonitoredHost batch persistence source={} rows={} durationMs={}",
                 source, saved, System.currentTimeMillis() - startedAt);
         return saved;
+    }
+
+    private void pruneObsoleteHosts(String source, Set<String> liveHostIds) {
+        if (source == null || source.isBlank() || liveHostIds == null || liveHostIds.isEmpty()) {
+            return;
+        }
+        Set<String> allowed = new HashSet<>(liveHostIds);
+        List<MonitoredHost> obsolete = monitoredHostRepository.findBySource(source).stream()
+                .filter(host -> host.getHostId() == null || !allowed.contains(host.getHostId()))
+                .toList();
+        if (!obsolete.isEmpty()) {
+            monitoredHostRepository.deleteAll(obsolete);
+            log.info("MonitoredHost cleanup source={} removed={}", source, obsolete.size());
+        }
     }
 
     private MonitoredHost merge(MonitoredHost existing, String incomingName, String incomingIp, Integer incomingPort) {

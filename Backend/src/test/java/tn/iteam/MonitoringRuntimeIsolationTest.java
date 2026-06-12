@@ -8,6 +8,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.http.ResponseEntity;
+import org.springframework.test.util.ReflectionTestUtils;
 import reactor.core.publisher.Mono;
 import reactor.core.publisher.Sinks;
 import tn.iteam.controller.MonitoringController;
@@ -22,11 +23,11 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.monitoring.snapshot.InMemorySnapshotStore;
 import tn.iteam.monitoring.snapshot.StoredSnapshot;
-import tn.iteam.scheduler.ObserviumHostsScheduler;
-import tn.iteam.scheduler.ObserviumScheduler;
+import tn.iteam.scheduler.SnmpHostsScheduler;
+import tn.iteam.scheduler.SnmpScheduler;
 import tn.iteam.scheduler.ZabbixScheduler;
 import tn.iteam.scheduler.ZkBioScheduler;
-import tn.iteam.service.ObserviumInterfaceService;
+import tn.iteam.service.SnmpInterfaceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
@@ -50,7 +51,7 @@ class MonitoringRuntimeIsolationTest {
     private AsyncIntegrationService zabbixIntegrationService;
 
     @Mock
-    private AsyncIntegrationService observiumIntegrationService;
+    private AsyncIntegrationService snmpIntegrationService;
 
     @Mock
     private ZkBioIntegrationOperations zkBioIntegrationService;
@@ -71,7 +72,7 @@ class MonitoringRuntimeIsolationTest {
     private AsyncIntegrationService concreteZabbixIntegrationService;
 
     @Mock
-    private AsyncIntegrationService concreteObserviumIntegrationService;
+    private AsyncIntegrationService concreteSnmpIntegrationService;
 
     @Mock
     private MonitoringAggregationService monitoringAggregationService;
@@ -92,7 +93,7 @@ class MonitoringRuntimeIsolationTest {
     private MonitoringFreshnessService monitoringFreshnessService;
 
     @Mock
-    private ObserviumInterfaceService observiumInterfaceService;
+    private SnmpInterfaceService snmpInterfaceService;
 
     @Test
     void startupWarmupSwallowsFailuresAndNeverTurnsIntoFatalError() {
@@ -103,11 +104,11 @@ class MonitoringRuntimeIsolationTest {
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(zabbixIntegrationService);
-        when(integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)).thenReturn(observiumIntegrationService);
+        when(integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)).thenReturn(snmpIntegrationService);
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA)).thenReturn(cameraIntegrationService);
 
         when(zabbixIntegrationService.refreshAsync()).thenReturn(Mono.error(new RuntimeException("redis-down-or-anything-else")));
-        when(observiumIntegrationService.refreshAsync()).thenReturn(Mono.error(new RuntimeException("observium-failure")));
+        when(snmpIntegrationService.refreshAsync()).thenReturn(Mono.error(new RuntimeException("snmp-failure")));
         when(zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync())
                 .thenReturn(Mono.error(new RuntimeException("zkbio-failure")));
         when(cameraIntegrationService.refreshAsync()).thenReturn(Mono.error(new RuntimeException("camera-failure")));
@@ -122,12 +123,12 @@ class MonitoringRuntimeIsolationTest {
                 sourceAvailabilityService,
                 snapshotPublicationService
         );
-        ObserviumScheduler observiumScheduler = new ObserviumScheduler(
+        SnmpScheduler snmpScheduler = new SnmpScheduler(
                 integrationServiceRegistry,
                 sourceAvailabilityService,
                 snapshotPublicationService
         );
-        ObserviumHostsScheduler observiumHostsScheduler = new ObserviumHostsScheduler(
+        SnmpHostsScheduler snmpHostsScheduler = new SnmpHostsScheduler(
                 integrationServiceRegistry,
                 sourceAvailabilityService
         );
@@ -138,32 +139,33 @@ class MonitoringRuntimeIsolationTest {
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(concreteZabbixIntegrationService);
-        when(integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)).thenReturn(concreteObserviumIntegrationService);
+        when(integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)).thenReturn(concreteSnmpIntegrationService);
         when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZABBIX.name(), 60000L)).thenReturn(true);
-        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), 60000L)).thenReturn(true);
+        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZABBIX.name(), 120000L)).thenReturn(true);
+        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.SNMP.name(), 60000L)).thenReturn(true);
         when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), 60000L)).thenReturn(true);
 
         when(concreteZabbixIntegrationService.refreshMetricsAsync()).thenReturn(Mono.empty());
-        when(concreteObserviumIntegrationService.refreshAsync()).thenReturn(Mono.empty());
+        when(concreteSnmpIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(zkBioIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(zkBioIntegrationService.refreshAttendanceAsync()).thenReturn(Mono.empty());
 
         zabbixScheduler.fetchAndPublishProblems();
         zabbixScheduler.fetchAndPublishMetrics();
-        observiumScheduler.refreshProblemsAndMetrics();
-        observiumHostsScheduler.refreshHosts();
+        snmpScheduler.refreshProblemsAndMetrics();
+        snmpHostsScheduler.refreshHosts();
         zkBioScheduler.refreshProblemsAndMetrics();
         zkBioScheduler.refreshAttendanceDevicesAndStatus();
 
         verify(concreteZabbixIntegrationService).refreshProblems();
         verify(concreteZabbixIntegrationService).refreshMetricsAsync();
-        verify(concreteObserviumIntegrationService).refreshAsync();
-        verify(concreteObserviumIntegrationService).refreshHosts();
+        verify(concreteSnmpIntegrationService).refreshAsync();
+        verify(concreteSnmpIntegrationService).refreshHosts();
         verify(zkBioIntegrationService).refreshAsync();
         verify(zkBioIntegrationService).refreshAttendanceAsync();
         verify(snapshotPublicationService).publishProblemsSnapshot(MonitoringSourceType.ZABBIX);
         verify(snapshotPublicationService).publishMetricsSnapshot(MonitoringSourceType.ZABBIX);
-        verify(snapshotPublicationService).publishMonitoringSnapshots(MonitoringSourceType.OBSERVIUM);
+        verify(snapshotPublicationService).publishMonitoringSnapshots(MonitoringSourceType.SNMP);
         verify(snapshotPublicationService).publishMonitoringSnapshots(MonitoringSourceType.ZKBIO);
         verify(snapshotPublicationService).publishZkBioSnapshots();
     }
@@ -175,12 +177,12 @@ class MonitoringRuntimeIsolationTest {
                 sourceAvailabilityService,
                 snapshotPublicationService
         );
-        ObserviumScheduler observiumScheduler = new ObserviumScheduler(
+        SnmpScheduler snmpScheduler = new SnmpScheduler(
                 integrationServiceRegistry,
                 sourceAvailabilityService,
                 snapshotPublicationService
         );
-        ObserviumHostsScheduler observiumHostsScheduler = new ObserviumHostsScheduler(
+        SnmpHostsScheduler snmpHostsScheduler = new SnmpHostsScheduler(
                 integrationServiceRegistry,
                 sourceAvailabilityService
         );
@@ -191,13 +193,14 @@ class MonitoringRuntimeIsolationTest {
         );
 
         when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZABBIX.name(), 60000L)).thenReturn(false);
-        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.OBSERVIUM.name(), 60000L)).thenReturn(false);
+        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZABBIX.name(), 120000L)).thenReturn(false);
+        when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.SNMP.name(), 60000L)).thenReturn(false);
         when(sourceAvailabilityService.shouldAttempt(MonitoringSourceType.ZKBIO.name(), 60000L)).thenReturn(false);
 
         zabbixScheduler.fetchAndPublishProblems();
         zabbixScheduler.fetchAndPublishMetrics();
-        observiumScheduler.refreshProblemsAndMetrics();
-        observiumHostsScheduler.refreshHosts();
+        snmpScheduler.refreshProblemsAndMetrics();
+        snmpHostsScheduler.refreshHosts();
         zkBioScheduler.refreshProblemsAndMetrics();
         zkBioScheduler.refreshAttendanceDevicesAndStatus();
 
@@ -217,6 +220,7 @@ class MonitoringRuntimeIsolationTest {
                 snapshotStore,
                 monitoringFreshnessService
         );
+        ReflectionTestUtils.setField(publicationService, "publishOnlyOnChange", true);
 
         snapshotStore.save(
                 "problems",
@@ -284,14 +288,15 @@ class MonitoringRuntimeIsolationTest {
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
                 snapshotPublicationService,
-                observiumInterfaceService
+                snmpInterfaceService,
+                monitoringFreshnessService
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(concreteZabbixIntegrationService);
-        when(integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)).thenReturn(concreteObserviumIntegrationService);
+        when(integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)).thenReturn(concreteSnmpIntegrationService);
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA)).thenReturn(cameraIntegrationService);
         when(concreteZabbixIntegrationService.refreshAsync()).thenReturn(Mono.empty());
-        when(concreteObserviumIntegrationService.refreshAsync()).thenReturn(Mono.empty());
+        when(concreteSnmpIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync()).thenReturn(Mono.empty());
         when(cameraIntegrationService.refreshAsync()).thenReturn(Mono.empty());
 
@@ -302,12 +307,12 @@ class MonitoringRuntimeIsolationTest {
         assertThat(response.getBody().isSuccess()).isTrue();
         assertThat(response.getBody().getMessage()).isEqualTo("ALL SERVICES COLLECTED");
         verify(concreteZabbixIntegrationService).refreshAsync();
-        verify(concreteObserviumIntegrationService).refreshAsync();
+        verify(concreteSnmpIntegrationService).refreshAsync();
         verify(zkBioRefreshOrchestrationService).refreshMonitoringAndAttendanceAsync();
         verify(cameraIntegrationService).refreshAsync();
         verify(snapshotPublicationService).publishMonitoringSnapshots(List.of(
                 MonitoringSourceType.ZABBIX,
-                MonitoringSourceType.OBSERVIUM,
+                MonitoringSourceType.SNMP,
                 MonitoringSourceType.ZKBIO
         ));
         verify(snapshotPublicationService).publishZkBioSnapshots();
@@ -321,14 +326,15 @@ class MonitoringRuntimeIsolationTest {
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
                 snapshotPublicationService,
-                observiumInterfaceService
+                snmpInterfaceService,
+                monitoringFreshnessService
         );
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(concreteZabbixIntegrationService);
-        when(integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)).thenReturn(concreteObserviumIntegrationService);
+        when(integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)).thenReturn(concreteSnmpIntegrationService);
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA)).thenReturn(cameraIntegrationService);
         when(concreteZabbixIntegrationService.refreshAsync()).thenReturn(Mono.empty());
-        when(concreteObserviumIntegrationService.refreshAsync()).thenReturn(Mono.empty());
+        when(concreteSnmpIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(cameraIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync()).thenReturn(Mono.empty());
 
@@ -336,18 +342,18 @@ class MonitoringRuntimeIsolationTest {
 
         InOrder inOrder = inOrder(
                 concreteZabbixIntegrationService,
-                concreteObserviumIntegrationService,
+                concreteSnmpIntegrationService,
                 zkBioRefreshOrchestrationService,
                 cameraIntegrationService,
                 snapshotPublicationService
         );
         inOrder.verify(concreteZabbixIntegrationService).refreshAsync();
-        inOrder.verify(concreteObserviumIntegrationService).refreshAsync();
+        inOrder.verify(concreteSnmpIntegrationService).refreshAsync();
         inOrder.verify(zkBioRefreshOrchestrationService).refreshMonitoringAndAttendanceAsync();
         inOrder.verify(cameraIntegrationService).refreshAsync();
         inOrder.verify(snapshotPublicationService).publishMonitoringSnapshots(List.of(
                 MonitoringSourceType.ZABBIX,
-                MonitoringSourceType.OBSERVIUM,
+                MonitoringSourceType.SNMP,
                 MonitoringSourceType.ZKBIO
         ));
         inOrder.verify(snapshotPublicationService).publishZkBioSnapshots();
@@ -363,10 +369,10 @@ class MonitoringRuntimeIsolationTest {
         Sinks.Empty<Void> zkbioSink = Sinks.empty();
 
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX)).thenReturn(zabbixIntegrationService);
-        when(integrationServiceRegistry.getRequired(MonitoringSourceType.OBSERVIUM)).thenReturn(observiumIntegrationService);
+        when(integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)).thenReturn(snmpIntegrationService);
         when(integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA)).thenReturn(cameraIntegrationService);
         when(zabbixIntegrationService.refreshAsync()).thenReturn(Mono.empty());
-        when(observiumIntegrationService.refreshAsync()).thenReturn(Mono.empty());
+        when(snmpIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(cameraIntegrationService.refreshAsync()).thenReturn(Mono.empty());
         when(zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync()).thenReturn(zkbioSink.asMono());
 
@@ -380,7 +386,7 @@ class MonitoringRuntimeIsolationTest {
         inOrder.verify(zkBioRefreshOrchestrationService).refreshMonitoringAndAttendanceAsync();
         inOrder.verify(snapshotPublicationService).publishMonitoringSnapshots(List.of(
                 MonitoringSourceType.ZABBIX,
-                MonitoringSourceType.OBSERVIUM,
+                MonitoringSourceType.SNMP,
                 MonitoringSourceType.ZKBIO
         ));
         inOrder.verify(snapshotPublicationService).publishZkBioSnapshots();

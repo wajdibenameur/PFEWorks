@@ -14,7 +14,8 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringResponse;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
-import tn.iteam.service.ObserviumInterfaceService;
+import tn.iteam.service.SnmpInterfaceService;
+import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
@@ -59,7 +60,10 @@ private AsyncIntegrationService asyncIntegrationService;
     private MonitoringSnapshotPublicationService snapshotPublicationService;
 
     @Mock
-    private ObserviumInterfaceService observiumInterfaceService;
+    private SnmpInterfaceService snmpInterfaceService;
+
+    @Mock
+    private MonitoringFreshnessService monitoringFreshnessService;
 
     @BeforeEach
     void setUp() {
@@ -69,7 +73,8 @@ private AsyncIntegrationService asyncIntegrationService;
                 integrationServiceRegistry,
                 zkBioRefreshOrchestrationService,
                 snapshotPublicationService,
-                observiumInterfaceService
+                snmpInterfaceService,
+                monitoringFreshnessService
         );
 
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
@@ -81,13 +86,13 @@ private AsyncIntegrationService asyncIntegrationService;
                 new UnifiedMonitoringResponse<>(
                         List.of(
                                 UnifiedMonitoringProblemDTO.builder()
-                                        .id("OBSERVIUM:p1")
+                                        .id("SNMP:p1")
                                         .problemId("p1")
                                         .description("Fallback problem")
                                         .build()
                         ),
                         true,
-                        Map.of("OBSERVIUM", "redis_fallback"),
+                        Map.of("SNMP", "redis_fallback"),
                         Map.of()
                 )
         );
@@ -96,7 +101,7 @@ private AsyncIntegrationService asyncIntegrationService;
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.degraded").value(true))
                 .andExpect(jsonPath("$.data[0].problemId").value("p1"))
-                .andExpect(jsonPath("$.freshness.OBSERVIUM").value("redis_fallback"))
+                .andExpect(jsonPath("$.freshness.SNMP").value("redis_fallback"))
                 .andExpect(jsonPath("$.coverage").isMap());
 
         verify(aggregationService).getProblems((String) null);
@@ -117,7 +122,7 @@ private AsyncIntegrationService asyncIntegrationService;
                         Map.of("ZABBIX", "persisted"),
                         Map.of(
                                 "ZABBIX", "native",
-                                "OBSERVIUM", "synthetic",
+                                "SNMP", "synthetic",
                                 "ZKBIO", "synthetic",
                                 "CAMERA", "not_applicable"
                         )
@@ -130,7 +135,7 @@ private AsyncIntegrationService asyncIntegrationService;
                 .andExpect(jsonPath("$.data[0].metricKey").value("system.cpu.util"))
                 .andExpect(jsonPath("$.freshness.ZABBIX").value("persisted"))
                 .andExpect(jsonPath("$.coverage.ZABBIX").value("native"))
-                .andExpect(jsonPath("$.coverage.OBSERVIUM").value("synthetic"))
+                .andExpect(jsonPath("$.coverage.SNMP").value("synthetic"))
                 .andExpect(jsonPath("$.coverage.ZKBIO").value("synthetic"))
                 .andExpect(jsonPath("$.coverage.CAMERA").value("not_applicable"));
 

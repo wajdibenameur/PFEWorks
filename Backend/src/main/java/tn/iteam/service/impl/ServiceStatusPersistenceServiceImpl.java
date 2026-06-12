@@ -12,6 +12,7 @@ import tn.iteam.service.ServiceStatusPersistenceService;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -66,9 +67,28 @@ public class ServiceStatusPersistenceServiceImpl implements ServiceStatusPersist
             saved += statusRepository.saveAll(entitiesToSave.subList(index, end)).size();
         }
 
+        pruneObsoleteStatuses(source, statuses);
+
         log.info("ServiceStatus batch persistence source={} rows={} durationMs={}",
                 source, saved, System.currentTimeMillis() - startedAt);
         return saved;
+    }
+
+    private void pruneObsoleteStatuses(String source, List<ServiceStatusDTO> statuses) {
+        if (source == null || source.isBlank() || statuses == null || statuses.isEmpty()) {
+            return;
+        }
+        Set<String> liveIps = statuses.stream()
+                .map(ServiceStatusDTO::getIp)
+                .filter(ip -> ip != null && !ip.isBlank())
+                .collect(Collectors.toSet());
+        List<ServiceStatus> obsolete = statusRepository.findBySource(source).stream()
+                .filter(entity -> entity.getIp() == null || !liveIps.contains(entity.getIp()))
+                .toList();
+        if (!obsolete.isEmpty()) {
+            statusRepository.deleteAll(obsolete);
+            log.info("ServiceStatus cleanup source={} removed={}", source, obsolete.size());
+        }
     }
 
     private String identityKey(String source, String name, String ip, Integer port) {

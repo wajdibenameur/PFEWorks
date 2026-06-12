@@ -2,14 +2,14 @@ package tn.iteam.mapper;
 
 import org.springframework.stereotype.Component;
 import tn.iteam.dto.ServiceStatusDTO;
-import tn.iteam.service.observium.ObserviumSubnetClassifier;
+import tn.iteam.service.snmp.SnmpSubnetClassifier;
 import tn.iteam.util.MonitoringConstants;
 
 @Component
 public class CategoryResolver {
-    private final ObserviumSubnetClassifier subnetClassifier;
+    private final SnmpSubnetClassifier subnetClassifier;
 
-    public CategoryResolver(ObserviumSubnetClassifier subnetClassifier) {
+    public CategoryResolver(SnmpSubnetClassifier subnetClassifier) {
         this.subnetClassifier = subnetClassifier;
     }
 
@@ -21,7 +21,7 @@ public class CategoryResolver {
         switch (dto.getSource().toUpperCase()) {
             case "ZABBIX":
                 return "ZABBIX";
-            case "OBSERVIUM":
+            case "SNMP":
                 if (!subnetClassifier.isIncludedInScope(dto.getIp())) {
                     return MonitoringConstants.UNKNOWN;
                 }

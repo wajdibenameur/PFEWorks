@@ -3,12 +3,12 @@ package tn.iteam.util;
 public final class MonitoringConstants {
 
     public static final String SOURCE_ZABBIX = "ZABBIX";
-    public static final String SOURCE_OBSERVIUM = "OBSERVIUM";
+    public static final String SOURCE_SNMP = "SNMP";
     public static final String SOURCE_ZKBIO = "ZKBIO";
     public static final String SOURCE_CAMERA = "CAMERA";
 
     public static final String SOURCE_LABEL_ZABBIX = "Zabbix";
-    public static final String SOURCE_LABEL_OBSERVIUM = "Observium";
+    public static final String SOURCE_LABEL_SNMP = "SNMP";
     public static final String SOURCE_LABEL_ZKBIO = "ZKBio";
     public static final String SOURCE_LABEL_CAMERA = "Camera";
 
@@ -41,7 +41,9 @@ public final class MonitoringConstants {
     public static final String CATEGORY_SERVER = "SERVER";
     public static final String CATEGORY_CAMERA = "CAMERA";
     public static final String CATEGORY_ACCESS = "ACCESS";
+    public static final String CATEGORY_ACCESS_CONTROL = "ACCESS_CONTROL";
     public static final String CATEGORY_ACCESS_POINT = "ACCESS_POINT";
+    public static final String CATEGORY_UPS = "UPS";
     public static final String CATEGORY_PRINTER = "PRINTER";
     public static final String CATEGORY_SWITCH = "SWITCH";
     public static final String CATEGORY_ROUTER = "ROUTER";

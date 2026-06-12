@@ -15,7 +15,7 @@ import tn.iteam.security.AuthenticatedUserService;
 import tn.iteam.security.PermissionService;
 import tn.iteam.service.CameraInventoryService;
 import tn.iteam.service.DashboardService;
-import tn.iteam.service.ObserviumSummaryService;
+import tn.iteam.service.SnmpSummaryService;
 import tn.iteam.service.ZkBioServiceInterface;
 import tn.iteam.integration.ZkBioIntegrationOperations;
 
@@ -29,7 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @WebMvcTest({
         DashboardController.class,
-        ObserviumController.class,
+        SnmpController.class,
         CameraController.class,
         ZkBioController.class
 })
@@ -48,7 +48,7 @@ class MonitoringModuleAuthorizationWebMvcTest {
     private DashboardService dashboardService;
 
     @MockBean
-    private ObserviumSummaryService observiumSummaryService;
+    private SnmpSummaryService snmpSummaryService;
 
     @MockBean
     private CameraInventoryService cameraInventoryService;
@@ -82,12 +82,12 @@ class MonitoringModuleAuthorizationWebMvcTest {
     }
 
     @Test
-    void observiumSummaryRequiresObserviumPermission() throws Exception {
-        mockMvc.perform(get("/api/observium/summary").with(jwt().authorities(() -> "VIEW_DASHBOARD")))
+    void snmpSummaryRequiresSnmpPermission() throws Exception {
+        mockMvc.perform(get("/api/snmp/summary").with(jwt().authorities(() -> "VIEW_DASHBOARD")))
                 .andExpect(status().isForbidden());
 
-        when(observiumSummaryService.getSummary()).thenReturn(Map.of());
-        mockMvc.perform(get("/api/observium/summary").with(jwt().authorities(() -> "VIEW_OBSERVIUM")))
+        when(snmpSummaryService.getSummary()).thenReturn(Map.of());
+        mockMvc.perform(get("/api/snmp/summary").with(jwt().authorities(() -> "VIEW_SNMP")))
                 .andExpect(status().isOk());
     }
 
