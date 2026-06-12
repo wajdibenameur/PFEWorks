@@ -13,6 +13,15 @@
   box-shadow: 0 18px 40px rgba(148, 163, 184, 0.12);
 }
 
+.success-banner {
+  border-radius: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  background: rgba(240, 253, 244, 0.94);
+  color: #166534;
+  box-shadow: 0 18px 40px rgba(148, 163, 184, 0.12);
+}
+
 .hero-panel {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
@@ -327,6 +336,85 @@ tbody tr:hover {
 }
 
 .badge.down {
+  background: rgba(220, 38, 38, 0.12);
+  color: #b91c1c;
+}
+
+.badge.degraded {
+  background: rgba(245, 158, 11, 0.16);
+  color: #b45309;
+}
+
+.camera-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.camera-form label {
+  display: grid;
+  gap: 0.35rem;
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.camera-form input {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.8rem;
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  background: #fff;
+  color: #0f172a;
+}
+
+.camera-form input:focus {
+  outline: 2px solid rgba(14, 165, 233, 0.22);
+  border-color: #38bdf8;
+}
+
+.checkbox-row {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.checkbox-row input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+}
+
+.form-actions,
+.action-stack {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.button-primary,
+.button-inline {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.55rem 0.95rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button-primary {
+  background: #0ea5e9;
+  color: #fff;
+}
+
+.button-primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.button-inline {
+  background: rgba(14, 165, 233, 0.12);
+  color: #0369a1;
+}
+
+.button-inline.danger {
   background: rgba(220, 38, 38, 0.12);
   color: #b91c1c;
 }

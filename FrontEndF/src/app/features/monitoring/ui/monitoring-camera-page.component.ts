@@ -1,10 +1,12 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { catchError, forkJoin, of } from 'rxjs';
+import { FormsModule } from '@angular/forms';
+import { catchError, finalize, forkJoin, of } from 'rxjs';
+import { AUTH_CONTEXT } from '../../../core/auth/auth-context.port';
 import { APP_CONFIG, AppConfig } from '../../../core/config/app-config.token';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
-import { CameraDevice } from '../../../core/models/camera-device.model';
+import { CameraDevice, CreateCameraDeviceRequest } from '../../../core/models/camera-device.model';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { RealtimeConnectionStore } from '../../../core/realtime/realtime-connection.store';
@@ -21,13 +23,14 @@ import { RealtimeDataState } from '../state/global-monitoring.models';
 
 @Component({
   selector: 'app-monitoring-camera-page',
-  imports: [CommonModule, CollectionControlBarComponent],
+  imports: [CommonModule, FormsModule, CollectionControlBarComponent],
   templateUrl: './monitoring-camera-page.component.html',
   styleUrls: ['./monitoring-camera-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class MonitoringCameraPageComponent {
   private readonly destroyRef = inject(DestroyRef);
+  private readonly auth = inject(AUTH_CONTEXT);
   private readonly config = inject<AppConfig>(APP_CONFIG);
   private readonly realtimeConnection = inject(RealtimeConnectionStore);
   private readonly refreshTimeoutIds: number[] = [];
@@ -37,9 +40,12 @@ export class MonitoringCameraPageComponent {
   private lastNoDeltaLogBucket = -1;
 
   readonly isLoading = signal(false);
+  readonly isSubmitting = signal(false);
   readonly errorMessage = signal<string | null>(null);
+  readonly successMessage = signal<string | null>(null);
   readonly lastRefresh = signal<Date | null>(null);
   readonly nowMs = signal(Date.now());
+  readonly activeCameraId = signal<number | null>(null);
   readonly cameraStore = signal<RealtimeEntityStore<CameraRealtimeViewModel>>({
     entities: new Map<string, CameraRealtimeViewModel>(),
     realtimeState: 'unchanged',
@@ -52,6 +58,17 @@ export class MonitoringCameraPageComponent {
   );
   readonly cameraDevices = computed(() => this.cameraRows().map((vm) => vm.camera));
   readonly sourceAvailability = signal<SourceAvailability | null>(null);
+  readonly canManageHosts = computed(() =>
+    this.auth.arePermissionsLoaded() && this.auth.hasPermission('MANAGE_HOSTS')
+  );
+  readonly cameraForm = signal<CreateCameraDeviceRequest>({
+    ipAddress: '',
+    name: '',
+    site: '',
+    type: 'IP_CAMERA',
+    port: 554,
+    enabled: true
+  });
 
   readonly collectionActions: CollectionActionVm[] = [
     { label: 'Scanner Camera', target: 'camera' }
@@ -63,6 +80,7 @@ export class MonitoringCameraPageComponent {
       total: devices.length,
       reachable: devices.filter((device) => device.reachable).length,
       persisted: devices.filter((device) => device.persisted).length,
+      snmpEnabled: devices.filter((device) => device.snmpEnabled).length,
       protocols: new Set(
         devices
           .map((device) => device.protocol?.trim())
@@ -91,12 +109,135 @@ export class MonitoringCameraPageComponent {
     this.loadData();
   }
 
+  updateFormField<K extends keyof CreateCameraDeviceRequest>(key: K, value: CreateCameraDeviceRequest[K]): void {
+    this.cameraForm.update((current) => ({ ...current, [key]: value }));
+  }
+
+  submitCamera(): void {
+    const payload = this.normalizeForm(this.cameraForm());
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.isSubmitting.set(true);
+
+    const request$ = this.activeCameraId() == null
+      ? this.api.createCameraDevice(payload)
+      : this.api.updateCameraDevice(this.activeCameraId()!, payload);
+
+    request$
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => this.isSubmitting.set(false))
+      )
+      .subscribe({
+        next: (device) => {
+          this.replaceCamera(device);
+          this.successMessage.set(
+            this.activeCameraId() == null
+              ? `Camera ${device.ip ?? payload.ipAddress} added successfully.`
+              : `Camera ${device.ip ?? payload.ipAddress} updated successfully.`
+          );
+          this.resetCameraForm();
+        },
+        error: (error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(
+              error,
+              this.activeCameraId() == null ? 'Unable to add camera.' : 'Unable to update camera.'
+            )
+          );
+        }
+      });
+  }
+
+  startEdit(device: CameraDevice): void {
+    this.activeCameraId.set(device.id ?? null);
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.cameraForm.set({
+      ipAddress: device.ip ?? '',
+      name: device.name ?? '',
+      site: device.site ?? '',
+      type: device.type ?? 'IP_CAMERA',
+      port: device.port ?? 554,
+      enabled: device.enabled ?? true
+    });
+  }
+
+  cancelEdit(): void {
+    this.resetCameraForm();
+  }
+
+  toggleEnabled(device: CameraDevice): void {
+    if (device.id == null) {
+      this.errorMessage.set('This camera cannot be toggled because its identifier is missing.');
+      return;
+    }
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.api.updateCameraDeviceEnabled(device.id, !(device.enabled ?? true))
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (updated) => {
+          this.replaceCamera(updated);
+          this.successMessage.set(
+            `${updated.ip ?? 'Camera'} ${updated.enabled ? 'enabled' : 'disabled'} successfully.`
+          );
+          if (this.activeCameraId() === updated.id) {
+            this.startEdit(updated);
+          }
+        },
+        error: (error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to change camera state.')
+          );
+        }
+      });
+  }
+
+  deleteCamera(device: CameraDevice): void {
+    if (device.id == null) {
+      this.errorMessage.set('This camera cannot be deleted because its identifier is missing.');
+      return;
+    }
+    const confirmed = window.confirm(`Delete camera ${device.ip ?? 'UNKNOWN'} ?`);
+    if (!confirmed) {
+      return;
+    }
+    this.errorMessage.set(null);
+    this.successMessage.set(null);
+    this.api.deleteCameraDevice(device.id)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.cameraStore.update((store) => {
+            const next = new Map(store.entities);
+            next.delete((device.ip ?? '').trim());
+            return {
+              entities: next,
+              realtimeState: this.resolveGlobalRealtimeState(next),
+              lastUpdate: Date.now()
+            };
+          });
+          this.successMessage.set(`Camera ${device.ip ?? 'UNKNOWN'} deleted successfully.`);
+          if (this.activeCameraId() === device.id) {
+            this.resetCameraForm();
+          }
+        },
+        error: (error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to delete camera.')
+          );
+        }
+      });
+  }
+
   triggerCollection(target: CollectionTarget): void {
     if (target !== 'camera') {
       return;
     }
 
     this.errorMessage.set(null);
+    this.successMessage.set(null);
     this.isLoading.set(true);
 
     this.api.triggerCollection(target).subscribe({
@@ -113,10 +254,13 @@ export class MonitoringCameraPageComponent {
   }
 
   trackByDevice(_: number, device: CameraDevice): string {
-    return `${device.ip ?? 'unknown'}:${device.port ?? 'unknown'}`;
+    return `${device.id ?? 'no-id'}:${device.ip ?? 'unknown'}:${device.port ?? 'unknown'}`;
   }
 
   statusLabel(vm: CameraRealtimeViewModel): string {
+    if ((vm.camera.status ?? '').toUpperCase() === 'DEGRADED') {
+      return 'DEGRADED';
+    }
     if (vm.camera.reachable) {
       return 'REACHABLE';
     }
@@ -167,8 +311,50 @@ export class MonitoringCameraPageComponent {
     return device.persisted ? 'Saved in DB' : 'Not saved';
   }
 
+  enabledLabel(device: CameraDevice): string {
+    return device.enabled === false ? 'Disabled' : 'Enabled';
+  }
+
+  snmpLabel(device: CameraDevice): string {
+    if (!device.snmpEnabled) {
+      return 'SNMP disabled';
+    }
+    return device.snmpStatus ?? 'SNMP enabled';
+  }
+
   protocolLabel(device: CameraDevice): string {
     return device.protocol ?? 'UNKNOWN';
+  }
+
+  snmpLastSeenLabel(device: CameraDevice): string {
+    if (!device.snmpLastSeenAt) {
+      return 'No SNMP poll yet';
+    }
+    const parsed = Date.parse(device.snmpLastSeenAt);
+    if (Number.isNaN(parsed)) {
+      return 'Invalid SNMP timestamp';
+    }
+    return new Date(parsed).toLocaleString();
+  }
+
+  snmpMetricSummary(device: CameraDevice): string {
+    if (!device.snmpEnabled) {
+      return 'Optional SNMP enrichment not enabled';
+    }
+    const parts: string[] = [];
+    if (device.snmpCpuPercent != null) {
+      parts.push(`CPU ${device.snmpCpuPercent.toFixed(1)}%`);
+    }
+    if (device.snmpMemoryPercent != null) {
+      parts.push(`Memory ${device.snmpMemoryPercent.toFixed(1)}%`);
+    }
+    if (device.snmpUptimeSeconds != null) {
+      parts.push(`Uptime ${this.formatDuration(device.snmpUptimeSeconds)}`);
+    }
+    if (device.snmpInterfaceCount != null) {
+      parts.push(`${device.snmpInterfaceCount} interface(s)`);
+    }
+    return parts.length > 0 ? parts.join(' • ') : 'SNMP enabled, waiting for metrics';
   }
 
   scanTimestampLabel(device: CameraDevice): string {
@@ -180,6 +366,20 @@ export class MonitoringCameraPageComponent {
       return 'Invalid timestamp';
     }
     return new Date(parsed).toLocaleString();
+  }
+
+  private formatDuration(totalSeconds: number): string {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    if (days > 0) {
+      return `${days}d ${hours}h`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    }
+    return `${minutes}m`;
   }
 
   private loadData(): void {
@@ -288,6 +488,34 @@ export class MonitoringCameraPageComponent {
     return map;
   }
 
+  private replaceCamera(device: CameraDevice): void {
+    const key = this.deviceKey(device);
+    if (!key) {
+      this.loadData();
+      return;
+    }
+
+    this.cameraStore.update((store) => {
+      const next = new Map(store.entities);
+      const existing = next.get(key);
+      const lastMetricUpdate = this.parseTimestamp(device.lastScanAt) ?? existing?.lastMetricUpdate ?? null;
+      next.set(key, {
+        camera: {
+          ...existing?.camera,
+          ...device
+        },
+        lastMetricUpdate: lastMetricUpdate ?? undefined,
+        realtimeState: this.resolveRealtimeState(lastMetricUpdate)
+      });
+      return {
+        entities: next,
+        realtimeState: this.resolveGlobalRealtimeState(next),
+        lastUpdate: Date.now()
+      };
+    });
+    this.lastRefresh.set(new Date());
+  }
+
   private mergeRealtimeUpdates(updates: CameraRealtimeUpdate[]): void {
     if (!updates.length) {
       return;
@@ -361,7 +589,31 @@ export class MonitoringCameraPageComponent {
   }
 
   private isReachableStatus(status: string | null): boolean {
-    return (status ?? '').toUpperCase() === 'UP';
+    const normalized = (status ?? '').toUpperCase();
+    return normalized === 'UP' || normalized === 'DEGRADED';
+  }
+
+  private normalizeForm(form: CreateCameraDeviceRequest): CreateCameraDeviceRequest {
+    return {
+      ipAddress: form.ipAddress.trim(),
+      name: form.name?.trim() || null,
+      site: form.site?.trim() || null,
+      type: form.type?.trim() || 'IP_CAMERA',
+      port: form.port ?? null,
+      enabled: form.enabled ?? true
+    };
+  }
+
+  private resetCameraForm(): void {
+    this.activeCameraId.set(null);
+    this.cameraForm.set({
+      ipAddress: '',
+      name: '',
+      site: '',
+      type: 'IP_CAMERA',
+      port: 554,
+      enabled: true
+    });
   }
 
   private parseTimestamp(value: string | null | undefined): number | null {
@@ -490,5 +742,3 @@ export class MonitoringCameraPageComponent {
     this.heartbeatIntervalId = null;
   }
 }
-
-

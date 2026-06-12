@@ -13,6 +13,12 @@
     </section>
   }
 
+  @if (successMessage(); as message) {
+    <section class="success-banner">
+      {{ message }}
+    </section>
+  }
+
   <section class="hero-panel">
     <div class="hero-copy">
       <p class="eyebrow">Monitoring Source</p>
@@ -37,6 +43,11 @@
           <span>Inventory Mode</span>
           <strong>{{ summary().persisted }}/{{ summary().total }}</strong>
           <small>Devices already stored in your monitoring database</small>
+        </article>
+        <article class="hero-meta-card">
+          <span>SNMP Option</span>
+          <strong>{{ summary().snmpEnabled }}</strong>
+          <small>Cameras enriched with optional SNMP telemetry</small>
         </article>
       </div>
     </div>
@@ -65,6 +76,10 @@
         <div>
           <dt>Last Refresh</dt>
           <dd>{{ lastRefresh() ? lastRefresh()!.toLocaleTimeString() : 'Pending' }}</dd>
+        </div>
+        <div>
+          <dt>SNMP Cameras</dt>
+          <dd>{{ summary().snmpEnabled }}</dd>
         </div>
       </dl>
       <small>Source: CAMERA - Inventory comes from persisted database records</small>
@@ -108,6 +123,11 @@
       <strong>{{ summary().protocols }}</strong>
       <small>Unique camera communication profiles detected</small>
     </article>
+    <article class="kpi-card">
+      <span>SNMP Enabled</span>
+      <strong>{{ summary().snmpEnabled }}</strong>
+      <small>Cameras supporting optional SNMP enrichment</small>
+    </article>
   </section>
 
   <section class="content-grid">
@@ -133,13 +153,20 @@
             <thead>
               <tr>
                 <th>Device</th>
+                <th>Site</th>
+                <th>Type</th>
                 <th>IP</th>
                 <th>Port</th>
                 <th>Protocol</th>
                 <th>Status</th>
+                <th>Enabled</th>
                 <th>Last Scan</th>
+                <th>SNMP Option</th>
                 <th>Realtime</th>
                 <th>Persistence</th>
+                @if (canManageHosts()) {
+                  <th>Actions</th>
+                }
               </tr>
             </thead>
             <tbody>
@@ -151,17 +178,36 @@
                       <small>{{ row.camera.ip ?? 'UNKNOWN' }}:{{ row.camera.port ?? 'N/A' }}</small>
                     </div>
                   </td>
+                  <td>{{ row.camera.site ?? 'N/A' }}</td>
+                  <td>{{ row.camera.type ?? 'IP_CAMERA' }}</td>
                   <td>{{ row.camera.ip ?? 'UNKNOWN' }}</td>
                   <td>{{ row.camera.port ?? 'N/A' }}</td>
                   <td>
                     <span class="protocol-chip">{{ protocolLabel(row.camera) }}</span>
                   </td>
                   <td>
-                    <span class="badge" [class.down]="!row.camera.reachable">
+                    <span class="badge"
+                          [class.down]="!row.camera.reachable"
+                          [class.degraded]="row.camera.status === 'DEGRADED'">
                       {{ statusLabel(row) }}
                     </span>
                   </td>
+                  <td>
+                    <span class="protocol-chip" [class.snmp-off]="row.camera.enabled === false">
+                      {{ enabledLabel(row.camera) }}
+                    </span>
+                  </td>
                   <td>{{ scanTimestampLabel(row.camera) }}</td>
+                  <td>
+                    <span class="protocol-chip" [class.snmp-off]="!row.camera.snmpEnabled">
+                      {{ snmpLabel(row.camera) }}
+                    </span>
+                    <div class="device-cell">
+                      <small>{{ row.camera.snmpSysName ?? 'No SNMP sysName' }}</small>
+                      <small>{{ snmpLastSeenLabel(row.camera) }}</small>
+                      <small>{{ snmpMetricSummary(row.camera) }}</small>
+                    </div>
+                  </td>
                   <td>
                     <span class="badge"
                           [class.down]="row.realtimeState === 'stale' || row.realtimeState === 'offline' || row.realtimeState === 'disconnected'">
@@ -172,6 +218,17 @@
                     </div>
                   </td>
                   <td>{{ persistenceLabel(row.camera) }}</td>
+                  @if (canManageHosts()) {
+                    <td>
+                      <div class="action-stack">
+                        <button type="button" class="button-inline" (click)="startEdit(row.camera)">Edit</button>
+                        <button type="button" class="button-inline" (click)="toggleEnabled(row.camera)">
+                          {{ row.camera.enabled === false ? 'Enable' : 'Disable' }}
+                        </button>
+                        <button type="button" class="button-inline danger" (click)="deleteCamera(row.camera)">Delete</button>
+                      </div>
+                    </td>
+                  }
                 </tr>
               }
             </tbody>
@@ -181,6 +238,95 @@
     </section>
 
     <aside class="insight-column">
+      @if (canManageHosts()) {
+        <section class="panel panel-compact">
+          <header class="panel-header">
+            <div>
+              <p class="panel-kicker">Camera CRUD</p>
+              <h2>{{ activeCameraId() == null ? 'Add Camera' : 'Edit Camera' }}</h2>
+            </div>
+          </header>
+
+          <form class="camera-form" (ngSubmit)="submitCamera()">
+            <label>
+              <span>IP Address</span>
+              <input
+                type="text"
+                [ngModel]="cameraForm().ipAddress"
+                (ngModelChange)="updateFormField('ipAddress', $event)"
+                name="cameraIpAddress"
+                placeholder="192.168.42.10"
+                required
+              />
+            </label>
+
+            <label>
+              <span>Name</span>
+              <input
+                type="text"
+                [ngModel]="cameraForm().name ?? ''"
+                (ngModelChange)="updateFormField('name', $event)"
+                name="cameraName"
+                placeholder="Camera Entree"
+              />
+            </label>
+
+            <label>
+              <span>Site</span>
+              <input
+                type="text"
+                [ngModel]="cameraForm().site ?? ''"
+                (ngModelChange)="updateFormField('site', $event)"
+                name="cameraSite"
+                placeholder="SITE_TUNIS"
+              />
+            </label>
+
+            <label>
+              <span>Type</span>
+              <input
+                type="text"
+                [ngModel]="cameraForm().type ?? 'IP_CAMERA'"
+                (ngModelChange)="updateFormField('type', $event)"
+                name="cameraType"
+                placeholder="IP_CAMERA"
+              />
+            </label>
+
+            <label>
+              <span>Port</span>
+              <input
+                type="number"
+                min="1"
+                max="65535"
+                [ngModel]="cameraForm().port ?? 554"
+                (ngModelChange)="updateFormField('port', $any($event) === '' ? null : +$event)"
+                name="cameraPort"
+              />
+            </label>
+
+            <label class="checkbox-row">
+              <input
+                type="checkbox"
+                [ngModel]="cameraForm().enabled ?? true"
+                (ngModelChange)="updateFormField('enabled', !!$event)"
+                name="cameraEnabled"
+              />
+              <span>Enabled</span>
+            </label>
+
+            <div class="form-actions">
+              <button type="submit" class="button-primary" [disabled]="isSubmitting() || !cameraForm().ipAddress.trim()">
+                {{ isSubmitting() ? 'Saving...' : activeCameraId() == null ? 'Add Camera' : 'Update Camera' }}
+              </button>
+              @if (activeCameraId() != null) {
+                <button type="button" class="button-inline" (click)="cancelEdit()">Cancel</button>
+              }
+            </div>
+          </form>
+        </section>
+      }
+
       <section class="panel panel-compact">
         <header class="panel-header">
           <div>
@@ -205,6 +351,11 @@
             <strong>{{ summary().protocols }}</strong>
             <p>Communication variants seen across the scanned device set.</p>
           </article>
+          <article class="insight-card">
+            <span>SNMP Enrichment</span>
+            <strong>{{ summary().snmpEnabled }}</strong>
+            <p>Optional SNMP telemetry available for compatible cameras.</p>
+          </article>
         </div>
       </section>
 
@@ -220,6 +371,7 @@
           <li>Relaunch a scan after adding new camera endpoints to the subnet.</li>
           <li>Review unreachable devices first when the source stays available but assets remain down.</li>
           <li>Use persisted inventory as the reference list for integration with dashboards and alerts.</li>
+          <li>Enable SNMP only on compatible cameras to enrich sysName, uptime, CPU, memory and interfaces.</li>
         </ul>
       </section>
     </aside>

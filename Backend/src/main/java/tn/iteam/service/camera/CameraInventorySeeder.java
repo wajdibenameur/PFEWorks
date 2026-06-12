@@ -10,6 +10,8 @@ import tn.iteam.config.CameraMonitoringProperties;
 import tn.iteam.domain.CameraDevice;
 import tn.iteam.enums.DeviceStatus;
 import tn.iteam.repository.CameraDeviceRepository;
+import tn.iteam.service.support.DatabasePersistenceGuard;
+import tn.iteam.util.MonitoringConstants;
 
 import java.util.LinkedHashSet;
 import java.util.Set;
@@ -21,6 +23,7 @@ public class CameraInventorySeeder {
 
     private final CameraMonitoringProperties properties;
     private final CameraDeviceRepository cameraDeviceRepository;
+    private final DatabasePersistenceGuard databasePersistenceGuard;
 
     @EventListener(ApplicationReadyEvent.class)
     @Transactional
@@ -34,16 +37,31 @@ public class CameraInventorySeeder {
         int created = 0;
         Integer defaultPort = properties.getPorts().stream().filter(p -> p != null && p > 0).findFirst().orElse(null);
         for (CameraSeedEntry entry : generated) {
-            if (cameraDeviceRepository.findByIpAddress(entry.ipAddress()).isPresent()) {
+            if (databasePersistenceGuard.safeLoad(
+                    MonitoringConstants.SOURCE_CAMERA,
+                    "camera-seed-check",
+                    () -> cameraDeviceRepository.findByIpAddress(entry.ipAddress()),
+                    java.util.Optional.empty()
+            ).isPresent()) {
                 continue;
             }
-            cameraDeviceRepository.save(CameraDevice.builder()
-                    .ipAddress(entry.ipAddress())
-                    .subnet(entry.subnet())
-                    .port(defaultPort)
-                    .status(DeviceStatus.UNKNOWN)
-                    .enabled(Boolean.TRUE)
-                    .build());
+            boolean persisted = databasePersistenceGuard.safeRun(
+                    MonitoringConstants.SOURCE_CAMERA,
+                    "camera-seed-save",
+                    () -> cameraDeviceRepository.save(CameraDevice.builder()
+                            .name("Camera " + entry.ipAddress())
+                            .type("IP_CAMERA")
+                            .ipAddress(entry.ipAddress())
+                            .subnet(entry.subnet())
+                            .port(defaultPort)
+                            .status(DeviceStatus.UNKNOWN)
+                            .enabled(Boolean.TRUE)
+                            .build())
+            );
+            if (!persisted) {
+                log.warn("Camera inventory seeding paused because database is unavailable");
+                break;
+            }
             created++;
         }
         log.info("Camera inventory seeding completed: ranges={} generated={} created={}",
@@ -100,4 +118,3 @@ public class CameraInventorySeeder {
         }
     }
 }
-
