@@ -31,7 +31,7 @@ export class TicketAddPageComponent {
   readonly externalProblem = signal(false);
 
   readonly priorityOptions: Array<TicketPriority> = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-  readonly sourceOptions = ['ZABBIX', 'OBSERVIUM', 'ZKBIO', 'CAMERA'];
+  readonly sourceOptions = ['ZABBIX', 'SNMP', 'ZKBIO', 'CAMERA'];
   readonly canCreateTicket = computed(() => this.auth.arePermissionsLoaded() && this.auth.hasPermission('CREATE_TICKET'));
 
   constructor(

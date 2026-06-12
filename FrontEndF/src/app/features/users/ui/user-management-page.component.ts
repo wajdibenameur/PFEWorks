@@ -22,7 +22,7 @@ type EditorMode = 'create' | 'edit';
 const ALL_PERMISSIONS = [
   'VIEW_DASHBOARD',
   'VIEW_ZABBIX',
-  'VIEW_OBSERVIUM',
+  'VIEW_SNMP',
   'VIEW_CAMERA',
   'VIEW_ZKBIO',
   'VIEW_ACCESS_POINT',

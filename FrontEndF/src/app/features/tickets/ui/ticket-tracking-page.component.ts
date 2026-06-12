@@ -55,7 +55,7 @@ export class TicketTrackingPageComponent {
     'CLOSED'
   ];
   readonly priorityOptions: Array<TicketPriority> = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-  readonly sourceOptions = ['ZABBIX', 'OBSERVIUM', 'ZKBIO', 'CAMERA'];
+  readonly sourceOptions = ['ZABBIX', 'SNMP', 'ZKBIO', 'CAMERA'];
 
   readonly hasSelection = computed(() => this.selectedTicket() !== null);
   readonly displayedTickets = computed(() =>

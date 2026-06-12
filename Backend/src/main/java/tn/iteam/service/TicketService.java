@@ -7,7 +7,7 @@ import tn.iteam.enums.TicketStatus;
 import tn.iteam.enums.Priority;
 import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
-import tn.iteam.dto.ObserviumProblemDTO;
+import tn.iteam.dto.SnmpProblemDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
 
@@ -18,7 +18,7 @@ public interface TicketService {
 
     Ticket createFromProblem(ZabbixProblemDTO problem);
 
-    Ticket createFromProblem(ObserviumProblemDTO problem);
+    Ticket createFromProblem(SnmpProblemDTO problem);
 
     Ticket createFromProblem(ZkBioProblemDTO problem);
 

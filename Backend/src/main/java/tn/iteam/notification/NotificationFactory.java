@@ -11,7 +11,7 @@ import java.util.Set;
 @Component
 public class NotificationFactory {
 
-    public NotificationMessage createTicketNotification(NotificationEntity persisted, User recipient) {
+    public NotificationMessage createPersistedNotification(NotificationEntity persisted, User recipient) {
         return NotificationMessage.builder()
                 .notificationId(persisted.getId())
                 .eventId(persisted.getEventId())
@@ -32,6 +32,10 @@ public class NotificationFactory {
                 .templateName("email/notification")
                 .emailSubject("[MonitorFlow] " + persisted.getTitle())
                 .build();
+    }
+
+    public NotificationMessage createTicketNotification(NotificationEntity persisted, User recipient) {
+        return createPersistedNotification(persisted, recipient);
     }
 
     public NotificationMessage createAccountLifecycleNotification(
@@ -71,4 +75,3 @@ public class NotificationFactory {
         return (long) email.trim().toLowerCase().hashCode();
     }
 }
-
