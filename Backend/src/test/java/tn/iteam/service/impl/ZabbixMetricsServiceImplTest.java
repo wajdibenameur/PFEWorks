@@ -13,6 +13,7 @@ import tn.iteam.mapper.ZabbixMetricMapper;
 import tn.iteam.repository.ZabbixMetricRepository;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZabbixDataQualityService;
+import tn.iteam.service.support.DatabasePersistenceGuard;
 
 import java.util.List;
 
@@ -42,6 +43,9 @@ class ZabbixMetricsServiceImplTest {
     @Mock
     private TransactionTemplate transactionTemplate;
 
+    @Mock
+    private DatabasePersistenceGuard databasePersistenceGuard;
+
     private ZabbixMetricsServiceImpl service;
 
     @BeforeEach
@@ -52,7 +56,8 @@ class ZabbixMetricsServiceImplTest {
                 repository,
                 availabilityService,
                 dataQualityService,
-                transactionTemplate
+                transactionTemplate,
+                databasePersistenceGuard
         );
     }
 

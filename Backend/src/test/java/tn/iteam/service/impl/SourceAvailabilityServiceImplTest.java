@@ -18,18 +18,18 @@ class SourceAvailabilityServiceImplTest {
         ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
         SourceAvailabilityServiceImpl service = new SourceAvailabilityServiceImpl(publisher);
 
-        service.markDegraded("OBSERVIUM", "Redis snapshot in use");
+        service.markDegraded("SNMP", "Redis snapshot in use");
 
-        SourceAvailabilityDTO dto = service.get("OBSERVIUM");
+        SourceAvailabilityDTO dto = service.get("SNMP");
 
-        assertThat(service.isDegraded("OBSERVIUM")).isTrue();
-        assertThat(service.isAvailable("OBSERVIUM")).isFalse();
-        assertThat(service.getStatus("OBSERVIUM")).isEqualTo("DEGRADED");
+        assertThat(service.isDegraded("SNMP")).isTrue();
+        assertThat(service.isAvailable("SNMP")).isFalse();
+        assertThat(service.getStatus("SNMP")).isEqualTo("DEGRADED");
         assertThat(dto.getStatus()).isEqualTo("DEGRADED");
         assertThat(dto.isAvailable()).isFalse();
         assertThat(dto.getLastError()).isEqualTo("Redis snapshot in use");
         verify(publisher).publishEvent(argThat((SourceAvailabilityChangedEvent event) ->
-                "OBSERVIUM".equals(event.payload().getSource())
+                "SNMP".equals(event.payload().getSource())
                         && "DEGRADED".equals(event.payload().getStatus())
                         && "Redis snapshot in use".equals(event.payload().getLastError())
         ));

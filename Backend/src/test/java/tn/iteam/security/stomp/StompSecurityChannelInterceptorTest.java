@@ -126,7 +126,7 @@ class StompSecurityChannelInterceptorTest {
     }
 
     @Test
-    void observiumTopicRequiresViewObserviumPermission() {
+    void snmpTopicRequiresViewSnmpPermission() {
         JwtDecoder jwtDecoder = mock(JwtDecoder.class);
         when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("SUPPORT"));
         StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
@@ -137,7 +137,7 @@ class StompSecurityChannelInterceptorTest {
         interceptor.preSend(connectMessage, null);
 
         StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
-        subscribeAccessor.setDestination("/topic/observium/summary");
+        subscribeAccessor.setDestination("/topic/snmp/summary");
         subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
         Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
 

@@ -11,8 +11,7 @@ export const authHeaderInterceptor: HttpInterceptorFn = (request, next) => {
     request.url.includes('/api/auth/login') ||
     request.url.includes('/api/auth/refresh') ||
     request.url.includes('/api/auth/logout') ||
-    request.url.includes('/api/auth/csrf') ||
-    request.url.includes('/api/auth/callback');
+    request.url.includes('/api/auth/csrf');
 
   if (!token || skipAuthHeader) {
     return next(request);

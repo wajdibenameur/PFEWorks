@@ -2,15 +2,15 @@ import { Routes } from '@angular/router';
 import { ShellComponent } from './layout/shell/shell.component';
 import { MonitoringCameraPageComponent } from './features/monitoring/ui/monitoring-camera-page.component';
 import { MonitoringDashboardPageComponent } from './features/monitoring/ui/monitoring-dashboard-page.component';
-import { MonitoringObserviumPageComponent } from './features/monitoring/ui/monitoring-observium-page.component';
+import { MonitoringSnmpPageComponent } from './features/monitoring/ui/monitoring-snmp-page.component';
 import { MonitoringZabbixPageComponent } from './features/monitoring/ui/monitoring-zabbix-page.component';
 import { MonitoringZkBioPageComponent } from './features/monitoring/ui/monitoring-zkbio-page.component';
+import { EquipmentManagementPageComponent } from './features/monitoring/ui/equipment-management-page.component';
 import { TicketTrackingPageComponent } from './features/tickets/ui/ticket-tracking-page.component';
 import { TicketListPageComponent } from './features/tickets/ui/ticket-list-page.component';
 import { TicketAddPageComponent } from './features/tickets/ui/ticket-add-page.component';
 import { PlaceholderPageComponent } from './shared/pages/placeholder-page.component';
 import { LoginPageComponent } from './features/auth/ui/login-page.component';
-import { AuthCallbackPageComponent } from './features/auth/ui/auth-callback-page.component';
 import { EditProfilePageComponent } from './features/auth/ui/edit-profile-page.component';
 import { AuthGuard } from './core/auth/auth.guard';
 import { RoleGuard } from './core/auth/role.guard';
@@ -20,7 +20,6 @@ import { NotificationCenterPageComponent } from './features/notifications/ui/not
 
 export const routes: Routes = [
   { path: 'login', component: LoginPageComponent },
-  { path: 'auth/callback', component: AuthCallbackPageComponent },
   {
     path: '',
     component: ShellComponent,
@@ -40,9 +39,9 @@ export const routes: Routes = [
         canActivate: [RoleGuard]
       },
       {
-        path: 'monitoring/observium',
-        component: MonitoringObserviumPageComponent,
-        data: { title: 'Observium', permissionsAny: ['VIEW_OBSERVIUM'] },
+        path: 'monitoring/snmp',
+        component: MonitoringSnmpPageComponent,
+        data: { title: 'SNMP', permissionsAny: ['VIEW_SNMP'] },
         canActivate: [RoleGuard]
       },
       {
@@ -65,7 +64,7 @@ export const routes: Routes = [
       },
       {
         path: 'equipment',
-        component: PlaceholderPageComponent,
+        component: EquipmentManagementPageComponent,
         data: { title: 'Equipment Management', permissionsAny: ['VIEW_HOSTS'] },
         canActivate: [RoleGuard]
       },

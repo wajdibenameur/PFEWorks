@@ -24,7 +24,7 @@ class RolePermissionMatrixTest {
         assertThat(adminPermissions).contains(
                 Permission.VIEW_DASHBOARD,
                 Permission.VIEW_ZABBIX,
-                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
                 Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT
@@ -37,7 +37,7 @@ class RolePermissionMatrixTest {
 
         assertThat(supportPermissions).contains(
                 Permission.VIEW_ZABBIX,
-                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
                 Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT

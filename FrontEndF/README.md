@@ -18,7 +18,7 @@ The main backend already supports the product scope very well:
 
 - multi-source monitoring
 - Zabbix integration
-- Observium integration
+- SNMP integration
 - ZKBio integration
 - camera inventory
 - dashboard aggregation
@@ -59,7 +59,7 @@ It already contains real monitoring pages and not just placeholders:
 
 - `dashboard`
 - `monitoring/zabbix`
-- `monitoring/observium`
+- `monitoring/snmp`
 - `monitoring/camera`
 - `monitoring/zkbio`
 - `tickets/list`
@@ -152,7 +152,7 @@ These pages should be visually rebuilt in `FrontEndF`:
 
 - dashboard
 - monitoring zabbix page
-- monitoring observium page
+- monitoring snmp page
 - monitoring camera page
 - monitoring zkbio page
 - ticket list
@@ -220,11 +220,11 @@ Recommended new route target:
 
 - `/monitoring/zabbix`
 
-### 3. Observium Workspace
+### 3. SNMP Workspace
 
 Current page:
 
-- `frontend/src/app/features/monitoring/ui/monitoring-observium-page.component.html`
+- `frontend/src/app/features/monitoring/ui/monitoring-snmp-page.component.html`
 
 What to reuse:
 
@@ -238,7 +238,7 @@ What to redesign:
 
 Recommended route:
 
-- `/monitoring/observium`
+- `/monitoring/snmp`
 
 ### 4. Camera Workspace
 

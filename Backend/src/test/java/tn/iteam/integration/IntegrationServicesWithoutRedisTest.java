@@ -10,31 +10,31 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 import org.springframework.test.util.ReflectionTestUtils;
 import tn.iteam.adapter.camera.CameraAdapter;
-import tn.iteam.adapter.observium.ObserviumAdapter;
+import tn.iteam.adapter.snmp.SnmpAdapter;
 import tn.iteam.adapter.zabbix.ZabbixAdapter;
 import tn.iteam.adapter.zkbio.ZkBioAdapter;
 import tn.iteam.domain.CameraDevice;
 import tn.iteam.domain.ZabbixMetric;
-import tn.iteam.dto.ObserviumMetricDTO;
-import tn.iteam.dto.ObserviumProblemDTO;
+import tn.iteam.dto.SnmpMetricDTO;
+import tn.iteam.dto.SnmpProblemDTO;
 import tn.iteam.dto.ServiceStatusDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
 import tn.iteam.dto.ZkBioAttendanceDTO;
 import tn.iteam.dto.ZkBioMetricDTO;
 import tn.iteam.dto.ZkBioProblemDTO;
-import tn.iteam.mapper.ObserviumMonitoringMapper;
+import tn.iteam.mapper.SnmpMonitoringMapper;
 import tn.iteam.mapper.ZabbixMonitoringMapper;
 import tn.iteam.mapper.ZkBioMonitoringMapper;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.snapshot.InMemorySnapshotStore;
-import tn.iteam.repository.ObserviumMetricRepository;
-import tn.iteam.repository.ObserviumProblemRepository;
+import tn.iteam.repository.SnmpMetricRepository;
+import tn.iteam.repository.SnmpProblemRepository;
 import tn.iteam.repository.ZkBioMetricRepository;
 import tn.iteam.repository.ZkBioProblemRepository;
 import tn.iteam.service.MonitoredHostPersistenceService;
 import tn.iteam.service.MonitoredHostSnapshotService;
-import tn.iteam.service.ObserviumPersistenceService;
+import tn.iteam.service.SnmpPersistenceService;
 import tn.iteam.service.ServiceStatusPersistenceService;
 import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.service.ZabbixMetricsService;
@@ -43,11 +43,14 @@ import tn.iteam.service.ZabbixHostSyncService;
 import tn.iteam.service.ZkBioPersistenceService;
 import tn.iteam.service.ZkBioServiceInterface;
 import tn.iteam.service.camera.CameraHealthPollingService;
+import tn.iteam.service.support.DatabasePersistenceGuard;
 import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import tn.iteam.websocket.MonitoringWebSocketPublisher;
 import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -79,10 +82,10 @@ class IntegrationServicesWithoutRedisTest {
     private SourceAvailabilityService sourceAvailabilityService;
 
     @Mock
-    private ObserviumAdapter observiumAdapter;
+    private SnmpAdapter snmpAdapter;
 
     @Mock
-    private ObserviumPersistenceService observiumPersistenceService;
+    private SnmpPersistenceService snmpPersistenceService;
 
     @Mock
     private ZkBioServiceInterface zkBioService;
@@ -118,10 +121,10 @@ class IntegrationServicesWithoutRedisTest {
     private ZabbixHostSyncService zabbixSyncService;
 
     @Mock
-    private ObserviumProblemRepository observiumProblemRepository;
+    private SnmpProblemRepository snmpProblemRepository;
 
     @Mock
-    private ObserviumMetricRepository observiumMetricRepository;
+    private SnmpMetricRepository snmpMetricRepository;
 
     @Mock
     private ZkBioProblemRepository zkBioProblemRepository;
@@ -132,11 +135,23 @@ class IntegrationServicesWithoutRedisTest {
     @Mock
     private MonitoringFreshnessService monitoringFreshnessService;
 
+    @Mock
+    private DatabasePersistenceGuard databasePersistenceGuard;
+
     @BeforeEach
     void setupFreshnessDefaults() {
         when(monitoringFreshnessService.shouldSkipFetch(anyString(), anyString(), anyLong())).thenReturn(false);
         when(monitoringFreshnessService.hasPersistDelta(anyString(), anyString(), any())).thenReturn(true);
         when(monitoringFreshnessService.hasPublishDelta(anyString(), anyString(), any())).thenReturn(true);
+        when(databasePersistenceGuard.safeRun(anyString(), anyString(), any())).thenAnswer(invocation -> {
+            Runnable runnable = invocation.getArgument(2);
+            runnable.run();
+            return true;
+        });
+        when(databasePersistenceGuard.safeLoad(anyString(), anyString(), any(), any())).thenAnswer(invocation -> {
+            java.util.function.Supplier<?> supplier = invocation.getArgument(2);
+            return supplier.get();
+        });
     }
 
     @Test
@@ -152,7 +167,8 @@ class IntegrationServicesWithoutRedisTest {
                 sourceAvailabilityService,
                 monitoredHostSnapshotService,
                 zabbixSyncService,
-                monitoringFreshnessService
+                monitoringFreshnessService,
+                databasePersistenceGuard
         );
 
         when(zabbixAdapter.fetchAll()).thenReturn(List.of(serviceStatus("zbx-host", "10.0.0.1")));
@@ -167,34 +183,39 @@ class IntegrationServicesWithoutRedisTest {
     }
 
     @Test
-    void observiumIntegrationRefreshStoresAllSnapshotsInMemory() {
+    void snmpIntegrationRefreshStoresAllSnapshotsInMemory() {
         InMemorySnapshotStore snapshotStore = new InMemorySnapshotStore();
-        ObserviumIntegrationService service = new ObserviumIntegrationService(
-                observiumAdapter,
-                new ObserviumMonitoringMapper(),
-                observiumPersistenceService,
+        SnmpIntegrationService service = new SnmpIntegrationService(
+                snmpAdapter,
+                new SnmpMonitoringMapper(),
+                snmpPersistenceService,
                 serviceStatusPersistenceService,
                 snapshotStore,
                 sourceAvailabilityService,
                 monitoredHostPersistenceService,
                 monitoredHostSnapshotService,
-                observiumProblemRepository,
-                observiumMetricRepository,
-                monitoringFreshnessService
+                snmpProblemRepository,
+                snmpMetricRepository,
+                monitoringFreshnessService,
+                databasePersistenceGuard
         );
 
-        when(observiumAdapter.fetchAll()).thenReturn(List.of(serviceStatus("obs-host", "10.0.0.2")));
-        when(observiumAdapter.fetchProblems()).thenReturn(List.of(observiumProblem("obs-p1")));
-        when(observiumAdapter.fetchMetrics()).thenReturn(List.of(observiumMetric("obs-m1")));
-        when(monitoredHostSnapshotService.loadHosts(MonitoringSourceType.OBSERVIUM))
-                .thenReturn(List.of(unifiedHost("OBSERVIUM", "10.0.0.2", "obs-host", "10.0.0.2", 8080)));
+        when(snmpAdapter.fetchAll()).thenReturn(List.of(serviceStatus("obs-host", "10.0.0.2")));
+        when(snmpAdapter.fetchProblems()).thenReturn(List.of(snmpProblem("obs-p1")));
+        when(snmpAdapter.fetchMetrics()).thenReturn(List.of(snmpMetric("obs-m1")));
+        when(monitoredHostSnapshotService.loadHosts(MonitoringSourceType.SNMP))
+                .thenReturn(List.of(unifiedHost("SNMP", "10.0.0.2", "obs-host", "10.0.0.2", 8080)));
 
         service.refreshAsync().block();
 
-        assertThat(snapshotStore.get("hosts", "OBSERVIUM")).isPresent();
-        assertThat(snapshotStore.get("problems", "OBSERVIUM")).isPresent();
-        assertThat(snapshotStore.get("metrics", "OBSERVIUM")).isPresent();
-        verify(sourceAvailabilityService, times(3)).markAvailable(MonitoringSourceType.OBSERVIUM.name());
+        assertThat(snapshotStore.get("hosts", "SNMP")).isPresent();
+        assertThat(snapshotStore.get("problems", "SNMP")).isPresent();
+        assertThat(snapshotStore.get("metrics", "SNMP")).isPresent();
+        @SuppressWarnings("unchecked")
+        List<UnifiedMonitoringHostDTO> hosts = (List<UnifiedMonitoringHostDTO>) snapshotStore.get("hosts", "SNMP").orElseThrow().data();
+        assertThat(hosts).hasSize(1);
+        assertThat(hosts.get(0).getLastCheck()).isEqualTo(LocalDateTime.of(2026, 6, 3, 11, 0));
+        verify(sourceAvailabilityService, times(3)).markAvailable(MonitoringSourceType.SNMP.name());
     }
 
     @Test
@@ -214,7 +235,8 @@ class IntegrationServicesWithoutRedisTest {
                 monitoredHostSnapshotService,
                 zkBioProblemRepository,
                 zkBioMetricRepository,
-                monitoringFreshnessService
+                monitoringFreshnessService,
+                databasePersistenceGuard
         );
 
         when(zkBioAdapter.fetchAll()).thenReturn(List.of(serviceStatus("zk-host", "10.0.0.3")));
@@ -262,6 +284,7 @@ class IntegrationServicesWithoutRedisTest {
                                         .ipAddress("10.0.0.40")
                                         .port(8080)
                                         .status(tn.iteam.enums.DeviceStatus.UP)
+                                        .lastCheckedAt(Instant.parse("2026-06-03T09:15:00Z"))
                                         .enabled(true)
                                         .build()
                         ),
@@ -272,6 +295,10 @@ class IntegrationServicesWithoutRedisTest {
         service.refreshAsync().block();
 
         assertThat(snapshotStore.get("hosts", "CAMERA")).isPresent();
+        @SuppressWarnings("unchecked")
+        List<UnifiedMonitoringHostDTO> hosts = (List<UnifiedMonitoringHostDTO>) snapshotStore.get("hosts", "CAMERA").orElseThrow().data();
+        assertThat(hosts).hasSize(1);
+        assertThat(hosts.get(0).getLastCheck()).isNotNull();
         verify(cameraHealthPollingService).pollNow();
     }
 
@@ -283,6 +310,7 @@ class IntegrationServicesWithoutRedisTest {
                 .category("SERVER")
                 .protocol("HTTP")
                 .port(8080)
+                .lastCheck(LocalDateTime.of(2026, 6, 3, 11, 0))
                 .build();
     }
 
@@ -313,21 +341,22 @@ class IntegrationServicesWithoutRedisTest {
                 .build();
     }
 
-    private ObserviumProblemDTO observiumProblem(String problemId) {
-        return ObserviumProblemDTO.builder()
+    private SnmpProblemDTO snmpProblem(String problemId) {
+        return SnmpProblemDTO.builder()
                 .problemId(problemId)
                 .host("obs-host")
                 .hostId("obs-1")
-                .description("Observium alert")
+                .description("SNMP alert")
                 .severity("MEDIUM")
                 .active(true)
                 .eventId(2L)
                 .startedAt(300L)
+                .lastObservedAt(360L)
                 .build();
     }
 
-    private ObserviumMetricDTO observiumMetric(String itemId) {
-        return ObserviumMetricDTO.builder()
+    private SnmpMetricDTO snmpMetric(String itemId) {
+        return SnmpMetricDTO.builder()
                 .hostId("obs-1")
                 .hostName("obs-host")
                 .itemId(itemId)

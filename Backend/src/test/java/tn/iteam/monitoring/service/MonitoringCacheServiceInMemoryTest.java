@@ -56,10 +56,10 @@ class MonitoringCacheServiceInMemoryTest {
         MonitoringCacheService cacheService = new MonitoringCacheService(new InMemorySnapshotStore());
 
         MonitoringCacheService.FetchResult<List<UnifiedMonitoringMetricDTO>> result =
-                cacheService.getMetrics("OBSERVIUM");
+                cacheService.getMetrics("SNMP");
 
         assertThat(result.isDegraded()).isTrue();
         assertThat(result.getData()).isEmpty();
-        assertThat(result.getFreshness()).containsEntry("OBSERVIUM", "snapshot_missing");
+        assertThat(result.getFreshness()).containsEntry("SNMP", "snapshot_missing");
     }
 }

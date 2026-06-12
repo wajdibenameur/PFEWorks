@@ -24,7 +24,7 @@ class MonitoringAggregationServiceTest {
                 UnifiedMonitoringProblemDTO.builder().id("p1").problemId("p1").build()
         );
         when(cacheService.getProblems("ALL")).thenReturn(
-                new MonitoringCacheService.FetchResult<>(problems, true, Map.of("OBSERVIUM", "redis_fallback"))
+                new MonitoringCacheService.FetchResult<>(problems, true, Map.of("SNMP", "redis_fallback"))
         );
 
         UnifiedMonitoringResponse<List<UnifiedMonitoringProblemDTO>> response =
@@ -32,7 +32,7 @@ class MonitoringAggregationServiceTest {
 
         assertThat(response.getData()).isEqualTo(problems);
         assertThat(response.isDegraded()).isTrue();
-        assertThat(response.getFreshness()).containsEntry("OBSERVIUM", "redis_fallback");
+        assertThat(response.getFreshness()).containsEntry("SNMP", "redis_fallback");
         assertThat(response.getCoverage()).isEmpty();
         verify(cacheService).getProblems("ALL");
     }
@@ -57,7 +57,7 @@ class MonitoringAggregationServiceTest {
         assertThat(response.getFreshness()).containsEntry("ZABBIX", "persisted");
         assertThat(response.getCoverage())
                 .containsEntry("ZABBIX", "native")
-                .containsEntry("OBSERVIUM", "synthetic")
+                .containsEntry("SNMP", "synthetic")
                 .containsEntry("ZKBIO", "synthetic")
                 .containsEntry("CAMERA", "not_applicable");
         verify(cacheService).getMetrics(null);
