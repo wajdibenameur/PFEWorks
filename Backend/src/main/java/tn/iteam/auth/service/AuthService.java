@@ -21,8 +21,6 @@ import org.springframework.util.MultiValueMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 @Service
@@ -159,48 +157,6 @@ public class AuthService {
         } catch (Exception e) {
             log.error("Refresh token flow failed due to Keycloak error", e);
             throw new KeycloakIntegrationException("Token refresh failed: " + e.getMessage(), e);
-        }
-    }
-
-    public String buildAuthorizationUrl(String state) {
-        String authorizeUrl = properties.getBaseUrl()
-                + "/realms/" + properties.getRealm()
-                + "/protocol/openid-connect/auth";
-
-        return authorizeUrl
-                + "?response_type=code"
-                + "&client_id=" + urlEncode(properties.getClientId())
-                + "&redirect_uri=" + urlEncode(properties.getRedirectUri())
-                + "&scope=" + urlEncode("openid profile email")
-                + "&state=" + urlEncode(state);
-    }
-
-    public TokenResponse exchangeAuthorizationCode(String code) {
-        String tokenUrl = properties.getBaseUrl()
-                + "/realms/" + properties.getRealm()
-                + "/protocol/openid-connect/token";
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-
-        MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("grant_type", "authorization_code");
-        params.add("client_id", properties.getClientId());
-        params.add("client_secret", properties.getClientSecret());
-        params.add("code", code);
-        params.add("redirect_uri", properties.getRedirectUri());
-
-        HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(params, headers);
-        try {
-            log.info("KEYCLOAK CODE EXCHANGE ATTEMPT realm={} clientId={} redirectUri={}", properties.getRealm(), properties.getClientId(), properties.getRedirectUri());
-            ResponseEntity<TokenResponse> response = restTemplate.postForEntity(tokenUrl, entity, TokenResponse.class);
-            return response.getBody();
-        } catch (HttpClientErrorException e) {
-            String responseBody = safeSingleLine(e.getResponseBodyAsString());
-            log.warn("KEYCLOAK CODE EXCHANGE FAILURE status={} body={}", e.getStatusCode().value(), responseBody);
-            throw new AuthenticationException("Authorization code exchange failed");
-        } catch (Exception e) {
-            throw new KeycloakIntegrationException("Authorization code exchange failed: " + e.getMessage(), e);
         }
     }
 
@@ -353,10 +309,6 @@ public class AuthService {
             return "invalid_request (malformed or missing parameters)";
         }
         return "unknown";
-    }
-
-    private String urlEncode(String value) {
-        return URLEncoder.encode(value, StandardCharsets.UTF_8);
     }
 
 }

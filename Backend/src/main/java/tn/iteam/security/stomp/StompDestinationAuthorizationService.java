@@ -16,7 +16,7 @@ public class StompDestinationAuthorizationService {
         permissionsByPrefix.put("/topic/monitoring/metrics", Permission.VIEW_METRICS);
         permissionsByPrefix.put("/topic/monitoring/sources", Permission.VIEW_DASHBOARD);
         permissionsByPrefix.put("/topic/zabbix", Permission.VIEW_ZABBIX);
-        permissionsByPrefix.put("/topic/observium", Permission.VIEW_OBSERVIUM);
+        permissionsByPrefix.put("/topic/snmp", Permission.VIEW_SNMP);
         permissionsByPrefix.put("/topic/camera", Permission.VIEW_CAMERA);
         permissionsByPrefix.put("/topic/access-point", Permission.VIEW_ACCESS_POINT);
         permissionsByPrefix.put("/topic/tickets", Permission.VIEW_TICKETS);

@@ -17,6 +17,5 @@ public class KeycloakProperties {
     private String clientSecret;
     private String adminClientId;
     private String adminClientSecret;
-    private String redirectUri;
 }
 

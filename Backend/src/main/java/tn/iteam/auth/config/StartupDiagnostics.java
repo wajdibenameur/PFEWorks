@@ -76,6 +76,7 @@ public class StartupDiagnostics {
             log.info("Keycloak connectivity status: reachable with HTTP {}", response.getStatusCode().value());
         } catch (RestClientException ex) {
             log.warn("Keycloak connectivity status: unreachable ({})", ex.getClass().getSimpleName());
+            log.warn("JWT issuer unavailable, application started in degraded auth mode");
             log.debug("Keycloak connectivity check failed", ex);
         }
     }

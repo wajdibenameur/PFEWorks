@@ -38,7 +38,7 @@ public final class RolePermissionMatrix {
         matrix.put(RoleName.ADMIN, Set.copyOf(EnumSet.of(
                 Permission.VIEW_DASHBOARD,
                 Permission.VIEW_ZABBIX,
-                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
                 Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT,
@@ -65,7 +65,7 @@ public final class RolePermissionMatrix {
         matrix.put(RoleName.SUPPORT, Set.copyOf(EnumSet.of(
                 Permission.VIEW_DASHBOARD,
                 Permission.VIEW_ZABBIX,
-                Permission.VIEW_OBSERVIUM,
+                Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
                 Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT,
