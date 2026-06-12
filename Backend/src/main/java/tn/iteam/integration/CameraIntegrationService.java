@@ -98,6 +98,11 @@ public class CameraIntegrationService implements AsyncIntegrationService {
                 .protocol(resolveProtocol(device.getPort()))
                 .status(Optional.ofNullable(device.getStatus()).map(Enum::name).orElse("UNKNOWN"))
                 .category("CAMERA")
+                .lastCheck(device.getLastCheckedAt() != null
+                        ? java.time.LocalDateTime.ofInstant(device.getLastCheckedAt(), java.time.ZoneId.systemDefault())
+                        : device.getLastSeen() != null
+                        ? java.time.LocalDateTime.ofInstant(device.getLastSeen(), java.time.ZoneId.systemDefault())
+                        : null)
                 .build();
     }
 

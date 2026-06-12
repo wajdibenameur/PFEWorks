@@ -1,0 +1,204 @@
+<main class="workspace">
+  <section class="hero">
+    <div>
+      <p class="eyebrow">Equipment Management</p>
+      <h1>SNMP Equipment</h1>
+      <p>Add a new SNMP device with its category and polling profile so the application can monitor it without editing backend config manually.</p>
+    </div>
+  </section>
+
+  @if (errorMessage(); as error) {
+    <section class="banner error">{{ error }}</section>
+  }
+
+  @if (successMessage(); as success) {
+    <section class="banner success">{{ success }}</section>
+  }
+
+  <section class="content-grid">
+    @if (canManageHosts()) {
+      <article class="panel">
+        <header class="panel-header">
+          <div>
+            <h2>{{ activeDeviceId() == null ? 'Add SNMP Equipment' : 'Edit SNMP Equipment' }}</h2>
+            <small>
+              {{
+                activeDeviceId() == null
+                  ? 'Register a new host, choose its category and metrics, then launch SNMP collection.'
+                  : 'Update the SNMP host configuration, then save your changes.'
+              }}
+            </small>
+          </div>
+        </header>
+
+        <form class="form-grid" (ngSubmit)="submit()">
+          <label>
+            <span>IP Address</span>
+            <input type="text" [ngModel]="form().ipAddress" (ngModelChange)="updateField('ipAddress', $event)" name="ipAddress" required />
+          </label>
+
+          <label>
+            <span>Hostname</span>
+            <input type="text" [ngModel]="form().hostname" (ngModelChange)="updateField('hostname', $event)" name="hostname" />
+          </label>
+
+          <label>
+            <span>Device Type</span>
+            <select [ngModel]="form().type" (ngModelChange)="updateField('type', $event)" name="type">
+              @for (type of typeOptions; track type) {
+                <option [value]="type">{{ typeLabel(type) }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            <span>Category</span>
+            <select [ngModel]="form().category" (ngModelChange)="updateField('category', $event)" name="category" required>
+              @for (category of categoryOptions; track category) {
+                <option [value]="category">{{ categoryLabel(category) }}</option>
+              }
+            </select>
+          </label>
+
+          <label>
+            <span>Device Group</span>
+            <input type="text" [ngModel]="form().deviceGroup ?? ''" (ngModelChange)="updateField('deviceGroup', $event)" name="deviceGroup" />
+          </label>
+
+          <label>
+            <span>SNMP Port</span>
+            <input type="number" [ngModel]="form().snmpPort" (ngModelChange)="updateField('snmpPort', +$event)" name="snmpPort" min="1" max="65535" />
+          </label>
+
+          <label>
+            <span>Community</span>
+            <input type="text" [ngModel]="form().snmpCommunity" (ngModelChange)="updateField('snmpCommunity', $event)" name="snmpCommunity" />
+          </label>
+
+          <label>
+            <span>SNMP Version</span>
+            <select [ngModel]="form().snmpVersion" (ngModelChange)="updateField('snmpVersion', $event)" name="snmpVersion">
+              <option value="1">1</option>
+              <option value="2c">2c</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+
+          <label>
+            <span>Polling Interval (seconds)</span>
+            <input
+              type="number"
+              [ngModel]="form().pollingIntervalSeconds ?? 60"
+              (ngModelChange)="updateField('pollingIntervalSeconds', +$event)"
+              name="pollingIntervalSeconds"
+              min="10"
+              max="86400"
+            />
+          </label>
+
+          <fieldset class="metrics-fieldset">
+            <legend>Metrics to Poll</legend>
+            <div class="metrics-grid">
+              @for (metric of metricOptions; track metric) {
+                <label class="checkbox metric-item">
+                  <input
+                    type="checkbox"
+                    [checked]="(form().metricsToPoll ?? []).includes(metric)"
+                    (change)="toggleMetric(metric, $any($event.target).checked)"
+                  />
+                  <span>{{ metric }}</span>
+                </label>
+              }
+            </div>
+          </fieldset>
+
+          <label class="checkbox">
+            <input type="checkbox" [ngModel]="form().enabled" (ngModelChange)="updateField('enabled', $event)" name="enabled" />
+            <span>Enabled for monitoring</span>
+          </label>
+
+          <div class="actions">
+            @if (activeDeviceId() != null) {
+              <button type="button" class="button-secondary" (click)="cancelEdit()">Cancel</button>
+            }
+            <button type="submit" [disabled]="isSubmitting() || !form().ipAddress || !form().category">
+              {{
+                isSubmitting()
+                  ? (activeDeviceId() == null ? 'Adding...' : 'Saving...')
+                  : (activeDeviceId() == null ? 'Add Equipment' : 'Save Changes')
+              }}
+            </button>
+          </div>
+        </form>
+      </article>
+    }
+
+    <article class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Tracked SNMP Equipment</h2>
+          <small>{{ devices().length }} device{{ devices().length === 1 ? '' : 's' }} registered</small>
+        </div>
+      </header>
+
+      @if (isLoading()) {
+        <p class="empty">Loading SNMP equipment...</p>
+      } @else if (!devices().length) {
+        <p class="empty">No SNMP equipment registered yet.</p>
+      } @else {
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Category</th>
+                <th>Group</th>
+                <th>Port</th>
+                <th>Version</th>
+                <th>Polling</th>
+                <th>Status</th>
+                <th>Metrics</th>
+                <th>Origin</th>
+                <th>Enabled</th>
+                @if (canManageHosts()) {
+                  <th>Actions</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (device of devices(); track trackByDevice($index, device)) {
+                <tr>
+                  <td>{{ device.ipAddress }}</td>
+                  <td>{{ device.hostname || 'UNKNOWN' }}</td>
+                  <td>{{ typeLabel(device.type) }}</td>
+                  <td>{{ categoryLabel(device.category) }}</td>
+                  <td>{{ device.deviceGroup || 'N/A' }}</td>
+                  <td>{{ device.snmpPort }}</td>
+                  <td>{{ device.snmpVersion || '2c' }}</td>
+                  <td>{{ device.pollingIntervalSeconds ?? 60 }}s</td>
+                  <td><span class="badge">{{ statusLabel(device.status) }}</span></td>
+                  <td>{{ metricsLabel(device) }}</td>
+                  <td>{{ device.manualEntry ? 'Manual' : 'Bootstrap' }}</td>
+                  <td>{{ device.enabled ? 'Yes' : 'No' }}</td>
+                  @if (canManageHosts()) {
+                    <td>
+                      <div class="row-actions">
+                        <button type="button" class="button-inline" (click)="startEdit(device)">Edit</button>
+                        <button type="button" class="button-inline" (click)="toggleEnabled(device)">
+                          {{ device.enabled ? 'Disable' : 'Enable' }}
+                        </button>
+                        <button type="button" class="button-inline danger" (click)="deleteDevice(device)">Delete</button>
+                      </div>
+                    </td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      }
+    </article>
+  </section>
+</main>

@@ -1,0 +1,291 @@
+<main class="workspace">
+  <app-collection-control-bar
+    [actions]="collectionActions"
+    [isLoading]="isLoading()"
+    [lastRefresh]="lastRefresh()"
+    (refreshClicked)="refresh()"
+    (collectClicked)="triggerCollection($event)"
+  ></app-collection-control-bar>
+
+  @if (errorMessage(); as message) {
+    <section class="error-banner">
+      {{ message }}
+    </section>
+  }
+
+  <section class="hero-panel">
+    <div class="hero-copy">
+      <p class="eyebrow">Monitoring Source</p>
+      <h1>SNMP</h1>
+      <p>
+        Source-filtered view of unified SNMP hosts, problems, metrics, and source metadata.
+      </p>
+    </div>
+
+    <div class="status-pill" [class.unavailable]="sourceAvailability()?.available === false">
+      <strong>{{ sourceAvailability()?.status ?? 'UNKNOWN' }}</strong>
+      <span>
+        {{
+          sourceAvailability()?.message ??
+            sourceAvailability()?.lastError ??
+            'Waiting for SNMP source status.'
+        }}
+      </span>
+      <small>
+        Hosts: {{ hostsFreshness() }} • Problems: {{ problemsFreshness() }} • Metrics: {{ metricsFreshness() }}
+      </small>
+    </div>
+  </section>
+
+  @if (sourceAvailability()?.status === 'UNAVAILABLE') {
+    <section class="source-alert-banner">
+      <div class="source-alert-banner__icon" aria-hidden="true">!</div>
+      <div class="source-alert-banner__content">
+        <strong>SNMP source unavailable</strong>
+        <p>
+          {{
+            sourceAvailability()?.message ??
+              sourceAvailability()?.lastError ??
+              'SNMP is currently unavailable.'
+          }}
+        </p>
+      </div>
+    </section>
+  }
+
+  <section class="kpi-grid">
+    <article class="kpi-card">
+      <span>Total Hosts</span>
+      <strong>{{ kpi().totalHosts }}</strong>
+    </article>
+    <article class="kpi-card alert">
+      <span>Down Hosts</span>
+      <strong>{{ kpi().downHosts }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Active Alerts</span>
+      <strong>{{ kpi().activeAlerts }}</strong>
+    </article>
+    <article class="kpi-card">
+      <span>Metrics Samples</span>
+      <strong>{{ kpi().totalMetrics }}</strong>
+    </article>
+  </section>
+
+  <section class="metadata-grid">
+    <article class="metadata-card">
+      <span>Coverage</span>
+      <strong>{{ coverageLabel() }}</strong>
+      <small>Backend coverage: {{ metricsCoverage() }}</small>
+    </article>
+    <article class="metadata-card">
+      <span>Monitoring State</span>
+      <strong>{{ monitoringDegraded() ? 'DEGRADED' : 'LIVE' }}</strong>
+      <small>
+        {{
+          monitoringDegraded()
+            ? 'At least one unified SNMP dataset is currently degraded.'
+            : 'Unified SNMP datasets are currently aligned with live snapshots.'
+        }}
+      </small>
+    </article>
+  </section>
+
+  <section class="content-grid">
+    <article class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Hosts by Category</h2>
+          <small>{{ sortedHosts().length }} hosts loaded from SNMP</small>
+        </div>
+      </header>
+
+      @if (!categoryGroups().length || !sortedHosts().length) {
+        <p class="empty">No SNMP host is currently available.</p>
+      } @else {
+        <div class="category-summary-grid">
+          @for (group of categoryGroups(); track group.category) {
+            <article class="category-card">
+              <div class="category-card__head">
+                <h3>{{ categoryLabel(group.category) }}</h3>
+                <span>{{ group.total }} total</span>
+              </div>
+              <div class="category-card__stats">
+                <div>
+                  <strong>{{ group.total }}</strong>
+                  <span>Total</span>
+                </div>
+                <div>
+                  <strong>{{ group.down }}</strong>
+                  <span>Down</span>
+                </div>
+                <div>
+                  <strong>{{ group.up }}</strong>
+                  <span>Up</span>
+                </div>
+              </div>
+            </article>
+          }
+        </div>
+
+        <div class="category-sections">
+          @for (group of categoryGroups(); track group.category) {
+            <section class="category-section">
+              <header class="category-section__header">
+                <div>
+                  <h3>{{ categoryLabel(group.category) }}</h3>
+                  <small>{{ group.total }} equipment{{ group.total > 1 ? 's' : '' }}</small>
+                </div>
+                <div class="category-section__totals">
+                  <span>Total: {{ group.total }}</span>
+                  <span>Down: {{ group.down }}</span>
+                  <span>Up: {{ group.up }}</span>
+                </div>
+              </header>
+
+              @if (!group.hosts.length) {
+                <p class="empty">No equipment in this category.</p>
+              } @else {
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Name</th>
+                        <th>Host ID</th>
+                        <th>IP / Address</th>
+                        <th>Status</th>
+                        <th>Category</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      @for (host of group.hosts; track hostTrackBy($index, host)) {
+                        <tr>
+                          <td>{{ host.name ?? 'UNKNOWN' }}</td>
+                          <td>{{ host.hostId ?? 'UNKNOWN' }}</td>
+                          <td>{{ hostAddress(host) }}</td>
+                          <td>
+                            <span class="badge" [class.down]="hostIsDown(host)">
+                              {{ host.status ?? 'UNKNOWN' }}
+                            </span>
+                          </td>
+                          <td>{{ categoryLabel(hostCategory(host)) }}</td>
+                        </tr>
+                      }
+                    </tbody>
+                  </table>
+                </div>
+              }
+            </section>
+          }
+        </div>
+      }
+    </article>
+
+    <article class="panel">
+      <header class="panel-header">
+        <div>
+          <h2>Problems</h2>
+          <small>{{ sortedProblems().length }} problems loaded from SNMP</small>
+        </div>
+      </header>
+
+      <div class="problem-filters">
+        @for (filter of problemFilterOptions; track filter.value) {
+          <button
+            type="button"
+            class="filter-chip"
+            [class.active]="selectedProblemFilter() === filter.value"
+            (click)="setProblemFilter(filter.value)"
+          >
+            {{ filter.label }}
+          </button>
+        }
+      </div>
+
+      @if (!sortedProblems().length) {
+        <p class="empty">No SNMP problem is currently available.</p>
+      } @else {
+        <ul class="problem-list">
+          @for (problem of sortedProblems(); track problem.id) {
+            <li>
+              <div class="problem-copy">
+                <div class="problem-head">
+                  <strong>{{ problem.hostName ?? problem.hostId ?? 'UNKNOWN_HOST' }}</strong>
+                  <span class="badge" [class.down]="problem.active">
+                    {{ problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED') }}
+                  </span>
+                  <span class="badge badge-type" [class.critical]="problemTypeTone(problem) === 'critical'" [class.warning]="problemTypeTone(problem) === 'warning'">
+                    {{ problemTypeLabel(problem) }}
+                  </span>
+                  @if (problemRecencyBadge(problem); as recencyBadge) {
+                    <span class="badge badge-recency" [class.recent]="recencyBadge === 'RECENT'">
+                      {{ recencyBadge }}
+                    </span>
+                  }
+                </div>
+                <p>{{ problem.description ?? 'No description' }}</p>
+                <small>
+                  Problem ID: {{ problem.problemId ?? 'UNKNOWN' }} • Host ID: {{ problem.hostId ?? 'UNKNOWN' }}
+                </small>
+                <small>
+                  Detected at: {{ problemDetectedAt(problem) }}
+                </small>
+                <small>
+                  Last check: {{ problemLastCheck(problem) }}
+                </small>
+              </div>
+              <div class="problem-meta">
+                <span
+                  class="severity-chip"
+                  [class.critical]="problemSeverityTone(problem) === 'critical'"
+                  [class.warning]="problemSeverityTone(problem) === 'warning'"
+                  [class.info]="problemSeverityTone(problem) === 'info'"
+                >
+                  {{ problemSeverityLabel(problem) }}
+                </span>
+              </div>
+            </li>
+          }
+        </ul>
+      }
+    </article>
+  </section>
+
+  <section class="panel">
+    <header class="panel-header">
+      <div>
+        <h2>Unified Metrics</h2>
+        <small>{{ metricGroups().length }} metric families loaded from SNMP</small>
+      </div>
+    </header>
+
+    @if (!metricGroups().length) {
+      <p class="empty">No SNMP metric is currently available.</p>
+    } @else {
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Latest Value</th>
+              <th>Hosts</th>
+              <th>Samples</th>
+              <th>Last Timestamp</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (metric of metricGroups(); track metricTrackBy($index, metric)) {
+              <tr>
+                <td>{{ metric.label }}</td>
+                <td>{{ metricValue(metric) }}</td>
+                <td>{{ metric.hosts }}</td>
+                <td>{{ metric.sampleCount }}</td>
+                <td>{{ metricTimestamp(metric) }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    }
+  </section>
+</main>

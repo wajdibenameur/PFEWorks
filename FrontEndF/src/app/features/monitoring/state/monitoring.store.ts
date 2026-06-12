@@ -124,13 +124,13 @@ export class MonitoringStore {
       this.sourceAvailability().map((entry) => [entry.source.toUpperCase(), entry])
     );
     const assetsBySource = new Map<MonitoringSource, GlobalAssetVm[]>(
-      (['ZABBIX', 'OBSERVIUM', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => [
+      (['ZABBIX', 'SNMP', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => [
         source,
         this.assets().filter((asset) => asset.source === source)
       ])
     );
 
-    return (['ZABBIX', 'OBSERVIUM', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => {
+    return (['ZABBIX', 'SNMP', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => {
       const availability = availabilityMap.get(source);
       const assets = assetsBySource.get(source) ?? [];
       const coverage = this.readSourceCoverage(source);
@@ -179,7 +179,7 @@ export class MonitoringStore {
     {
       title: 'Global KPIs',
       status: 'REAL',
-      detail: 'Built from unified /api/monitoring/hosts and /api/monitoring/problems across Zabbix, Observium, ZKBio, and Camera.'
+      detail: 'Built from unified /api/monitoring/hosts and /api/monitoring/problems across Zabbix, SNMP, ZKBio, and Camera.'
     },
     {
       title: 'Asset Categories',

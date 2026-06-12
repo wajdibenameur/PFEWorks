@@ -11,6 +11,7 @@ import tn.iteam.service.SourceAvailabilityService;
 import tn.iteam.util.MonitoringConstants;
 
 import java.time.Duration;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
@@ -43,7 +44,14 @@ public class CameraPollingScheduler {
                 .timeout(Duration.ofMillis(refreshTimeoutMs))
                 .onErrorResume(exception -> {
                     running.set(false);
-                    log.warn("Camera polling scheduler execution failed: {}", exception.getMessage());
+                    if (exception instanceof TimeoutException) {
+                        log.warn(
+                                "Camera polling timed out after {} ms. Source stays DEGRADED and the next cycle will continue.",
+                                refreshTimeoutMs
+                        );
+                    } else {
+                        log.warn("Camera polling scheduler execution failed: {}", exception.getMessage());
+                    }
                     sourceAvailabilityService.markDegraded(
                             MonitoringConstants.SOURCE_CAMERA,
                             "Camera polling scheduler failure: " + (exception.getMessage() == null ? "unknown" : exception.getMessage())

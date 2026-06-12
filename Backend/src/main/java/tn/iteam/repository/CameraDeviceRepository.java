@@ -10,8 +10,9 @@ import java.util.Optional;
 @Repository
 public interface CameraDeviceRepository extends JpaRepository<CameraDevice, Long> {
 
+    List<CameraDevice> findAllByOrderByIpAddressAsc();
+
     Optional<CameraDevice> findByIpAddress(String ipAddress);
 
     List<CameraDevice> findByEnabledTrue();
 }
-

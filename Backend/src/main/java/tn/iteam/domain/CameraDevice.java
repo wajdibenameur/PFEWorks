@@ -16,6 +16,15 @@ import java.time.Instant;
 @EqualsAndHashCode(callSuper = true)
 public class CameraDevice extends BaseEntity {
 
+    @Column(length = 128)
+    private String name;
+
+    @Column(length = 128)
+    private String site;
+
+    @Column(length = 64)
+    private String type;
+
     @Column(name = "ip_address", unique = true, nullable = false, length = 64)
     private String ipAddress;
 
@@ -28,6 +37,8 @@ public class CameraDevice extends BaseEntity {
     @Column(nullable = false, length = 16)
     @Builder.Default
     private DeviceStatus status = DeviceStatus.UNKNOWN;
+
+    private Instant lastCheckedAt;
 
     private Instant lastSeen;
 

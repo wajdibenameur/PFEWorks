@@ -16,8 +16,9 @@ public class CameraMonitoringProperties {
 
     private List<String> ranges = new ArrayList<>();
     private List<Integer> ports = new ArrayList<>(List.of(554, 37777, 80, 8080, 8000));
-    private int connectTimeoutMs = 500;
+    private int connectTimeoutMs = 2000;
     private long pollIntervalMs = 30000L;
     private int pollMaxWorkers = 32;
+    private boolean commandPingEnabled = false;
+    private boolean logProbeDetails = true;
 }
-
