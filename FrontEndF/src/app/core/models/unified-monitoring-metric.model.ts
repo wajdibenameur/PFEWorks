@@ -1,4 +1,4 @@
-export type MonitoringSourceType = 'ZABBIX' | 'OBSERVIUM' | 'ZKBIO' | 'CAMERA';
+export type MonitoringSourceType = 'ZABBIX' | 'SNMP' | 'ZKBIO' | 'CAMERA';
 
 export interface UnifiedMonitoringMetric {
   id: string;

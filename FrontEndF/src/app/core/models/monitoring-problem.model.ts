@@ -13,6 +13,8 @@ export interface MonitoringProblem {
   port?: number | null;
   startedAt?: number | null;
   startedAtFormatted?: string | null;
+  lastObservedAt?: number | null;
+  lastObservedAtFormatted?: string | null;
   resolvedAt?: number | null;
   resolvedAtFormatted?: string | null;
 }

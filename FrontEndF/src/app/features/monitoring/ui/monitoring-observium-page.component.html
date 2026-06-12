@@ -206,6 +206,9 @@
                 <small>
                   Problem ID: {{ problem.problemId ?? 'UNKNOWN' }} • Host ID: {{ problem.hostId ?? 'UNKNOWN' }}
                 </small>
+                <small>
+                  Last check: {{ problemLastCheck(problem) }}
+                </small>
               </div>
               <div class="problem-meta">
                 <span class="severity">{{ problem.severity ?? 'UNKNOWN' }}</span>
@@ -255,3 +258,4 @@
     }
   </section>
 </main>
+

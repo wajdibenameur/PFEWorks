@@ -31,7 +31,7 @@ export class MonitoringDashboardPageComponent implements OnInit {
   protected readonly collectionActions: CollectionActionVm[] = [
     { label: 'Collect All', target: 'all' },
     { label: 'Collect Zabbix', target: 'zabbix' },
-    { label: 'Collect Observium', target: 'observium' },
+    { label: 'Collect SNMP', target: 'snmp' },
     { label: 'Collect ZKBio', target: 'zkbio' },
     { label: 'Collect Camera', target: 'camera' }
   ];

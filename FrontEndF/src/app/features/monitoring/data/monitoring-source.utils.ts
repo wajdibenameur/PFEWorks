@@ -7,7 +7,14 @@ export function matchesMonitoringSource(
   source: string | null | undefined,
   expectedSource: string
 ): boolean {
-  return (source ?? '').toUpperCase() === expectedSource.toUpperCase();
+  const actual = normalizeMonitoringSource(source);
+  const expected = normalizeMonitoringSource(expectedSource);
+  return actual === expected;
+}
+
+function normalizeMonitoringSource(source: string | null | undefined): string {
+  const normalized = (source ?? '').toUpperCase();
+  return normalized === 'SNMP' ? 'SNMP' : normalized;
 }
 
 export function toZabbixProblem(problem: MonitoringProblem): ZabbixProblem {

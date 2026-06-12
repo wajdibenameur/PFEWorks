@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { filter, map, Observable } from 'rxjs';
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
-import { ObserviumMetric } from '../../../core/models/observium-metric.model';
+import { SnmpMetric } from '../../../core/models/snmp-metric.model';
 import { ServiceStatus } from '../../../core/models/service-status.model';
 import { StompClientService } from '../../../core/realtime/stomp-client.service';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
@@ -63,12 +63,12 @@ export class MonitoringRealtimeService {
     );
   }
 
-  observiumMetrics$(): Observable<ObserviumMetric[]> {
+  snmpMetrics$(): Observable<SnmpMetric[]> {
     return this.monitoringMetrics$().pipe(
       map((metrics) =>
         metrics
-          .filter((metric) => metric.source === 'OBSERVIUM')
-          .map((metric) => this.toObserviumMetric(metric))
+          .filter((metric) => metric.source === 'SNMP')
+          .map((metric) => this.toSnmpMetric(metric))
       )
     );
   }
@@ -101,7 +101,7 @@ export class MonitoringRealtimeService {
     return this.stomp.subscribe<ServiceStatus>('/topic/zkbio/status');
   }
 
-  private toObserviumMetric(metric: UnifiedMonitoringMetric): ObserviumMetric {
+  private toSnmpMetric(metric: UnifiedMonitoringMetric): SnmpMetric {
     return {
       hostId: metric.hostId,
       hostName: metric.hostName,
