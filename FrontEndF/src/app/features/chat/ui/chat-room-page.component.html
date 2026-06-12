@@ -1,0 +1,227 @@
+<section class="chat-layout">
+  <aside class="chat-sidebar">
+    <header>
+      <p class="kicker">Incident Collaboration</p>
+      <h2>Chat Rooms</h2>
+    </header>
+
+    @if (canCreateRooms()) {
+      <section class="room-creator">
+        <h4 class="group-title">Create Incident Room</h4>
+
+        <label class="field">
+          <span>Ticket</span>
+          <select
+            [ngModel]="selectedTicketId()"
+            (ngModelChange)="selectedTicketId.set(toNullableNumber($event))"
+          >
+            <option [ngValue]="null">Select ticket</option>
+            @for (ticket of tickets(); track ticket.id) {
+              <option [ngValue]="ticket.id">#{{ ticket.id }} - {{ ticket.title || 'Untitled ticket' }}</option>
+            }
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Room Name</span>
+          <input
+            type="text"
+            [ngModel]="roomName()"
+            (ngModelChange)="roomName.set($event)"
+            placeholder="Ex: Incident #123 - Core Network"
+          />
+        </label>
+
+        <label class="field">
+          <span>Add Collaborator</span>
+          <div class="inline-row">
+            <select
+              [ngModel]="selectedCollaboratorId()"
+              (ngModelChange)="selectedCollaboratorId.set(toNullableNumber($event))"
+            >
+              <option [ngValue]="null">Select user</option>
+              @for (user of collaborators(); track user.id) {
+                <option [ngValue]="user.id">{{ user.username || user.email || ('User #' + user.id) }}</option>
+              }
+            </select>
+            <button type="button" class="ghost" (click)="addCollaborator()">Add</button>
+          </div>
+        </label>
+
+        @if (invitedCollaborators().length) {
+          <div class="invited-list">
+            @for (user of invitedCollaborators(); track user.id) {
+              <span class="invited-chip">
+                {{ user.username || user.email || ('User #' + user.id) }}
+                <button type="button" class="chip-remove" (click)="removeCollaborator(user.id)">x</button>
+              </span>
+            }
+          </div>
+        }
+
+        @if (createError()) {
+          <p class="state error">{{ createError() }}</p>
+        }
+
+        <button type="button" class="create-btn" (click)="createIncidentRoom()" [disabled]="isCreating() || isBootstrapLoading()">
+          {{ isCreating() ? 'Creating...' : 'Create Incident Room' }}
+        </button>
+      </section>
+
+      <section class="room-creator">
+        <h4 class="group-title">Create Private Chat</h4>
+
+        <label class="field">
+          <span>User</span>
+          <select
+            [ngModel]="selectedPrivateTargetId()"
+            (ngModelChange)="selectedPrivateTargetId.set(toNullableNumber($event))"
+          >
+            <option [ngValue]="null">Select user</option>
+            @for (user of collaborators(); track user.id) {
+              <option [ngValue]="user.id">{{ user.username || user.email || ('User #' + user.id) }}</option>
+            }
+          </select>
+        </label>
+
+        <button type="button" class="create-btn" (click)="createPrivateRoom()" [disabled]="isCreating() || isBootstrapLoading()">
+          {{ isCreating() ? 'Creating...' : 'Create Private Chat' }}
+        </button>
+      </section>
+    }
+
+    @if (store.loading()) {
+      <p class="state">Loading rooms...</p>
+    } @else if (!store.rooms().length && !store.archivedRooms().length) {
+      <p class="state">No rooms available.</p>
+    } @else {
+      <div class="chat-tabs">
+        <button type="button" class="ghost" [class.tab-active]="roomTab() === 'ACTIVE'" (click)="setRoomTab('ACTIVE')">Active Chats</button>
+        <button type="button" class="ghost" [class.tab-active]="roomTab() === 'CLOSED'" (click)="setRoomTab('CLOSED')">Closed</button>
+        <button type="button" class="ghost" [class.tab-active]="roomTab() === 'ARCHIVED'" (click)="setRoomTab('ARCHIVED')">Archived</button>
+      </div>
+
+      @if (roomTab() === 'ACTIVE') {
+        <ul>
+          @for (room of store.openRooms(); track room.id) {
+            <li [class.active]="store.selectedRoom()?.id === room.id" (click)="selectRoom(room)">
+              <strong>{{ room.name }}</strong>
+              <small>#{{ room.ticketId ?? room.id }} - OPEN</small>
+            </li>
+          }
+        </ul>
+      } @else if (roomTab() === 'CLOSED') {
+        <ul>
+          @for (room of store.closedRooms(); track room.id) {
+            <li [class.active]="store.selectedRoom()?.id === room.id" (click)="selectRoom(room)">
+              <strong>{{ room.name }}</strong>
+              <small>#{{ room.ticketId ?? room.id }} - CLOSED</small>
+            </li>
+          }
+        </ul>
+      } @else {
+        <ul>
+          @for (room of store.archivedRooms(); track room.id) {
+            <li [class.active]="store.selectedRoom()?.id === room.id" (click)="selectRoom(room)">
+              <strong>{{ room.name }}</strong>
+              <small>#{{ room.ticketId ?? room.id }} - ARCHIVED (read-only)</small>
+            </li>
+          }
+        </ul>
+      }
+    }
+  </aside>
+
+  <article class="chat-window">
+    @if (!store.selectedRoom()) {
+      <p class="state">Select a room to start.</p>
+    } @else {
+      <header class="window-head">
+        <div>
+          <p class="kicker">Ticket {{ store.selectedRoom()!.ticketId ?? 'N/A' }}</p>
+          <h3>{{ store.selectedRoom()!.name }}</h3>
+          <div class="participants">
+            @for (p of store.participants(); track p.userId) {
+              <span class="participant">
+                <em class="dot" [class.online]="store.presenceMap()[p.userId] === 'online'"></em>
+                {{ p.username }}
+              </span>
+            }
+          </div>
+        </div>
+        <div class="head-actions">
+          <span
+            class="badge"
+            [class.closed]="store.selectedRoom()!.status === 'CLOSED'"
+            [class.archived]="store.selectedRoom()!.archived"
+          >
+            {{ store.selectedRoom()!.archived ? 'ARCHIVED' : store.selectedRoom()!.status }}
+          </span>
+          @if (canCreateRooms()) {
+            @if (store.selectedRoom()!.status === 'OPEN' && !store.selectedRoom()!.archived) {
+              <button type="button" class="ghost status-action" (click)="closeCurrentRoom()">Close</button>
+            } @else {
+              <button
+                type="button"
+                class="ghost status-action"
+                (click)="reopenCurrentRoom()"
+                [disabled]="store.selectedRoom()!.archived"
+              >
+                Reopen
+              </button>
+            }
+          }
+        </div>
+      </header>
+
+      <div class="message-list">
+        @for (message of store.messageViewModels(); track message.id) {
+          <div
+            class="message-row"
+            [class.mine]="message.isMine"
+            [class.system]="message.messageType !== 'USER'"
+            [attr.id]="'chat-message-' + message.id"
+          >
+            @if (message.replyToMessageId) {
+              <button type="button" class="reply-preview" (click)="scrollToMessage(message.replyToMessageId)">
+                Replying to: "{{ message.replyPreview || ('message #' + message.replyToMessageId) }}"
+              </button>
+            }
+            @if (!message.isMine && message.messageType === 'USER') {
+              <div class="message-head">
+                <strong>{{ message.senderDisplay }} ({{ message.senderRole || 'USER' }})</strong>
+                <small>{{ formatTime(message.createdAt) }}</small>
+              </div>
+            } @else {
+              <div class="message-head mine-head">
+                <small>{{ formatTime(message.createdAt) }}</small>
+              </div>
+            }
+            <div class="message-bubble">
+              <p>{{ message.content }}</p>
+            </div>
+            @if (message.messageType === 'USER') {
+              <button type="button" class="reply-action" (click)="replyTo(message.id)">Reply</button>
+            }
+          </div>
+        }
+      </div>
+
+      <footer class="composer">
+        @if (store.replyToMessageId()) {
+          <div class="composer-reply">
+            <span>Replying to message #{{ store.replyToMessageId() }}</span>
+            <button type="button" class="ghost" (click)="clearReply()">Cancel</button>
+          </div>
+        }
+        <textarea
+          [ngModel]="store.draft()"
+          (ngModelChange)="store.draft.set($event)"
+          placeholder="Type your incident update..."
+          [disabled]="store.isLocked()"
+        ></textarea>
+        <button type="button" (click)="send()" [disabled]="store.isLocked() || !store.draft().trim()">Send</button>
+      </footer>
+    }
+  </article>
+</section>

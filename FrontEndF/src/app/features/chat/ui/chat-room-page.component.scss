@@ -1,0 +1,372 @@
+.chat-layout {
+  background: linear-gradient(180deg, #eef5ff 0%, #e8f1fb 100%);
+  border-radius: 18px;
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: 320px 1fr;
+  min-height: calc(100vh - 140px);
+  padding: 1rem;
+}
+
+.chat-sidebar,
+.chat-window {
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+  border: 1px solid #dbe7f5;
+  border-radius: 18px;
+  box-shadow: 0 16px 30px rgba(11, 36, 66, 0.08);
+}
+
+.chat-sidebar {
+  padding: 0.85rem;
+}
+
+.room-creator {
+  border: 1px solid #dce9f7;
+  border-radius: 12px;
+  margin-top: 0.8rem;
+  padding: 0.65rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.field span {
+  color: #274b72;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.field select,
+.field input {
+  border: 1px solid #d7e5f6;
+  border-radius: 10px;
+  font: inherit;
+  min-height: 34px;
+  padding: 0.35rem 0.45rem;
+}
+
+.inline-row {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: 1fr auto;
+}
+
+.invited-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.invited-chip {
+  align-items: center;
+  background: #eef5ff;
+  border: 1px solid #d5e4f7;
+  border-radius: 999px;
+  color: #1f456d;
+  display: inline-flex;
+  font-size: 0.72rem;
+  gap: 0.35rem;
+  padding: 0.18rem 0.5rem;
+}
+
+.chip-remove {
+  background: transparent;
+  border: none;
+  color: #4b6d91;
+  cursor: pointer;
+  font-size: 0.75rem;
+  min-height: auto;
+  padding: 0;
+}
+
+.create-btn {
+  margin-top: 0.65rem;
+  width: 100%;
+}
+
+.ghost {
+  background: #f1f7ff;
+  border: 1px solid #cfe0f3;
+  color: #234668;
+}
+
+.state.error {
+  color: #b03939;
+}
+
+.kicker {
+  color: #5f7fa4;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+h2,
+h3 {
+  color: #163253;
+  margin: 0.2rem 0 0.6rem;
+}
+
+.chat-sidebar ul {
+  display: grid;
+  gap: 0.55rem;
+  list-style: none;
+  margin: 0.7rem 0 0;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding: 0;
+}
+
+.group-title {
+  color: #3d5f82;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  margin: 0.8rem 0 0.3rem;
+  text-transform: uppercase;
+}
+
+.chat-tabs {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.8rem;
+}
+
+.tab-active {
+  background: #dfeeff;
+  border-color: #95bde9;
+  color: #163d63;
+}
+
+.chat-sidebar li {
+  background: #f4f9ff;
+  border: 1px solid #dce9f7;
+  border-radius: 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.55rem 0.6rem;
+}
+
+.chat-sidebar li.active {
+  background: #e6f1ff;
+  border-color: #7db0e9;
+}
+
+.chat-sidebar li strong {
+  color: #1b3d63;
+  font-size: 0.82rem;
+}
+
+.chat-sidebar li small {
+  color: #6d88a7;
+  font-size: 0.72rem;
+}
+
+.chat-window {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.window-head {
+  align-items: center;
+  border-bottom: 1px solid #e3edf9;
+  display: flex;
+  justify-content: space-between;
+  padding: 0.9rem;
+}
+
+.badge {
+  background: #e6f8ed;
+  border-radius: 999px;
+  color: #157347;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.26rem 0.62rem;
+}
+
+.badge.closed {
+  background: #ffe8e8;
+  color: #ba3333;
+}
+
+.badge.archived {
+  background: #e9ecef;
+  color: #495057;
+}
+
+.head-actions {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.status-action {
+  min-height: 30px;
+  padding: 0.2rem 0.55rem;
+}
+
+.participants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 0.35rem;
+}
+
+.participant {
+  align-items: center;
+  background: #f3f8ff;
+  border: 1px solid #dbe7f7;
+  border-radius: 999px;
+  color: #274b72;
+  display: inline-flex;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 0.3rem;
+  padding: 0.16rem 0.5rem;
+}
+
+.dot {
+  background: #d84a4a;
+  border-radius: 50%;
+  display: inline-block;
+  height: 8px;
+  width: 8px;
+}
+
+.dot.online {
+  background: #1ea860;
+}
+
+.message-list {
+  display: grid;
+  gap: 0.6rem;
+  overflow: auto;
+  padding: 0.9rem;
+}
+
+.message-row {
+  display: grid;
+  gap: 0.25rem;
+  justify-items: start;
+  max-width: min(78%, 680px);
+  width: fit-content;
+}
+
+.message-row.mine {
+  justify-self: end;
+  justify-items: end;
+}
+
+.message-bubble {
+  background: #edf6ff;
+  border-radius: 12px;
+  max-width: 100%;
+  padding: 0.55rem 0.72rem;
+}
+
+.message-row.mine .message-bubble {
+  background: #cfe7ff;
+}
+
+.message-row.system .message-bubble {
+  background: #f5f5f7;
+}
+
+.message-bubble p {
+  color: #1b3e63;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.35;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.message-head {
+  align-items: center;
+  color: #5b7897;
+  display: flex;
+  font-size: 0.68rem;
+  gap: 0.4rem;
+}
+
+.mine-head {
+  justify-content: flex-end;
+}
+
+.reply-action,
+.reply-preview {
+  background: transparent;
+  border: none;
+  color: #2f5f8e;
+  cursor: pointer;
+  font-size: 0.68rem;
+  padding: 0;
+}
+
+.reply-preview {
+  background: #f2f7fe;
+  border: 1px solid #d8e7f8;
+  border-radius: 8px;
+  padding: 0.22rem 0.45rem;
+}
+
+.composer-reply {
+  align-items: center;
+  color: #39597b;
+  display: flex;
+  font-size: 0.74rem;
+  gap: 0.4rem;
+  grid-column: 1 / -1;
+}
+
+.highlighted .message-bubble {
+  box-shadow: 0 0 0 2px #7db0e9 inset;
+}
+
+.composer {
+  border-top: 1px solid #e3edf9;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: 1fr auto;
+  padding: 0.8rem;
+}
+
+textarea {
+  border: 1px solid #d7e5f6;
+  border-radius: 12px;
+  font: inherit;
+  min-height: 56px;
+  padding: 0.55rem 0.65rem;
+  resize: vertical;
+}
+
+button {
+  align-self: end;
+  background: linear-gradient(140deg, #10345a, #1b4f7a);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0.45rem 0.95rem;
+}
+
+.state {
+  color: #6f89a7;
+  font-size: 0.84rem;
+  margin-top: 0.6rem;
+}
+
+@media (max-width: 980px) {
+  .chat-layout {
+    grid-template-columns: 1fr;
+  }
+}

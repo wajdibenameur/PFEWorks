@@ -203,6 +203,17 @@
   padding: 0.65rem;
 }
 
+.notification-badge {
+  background: #e2f6eb;
+  border-radius: 999px;
+  color: #157347;
+  display: inline-flex;
+  font-size: 0.64rem;
+  font-weight: 800;
+  margin-bottom: 0.35rem;
+  padding: 0.15rem 0.4rem;
+}
+
 .notification-menu li strong {
   color: #1c3352;
   display: block;
@@ -226,7 +237,8 @@
   margin-top: 0.4rem;
 }
 
-.notification-actions button {
+.notification-actions button,
+.notification-actions a {
   background: #ffffff;
   border: 1px solid #d4e2f3;
   border-radius: 8px;
@@ -235,6 +247,7 @@
   font-size: 0.68rem;
   font-weight: 600;
   padding: 0.2rem 0.45rem;
+  text-decoration: none;
 }
 
 .profile-btn {

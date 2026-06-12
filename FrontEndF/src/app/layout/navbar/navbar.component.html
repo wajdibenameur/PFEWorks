@@ -25,7 +25,7 @@
       @if (notificationMenuOpen()) {
         <div class="notification-menu">
           <div class="notification-head">
-            <strong>Activite tickets</strong>
+            <strong>Monitoring alerts</strong>
             <small>{{ notificationItems().length }} recents</small>
           </div>
           @if (!notificationItems().length) {
@@ -34,12 +34,18 @@
             <ul>
               @for (notification of notificationItems(); track notification.id + '-' + notification.eventId) {
                 <li>
+                  @if (problemBadge(notification.eventType); as badge) {
+                    <span class="notification-badge">{{ badge }}</span>
+                  }
                   <strong>{{ notification.title }}</strong>
                   <p>{{ notification.message }}</p>
                   <small>{{ notification.createdAt }}</small>
                   <div class="notification-actions">
                     <button type="button" (click)="markRead(notification.id)">Read</button>
                     <button type="button" (click)="removeNotification(notification.id)">Delete</button>
+                    @if (notification.actionUrl) {
+                      <a [routerLink]="notification.actionUrl" (click)="notificationMenuOpen.set(false)">Open</a>
+                    }
                   </div>
                 </li>
               }

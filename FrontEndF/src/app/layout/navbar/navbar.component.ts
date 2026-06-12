@@ -56,6 +56,16 @@ export class NavbarComponent {
     this.notifications.remove(id);
   }
 
+  protected problemBadge(eventType: string): string | null {
+    if (eventType?.includes('NEW_MONITORING_PROBLEM')) {
+      return 'NEW';
+    }
+    if (eventType?.includes('RECENT_MONITORING_PROBLEM')) {
+      return 'RECENT';
+    }
+    return null;
+  }
+
   protected toggleProfileMenu(event: MouseEvent): void {
     event.stopPropagation();
     this.profileMenuOpen.update((open) => !open);

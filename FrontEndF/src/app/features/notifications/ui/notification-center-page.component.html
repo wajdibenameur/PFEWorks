@@ -1,0 +1,47 @@
+<section class="notification-center">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Realtime Inbox</p>
+      <h1>Notification Center</h1>
+      <p>Operational alerts and ticket activity in one stream.</p>
+    </div>
+    <div class="hero-actions">
+      <span class="badge">{{ unreadCount() }} unread</span>
+      <button type="button" (click)="markAllRead()">Mark all read</button>
+    </div>
+  </header>
+
+  @for (group of groups(); track group.label) {
+    <article class="group">
+      <h2>{{ group.label }}</h2>
+      <ul>
+        @for (item of group.items; track item.id) {
+          <li [class.unread]="!item.read">
+            <div class="meta">
+              <span class="severity severity-{{ item.severity.toLowerCase() }}">{{ item.severity }}</span>
+              @if (problemBadge(item.eventType); as badge) {
+                <span class="problem-badge" [class]="problemBadgeClass(item.eventType)">{{ badge }}</span>
+              }
+              <small>{{ item.createdAt }}</small>
+            </div>
+            <strong>{{ item.title }}</strong>
+            <p>{{ item.message }}</p>
+            <div class="actions">
+              <button type="button" (click)="markRead(item.id)">Read</button>
+              <button type="button" (click)="remove(item.id)">Delete</button>
+              @if (item.actionUrl) {
+                <a [routerLink]="item.actionUrl">Open</a>
+              }
+            </div>
+          </li>
+        }
+      </ul>
+    </article>
+  }
+
+  @if (loading()) {
+    <p class="state">Loading...</p>
+  } @else if (!hasMore()) {
+    <p class="state">No more notifications.</p>
+  }
+</section>

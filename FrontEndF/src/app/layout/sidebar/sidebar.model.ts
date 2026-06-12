@@ -26,7 +26,7 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     visibility: 'ALL',
     children: [
       { label: 'Zabbix', route: '/monitoring/zabbix', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZABBIX'] },
-      { label: 'Observium', route: '/monitoring/observium', visibility: 'ALL', requiredAnyPermissions: ['VIEW_OBSERVIUM'] },
+      { label: 'SNMP', route: '/monitoring/snmp', visibility: 'ALL', requiredAnyPermissions: ['VIEW_SNMP'] },
       { label: 'Camera', route: '/monitoring/camera', visibility: 'ALL', requiredAnyPermissions: ['VIEW_CAMERA'] },
       { label: 'ZKBio', route: '/monitoring/zkbio', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZKBIO'] },
       { label: 'Access Point', route: '/monitoring/access-point', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ACCESS_POINT'] }

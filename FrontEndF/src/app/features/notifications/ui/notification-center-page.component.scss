@@ -1,0 +1,177 @@
+.notification-center {
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 1.2rem 1rem 2.5rem;
+}
+
+.hero {
+  align-items: flex-start;
+  background: linear-gradient(140deg, #0f2c50, #184e7a);
+  border: 1px solid #245987;
+  border-radius: 18px;
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.eyebrow {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.25rem;
+  text-transform: uppercase;
+}
+
+.hero h1 {
+  margin: 0;
+}
+
+.hero p {
+  margin: 0.35rem 0 0;
+}
+
+.hero-actions {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: end;
+}
+
+.badge {
+  background: #f1f7ff;
+  border-radius: 999px;
+  color: #16375a;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.3rem 0.65rem;
+}
+
+.hero-actions button {
+  background: #ffffff;
+  border: none;
+  border-radius: 10px;
+  color: #12345b;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.45rem 0.7rem;
+}
+
+.group {
+  margin-top: 1rem;
+}
+
+.group h2 {
+  color: #1f3d5c;
+  font-size: 0.95rem;
+  margin: 0 0 0.55rem;
+}
+
+.group ul {
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.group li {
+  background: #ffffff;
+  border: 1px solid #deebf9;
+  border-radius: 14px;
+  padding: 0.8rem;
+}
+
+.group li.unread {
+  border-color: #8ab6e6;
+  box-shadow: 0 10px 22px rgba(20, 49, 83, 0.08);
+}
+
+.meta {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.severity {
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.48rem;
+}
+
+.severity-info {
+  background: #e5f2ff;
+  color: #1f5f9c;
+}
+
+.severity-warning {
+  background: #fff3db;
+  color: #9a671a;
+}
+
+.severity-critical {
+  background: #ffe6e7;
+  color: #b22435;
+}
+
+.problem-badge {
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.48rem;
+}
+
+.badge-new {
+  background: #e2f6eb;
+  color: #157347;
+}
+
+.badge-recent {
+  background: #edf3ff;
+  color: #285ea8;
+}
+
+.group li strong {
+  color: #153350;
+}
+
+.group li p {
+  color: #355573;
+  margin: 0.35rem 0 0.6rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.actions button,
+.actions a {
+  background: #f3f8ff;
+  border: 1px solid #d7e4f4;
+  border-radius: 8px;
+  color: #204a72;
+  cursor: pointer;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 0.3rem 0.56rem;
+  text-decoration: none;
+}
+
+.state {
+  color: #6b86a4;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 760px) {
+  .hero {
+    display: grid;
+    gap: 0.9rem;
+  }
+
+  .hero-actions {
+    justify-items: start;
+  }
+}
