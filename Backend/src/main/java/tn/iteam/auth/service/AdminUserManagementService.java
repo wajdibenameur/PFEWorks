@@ -15,6 +15,7 @@ import tn.iteam.auth.dto.*;
 import tn.iteam.auth.exception.AuthenticationException;
 import tn.iteam.auth.exception.KeycloakIntegrationException;
 import tn.iteam.auth.exception.UserAlreadyExistsException;
+import tn.iteam.auth.util.KeycloakLocationUtils;
 import tn.iteam.domain.User;
 import tn.iteam.enums.RoleName;
 import tn.iteam.repository.UserRepository;
@@ -126,7 +127,7 @@ public class AdminUserManagementService {
             throw new KeycloakIntegrationException("Failed to create user: " + e.getMessage(), e);
         }
 
-        String userId = extractUserIdFromLocation(createResponse);
+        String userId = KeycloakLocationUtils.extractUserIdFromLocation(createResponse);
         resetPassword(userId, request.getPassword(), adminToken);
         replaceApplicationRoles(userId, request.getRole(), adminToken);
         synchronizeLocalUserSnapshot(
@@ -485,16 +486,6 @@ public class AdminUserManagementService {
 
     private String bearerToken() {
         return "Bearer " + adminTokenService.getAdminToken();
-    }
-
-    private String extractUserIdFromLocation(Response response) {
-        String location = response.headers().getOrDefault("Location",
-                response.headers().getOrDefault("location", List.of()))
-                .stream()
-                .findFirst()
-                .orElseThrow(() -> new KeycloakIntegrationException(
-                        "User created but Location header missing in Keycloak response"));
-        return location.substring(location.lastIndexOf('/') + 1);
     }
 
     private void synchronizeLocalEnabledState(String keycloakUserId, boolean enabled) {

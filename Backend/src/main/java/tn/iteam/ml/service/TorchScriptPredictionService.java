@@ -1,6 +1,5 @@
 package tn.iteam.ml.service;
 
-import ai.djl.MalformedModelException;
 import ai.djl.ModelException;
 import ai.djl.inference.Predictor;
 import ai.djl.ndarray.NDArray;
@@ -8,7 +7,6 @@ import ai.djl.ndarray.NDList;
 import ai.djl.ndarray.NDManager;
 import ai.djl.ndarray.types.Shape;
 import ai.djl.repository.zoo.Criteria;
-import ai.djl.repository.zoo.ModelNotFoundException;
 import ai.djl.repository.zoo.ZooModel;
 import ai.djl.translate.Batchifier;
 import ai.djl.translate.TranslateException;
@@ -17,6 +15,7 @@ import ai.djl.translate.TranslatorContext;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -43,6 +42,7 @@ public class TorchScriptPredictionService {
     private float[] means;
     private float[] stds;
     private Path resolvedModelPath;
+    private ZooModel<float[], float[]> loadedModel;
     private boolean initialized;
     private String disabledReason = "prediction_not_initialized";
 
@@ -82,6 +82,13 @@ public class TorchScriptPredictionService {
                     stds[index] = 1.0f;
                 }
             }
+
+            Criteria<float[], float[]> criteria = Criteria.builder()
+                    .setTypes(float[].class, float[].class)
+                    .optModelPath(resolvedModelPath)
+                    .optTranslator(new TorchScriptTranslator(means, stds))
+                    .build();
+            loadedModel = criteria.loadModel();
             initialized = true;
             disabledReason = null;
             log.info("TorchScript prediction initialized from model={} metadata={}", resolvedModelPath, metadataPath);
@@ -97,23 +104,23 @@ public class TorchScriptPredictionService {
         if (!initialized) {
             throw new IllegalStateException("TorchScript prediction is disabled: missing modelPath/metadataPath configuration");
         }
+        if (loadedModel == null) {
+            throw new IllegalStateException("TorchScript model is not loaded");
+        }
         if (features.size() != means.length) {
             throw new IllegalArgumentException(
                     "Expected " + means.length + " features in this exact order: " + featureOrder
             );
         }
 
-        Criteria<float[], float[]> criteria = Criteria.builder()
-                .setTypes(float[].class, float[].class)
-                .optModelPath(resolvedModelPath)
-                .optTranslator(new TorchScriptTranslator(means, stds))
-                .build();
-
-        try (ZooModel<float[], float[]> model = criteria.loadModel();
-             Predictor<float[], float[]> predictor = model.newPredictor()) {
+        try (Predictor<float[], float[]> predictor = loadedModel.newPredictor()) {
             float[] input = new float[features.size()];
             for (int i = 0; i < features.size(); i++) {
-                input[i] = features.get(i).floatValue();
+                Double featureValue = features.get(i);
+                if (featureValue == null || featureValue.isNaN() || featureValue.isInfinite()) {
+                    throw new IllegalArgumentException("Feature at index " + i + " must be a finite number");
+                }
+                input[i] = featureValue.floatValue();
             }
 
             float[] logits = predictor.predict(input);
@@ -136,8 +143,6 @@ public class TorchScriptPredictionService {
                     .probabilities(probabilityList)
                     .featureOrder(featureOrder)
                     .build();
-        } catch (MalformedModelException | ModelNotFoundException exception) {
-            throw new IOException("Unable to load TorchScript model from " + properties.modelPath(), exception);
         }
     }
 
@@ -158,8 +163,15 @@ public class TorchScriptPredictionService {
         means = new float[0];
         stds = new float[0];
         resolvedModelPath = null;
+        closeLoadedModel();
+        loadedModel = null;
         initialized = false;
         disabledReason = "prediction_not_initialized";
+    }
+
+    @PreDestroy
+    void destroy() {
+        closeLoadedModel();
     }
 
     private Path resolveConfiguredPath(String configuredPath) throws IOException {
@@ -200,6 +212,17 @@ public class TorchScriptPredictionService {
             exp[i] = exp[i] / sum;
         }
         return exp;
+    }
+
+    private void closeLoadedModel() {
+        if (loadedModel == null) {
+            return;
+        }
+        try {
+            loadedModel.close();
+        } catch (Exception exception) {
+            log.debug("Unable to close loaded TorchScript model cleanly: {}", exception.getMessage());
+        }
     }
 
     private static final class TorchScriptTranslator implements Translator<float[], float[]> {

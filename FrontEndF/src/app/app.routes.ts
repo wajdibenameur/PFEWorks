@@ -4,7 +4,6 @@ import { MonitoringCameraPageComponent } from './features/monitoring/ui/monitori
 import { MonitoringDashboardPageComponent } from './features/monitoring/ui/monitoring-dashboard-page.component';
 import { MonitoringSnmpPageComponent } from './features/monitoring/ui/monitoring-snmp-page.component';
 import { MonitoringZabbixPageComponent } from './features/monitoring/ui/monitoring-zabbix-page.component';
-import { MonitoringZkBioPageComponent } from './features/monitoring/ui/monitoring-zkbio-page.component';
 import { EquipmentManagementPageComponent } from './features/monitoring/ui/equipment-management-page.component';
 import { TicketTrackingPageComponent } from './features/tickets/ui/ticket-tracking-page.component';
 import { TicketListPageComponent } from './features/tickets/ui/ticket-list-page.component';
@@ -29,31 +28,28 @@ export const routes: Routes = [
       {
         path: 'dashboard',
         component: MonitoringDashboardPageComponent,
-        data: { permissionsAny: ['VIEW_DASHBOARD'] },
+        data: { permissionsAll: ['VIEW_DASHBOARD', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS'] },
         canActivate: [RoleGuard]
       },
       {
         path: 'monitoring/zabbix',
         component: MonitoringZabbixPageComponent,
-        data: { title: 'Zabbix', permissionsAny: ['VIEW_ZABBIX'] },
+        data: {
+          title: 'Zabbix',
+          permissionsAll: ['VIEW_ZABBIX', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS', 'VIEW_DASHBOARD']
+        },
         canActivate: [RoleGuard]
       },
       {
         path: 'monitoring/snmp',
         component: MonitoringSnmpPageComponent,
-        data: { title: 'SNMP', permissionsAny: ['VIEW_SNMP'] },
+        data: { title: 'SNMP', permissionsAll: ['VIEW_SNMP', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS'] },
         canActivate: [RoleGuard]
       },
       {
         path: 'monitoring/camera',
         component: MonitoringCameraPageComponent,
         data: { title: 'Camera', permissionsAny: ['VIEW_CAMERA'] },
-        canActivate: [RoleGuard]
-      },
-      {
-        path: 'monitoring/zkbio',
-        component: MonitoringZkBioPageComponent,
-        data: { title: 'ZKBio', permissionsAny: ['VIEW_ZKBIO'] },
         canActivate: [RoleGuard]
       },
       {

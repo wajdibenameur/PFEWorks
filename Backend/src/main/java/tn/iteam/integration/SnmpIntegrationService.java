@@ -84,32 +84,47 @@ public class SnmpIntegrationService implements AsyncIntegrationService {
         subscribeSafely("refresh", refreshAsync());
     }
 
+
     @Override
     public void refreshHosts() {
         String source = getSourceType().name();
+
         if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
             log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
             return;
         }
+
         try {
-            // Step 1: Fetch live data
             List<ServiceStatusDTO> statuses = List.copyOf(snmpSourceService.fetchAll());
-            
-            // Step 2: Save snapshot FIRST (always succeeds, in-memory)
+
+            if (isInvalidSnmpHostsResult(statuses)) {
+                log.warn("SNMP returned empty/all DOWN hosts. DB will not be overwritten.");
+
+                handleRefreshFailure(
+                        DATASET_HOSTS,
+                        source,
+                        new RuntimeException("SNMP returned empty/all DOWN hosts")
+                );
+
+                return;
+            }
+
             List<UnifiedMonitoringHostDTO> data = monitoringMapper.toHosts(statuses);
             saveSnapshot(DATASET_HOSTS, source, data);
-            
-            // Step 3: Try DB persistence (non-blocking, wrapped)
+
             tryPersistToDatabase(source, DATASET_HOSTS, () -> {
                 if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statuses)) {
                     log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
                     return;
                 }
+
                 serviceStatusPersistenceService.saveAll(statuses);
                 monitoredHostPersistenceService.saveAll(source, statuses);
                 freshnessService.markPersistSuccess(DATASET_HOSTS, source, statuses);
             });
+
             freshnessService.markFetchSuccess(DATASET_HOSTS, source);
+
         } catch (Exception exception) {
             handleRefreshFailure(DATASET_HOSTS, source, exception);
         }
@@ -159,31 +174,56 @@ public class SnmpIntegrationService implements AsyncIntegrationService {
 
     public Mono<Void> refreshHostsAsync() {
         String source = getSourceType().name();
+
         if (freshnessService.shouldSkipFetch(DATASET_HOSTS, source, hostsFreshnessMs)) {
             log.debug("FETCH SKIPPED fresh cache dataset={} source={}", DATASET_HOSTS, source);
             return Mono.empty();
         }
+
         return Mono.fromCallable(snmpSourceService::fetchAll)
-            .subscribeOn(Schedulers.boundedElastic())
-            .doOnNext(statuses -> {
-                List<ServiceStatusDTO> statusList = List.copyOf(statuses);
-                saveSnapshot(DATASET_HOSTS, source, statusList.stream().map(monitoringMapper::toHost).toList());
-                tryPersistToDatabase(source, DATASET_HOSTS, () -> {
-                    if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statusList)) {
-                        log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(statuses -> {
+
+                    List<ServiceStatusDTO> statusList = List.copyOf(statuses);
+
+                    if (isInvalidSnmpHostsResult(statusList)) {
+                        log.warn("SNMP returned empty/all DOWN hosts. DB will not be overwritten.");
+
+                        handleRefreshFailure(
+                                DATASET_HOSTS,
+                                source,
+                                new RuntimeException("SNMP returned empty/all DOWN hosts")
+                        );
                         return;
                     }
-                    serviceStatusPersistenceService.saveAll(statusList);
-                    monitoredHostPersistenceService.saveAll(source, statusList);
-                    freshnessService.markPersistSuccess(DATASET_HOSTS, source, statusList);
-                });
-                freshnessService.markFetchSuccess(DATASET_HOSTS, source);
-            })
-            .onErrorResume(throwable -> {
-                handleRefreshFailure(DATASET_HOSTS, source, toException(throwable));
-                return Mono.empty();
-            })
-            .then();
+
+                    saveSnapshot(
+                            DATASET_HOSTS,
+                            source,
+                            statusList.stream()
+                                    .map(monitoringMapper::toHost)
+                                    .toList()
+                    );
+
+                    tryPersistToDatabase(source, DATASET_HOSTS, () -> {
+
+                        if (!freshnessService.hasPersistDelta(DATASET_HOSTS, source, statusList)) {
+                            log.debug("PERSIST SKIPPED no changes dataset={} source={}", DATASET_HOSTS, source);
+                            return;
+                        }
+
+                        serviceStatusPersistenceService.saveAll(statusList);
+                        monitoredHostPersistenceService.saveAll(source, statusList);
+                        freshnessService.markPersistSuccess(DATASET_HOSTS, source, statusList);
+                    });
+
+                    freshnessService.markFetchSuccess(DATASET_HOSTS, source);
+                })
+                .onErrorResume(throwable -> {
+                    handleRefreshFailure(DATASET_HOSTS, source, toException(throwable));
+                    return Mono.empty();
+                })
+                .then();
     }
 
     public Mono<Void> refreshProblemsAsync() {
@@ -437,4 +477,14 @@ public class SnmpIntegrationService implements AsyncIntegrationService {
         }
         return new RuntimeException(throwable);
     }
+    private boolean isInvalidSnmpHostsResult(List<ServiceStatusDTO> statuses) {
+        return statuses == null
+                || statuses.isEmpty()
+                || statuses.stream().allMatch(status ->
+                status.getStatus() != null
+                        && "DOWN".equalsIgnoreCase(status.getStatus())
+        );
+    }
+
+
 }

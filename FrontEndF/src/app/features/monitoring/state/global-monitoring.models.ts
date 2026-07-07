@@ -1,6 +1,6 @@
 export type AssetCategory = 'SERVER' | 'PRINTER' | 'CAMERA' | 'ACCESS_CONTROL' | 'UNKNOWN';
 export type AssetStatus = 'UP' | 'DOWN' | 'UNKNOWN';
-export type MonitoringSource = 'ZABBIX' | 'SNMP' | 'CAMERA' | 'ZKBIO';
+export type MonitoringSource = 'ZABBIX' | 'SNMP' | 'CAMERA';
 export type RealtimeDataState = 'fresh' | 'unchanged' | 'stale' | 'disconnected' | 'offline';
 
 export interface GlobalAssetVm {

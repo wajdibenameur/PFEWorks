@@ -21,10 +21,6 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
     })
     Page<Ticket> findAll(Specification<Ticket> spec, Pageable pageable);
 
-    Page<Ticket> findByStatus(TicketStatus status, Pageable pageable);
-
-    Page<Ticket> findByAssignedTo_Id(Long userId, Pageable pageable);
-
     @EntityGraph(attributePaths = {
             "createdBy", "createdBy.role",
             "assignedTo", "assignedTo.role",
@@ -53,6 +49,4 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
             "interventions", "interventions.performedBy", "interventions.performedBy.role"
     })
     Optional<Ticket> findById(Long id);
-
-    Page<Ticket> findByArchivedFalse(Pageable pageable);
 }

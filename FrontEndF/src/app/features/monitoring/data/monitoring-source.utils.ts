@@ -1,7 +1,6 @@
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
-import { ZkBioProblem } from '../../../core/models/zkbio-problem.model';
 
 export function matchesMonitoringSource(
   source: string | null | undefined,
@@ -34,23 +33,6 @@ export function toZabbixProblem(problem: MonitoringProblem): ZabbixProblem {
     resolvedAt: problem.resolvedAt ?? null,
     resolvedAtFormatted: problem.resolvedAtFormatted ?? null,
     status: problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED')
-  };
-}
-
-export function toZkBioProblem(problem: MonitoringProblem): ZkBioProblem {
-  return {
-    problemId: problem.problemId ?? problem.id,
-    host: problem.hostName ?? problem.hostId ?? 'UNKNOWN',
-    description: problem.description ?? 'No description',
-    severity: problem.severity ?? 'UNKNOWN',
-    active: problem.active,
-    status: problem.status ?? (problem.active ? 'ACTIVE' : 'RESOLVED'),
-    startedAt: problem.startedAt ?? null,
-    startedAtFormatted: problem.startedAtFormatted ?? null,
-    resolvedAt: problem.resolvedAt ?? null,
-    resolvedAtFormatted: problem.resolvedAtFormatted ?? null,
-    source: typeof problem.source === 'string' ? problem.source : String(problem.source ?? 'ZKBIO'),
-    eventId: problem.eventId ?? 0
   };
 }
 

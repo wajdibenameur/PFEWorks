@@ -11,7 +11,10 @@ export class RoleGuard implements CanActivate {
     const requiredAnyPermissions = ((route.data?.['permissionsAny'] as string[]) || []).map((permission) =>
       permission.trim().toUpperCase()
     );
-    if (requiredAnyPermissions.length === 0) {
+    const requiredAllPermissions = ((route.data?.['permissionsAll'] as string[]) || []).map((permission) =>
+      permission.trim().toUpperCase()
+    );
+    if (requiredAnyPermissions.length === 0 && requiredAllPermissions.length === 0) {
       return true;
     }
 
@@ -21,7 +24,14 @@ export class RoleGuard implements CanActivate {
       return true;
     }
 
-    if (requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission))) {
+    const matchesAny =
+      requiredAnyPermissions.length === 0 ||
+      requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission));
+    const matchesAll =
+      requiredAllPermissions.length === 0 ||
+      requiredAllPermissions.every((permission) => this.auth.hasPermission(permission));
+
+    if (matchesAny && matchesAll) {
       return true;
     }
 

@@ -59,18 +59,27 @@ describe('SidebarComponent RBAC filtering', () => {
     expect(labels).not.toContain('Zabbix');
     expect(labels).not.toContain('SNMP');
     expect(labels).not.toContain('Camera');
-    expect(labels).not.toContain('ZKBio');
     expect(labels).not.toContain('Access Point');
   });
 
-  it('shows only zabbix module under monitoring when only VIEW_ZABBIX is granted', () => {
-    auth.permissions = new Set(['VIEW_ZABBIX']);
+  it('shows zabbix module only when all required zabbix permissions are granted', () => {
+    auth.permissions = new Set(['VIEW_ZABBIX', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS', 'VIEW_DASHBOARD']);
     fixture.detectChanges();
 
     const monitoring = component.visibleItems().find((item) => item.label === 'Monitoring');
     const childLabels = (monitoring?.children ?? []).map((item) => item.label);
 
     expect(childLabels).toEqual(['Zabbix']);
+  });
+
+  it('hides zabbix module when one required permission is missing', () => {
+    auth.permissions = new Set(['VIEW_ZABBIX', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_DASHBOARD']);
+    fixture.detectChanges();
+
+    const monitoring = component.visibleItems().find((item) => item.label === 'Monitoring');
+    const childLabels = (monitoring?.children ?? []).map((item) => item.label) ?? [];
+
+    expect(childLabels).not.toContain('Zabbix');
   });
 
   it('hides permission-based entries while permissions are not loaded', () => {

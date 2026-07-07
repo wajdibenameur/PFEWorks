@@ -1,12 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { Inject, Injectable } from '@angular/core';
-import { Observable, of, throwError } from 'rxjs';
-import { catchError, finalize, map, shareReplay, switchMap } from 'rxjs/operators';
+import { Observable, throwError } from 'rxjs';
+import { catchError, finalize, map, shareReplay } from 'rxjs/operators';
 import { APP_CONFIG, AppConfig } from '../config/app-config.token';
 import { AUTH_CONTEXT, AuthContextPort } from './auth-context.port';
 
 interface RefreshTokenResponse {
   access_token: string;
+  refresh_token?: string | null;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -25,24 +26,23 @@ export class TokenRefreshService {
       return this.refreshInFlight$;
     }
 
-    console.debug('[AUTH] REFRESH START');
-    const ensureCsrf$: Observable<unknown> = this.hasXsrfCookie()
-      ? of(null)
-      : this.http.get(`${this.config.authApiUrl}/api/auth/csrf`, { withCredentials: true });
+    const refreshToken = this.authContext.getRefreshToken();
+    if (!refreshToken) {
+      return throwError(() => new Error('Refresh token unavailable'));
+    }
 
-    const refresh$: Observable<string> = ensureCsrf$
-      .pipe(
-        switchMap(() =>
-          this.http.post<RefreshTokenResponse>(`${this.config.authApiUrl}/api/auth/refresh`, {}, { withCredentials: true })
-        )
-      )
+    console.debug('[AUTH] REFRESH START');
+    const refresh$: Observable<string> = this.http
+      .post<RefreshTokenResponse>(`${this.config.authApiUrl}/api/auth/refresh`, {
+        refreshToken
+      })
       .pipe(
         map((response) => {
           const nextAccessToken = response.access_token;
           if (!nextAccessToken) {
             throw new Error('Refresh response does not contain access_token');
           }
-          this.authContext.setTokens(nextAccessToken, null);
+          this.authContext.setTokens(nextAccessToken, response.refresh_token ?? refreshToken);
 
           console.debug('[AUTH] REFRESH SUCCESS');
           return nextAccessToken;
@@ -59,10 +59,6 @@ export class TokenRefreshService {
 
     this.refreshInFlight$ = refresh$;
     return refresh$;
-  }
-
-  private hasXsrfCookie(): boolean {
-    return document.cookie.includes('XSRF-TOKEN=');
   }
 }
 

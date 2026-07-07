@@ -92,9 +92,16 @@
             <scope>runtime</scope>
             <optional>true</optional>
         </dependency>
+        <!-- MySQL backend driver kept commented because docker MySQL remains used for Keycloak only.
         <dependency>
             <groupId>com.mysql</groupId>
             <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
             <scope>runtime</scope>
         </dependency>
         <dependency>
@@ -211,7 +218,13 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
                 <configuration>
+                    <release>${java.version}</release>
+                    <parameters>true</parameters>
+                    <annotationProcessors>
+                        <annotationProcessor>lombok.launch.AnnotationProcessorHider$AnnotationProcessor</annotationProcessor>
+                    </annotationProcessors>
                     <annotationProcessorPaths>
                         <path>
                             <groupId>org.projectlombok</groupId>
@@ -219,6 +232,13 @@
                             <version>1.18.30</version>
                         </path>
                     </annotationProcessorPaths>
+                    <testAnnotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.30</version>
+                        </path>
+                    </testAnnotationProcessorPaths>
                 </configuration>
             </plugin>
             <plugin>

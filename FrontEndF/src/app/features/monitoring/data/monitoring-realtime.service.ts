@@ -7,14 +7,10 @@ import { StompClientService } from '../../../core/realtime/stomp-client.service'
 import { SourceAvailability } from '../../../core/models/source-availability.model';
 import { ZabbixMetric } from '../../../core/models/zabbix-metric.model';
 import { ZabbixProblem } from '../../../core/models/zabbix-problem.model';
-import { ZkBioAttendance } from '../../../core/models/zkbio-attendance.model';
-import { ZkBioMetric } from '../../../core/models/zkbio-metric.model';
-import { ZkBioProblem } from '../../../core/models/zkbio-problem.model';
 import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
 import {
   matchesMonitoringSource,
-  toZabbixProblem,
-  toZkBioProblem
+  toZabbixProblem
 } from './monitoring-source.utils';
 
 @Injectable({ providedIn: 'root' })
@@ -73,34 +69,6 @@ export class MonitoringRealtimeService {
     );
   }
 
-  zkbioMetrics$(): Observable<ZkBioMetric[]> {
-    return this.monitoringMetrics$().pipe(
-      map((metrics) =>
-        metrics
-          .filter((metric) => metric.source === 'ZKBIO')
-          .map((metric) => this.toZkBioMetric(metric))
-      )
-    );
-  }
-
-  zkbioProblems$(): Observable<ZkBioProblem[]> {
-    return this.monitoringProblemsForSource$('ZKBIO').pipe(
-      map((problems) => problems.map((problem) => toZkBioProblem(problem)))
-    );
-  }
-
-  zkbioAttendance$(): Observable<ZkBioAttendance[]> {
-    return this.stomp.subscribe<ZkBioAttendance[]>('/topic/zkbio/attendance');
-  }
-
-  zkbioDevices$(): Observable<ServiceStatus[]> {
-    return this.stomp.subscribe<ServiceStatus[]>('/topic/zkbio/devices');
-  }
-
-  zkbioStatus$(): Observable<ServiceStatus> {
-    return this.stomp.subscribe<ServiceStatus>('/topic/zkbio/status');
-  }
-
   private toSnmpMetric(metric: UnifiedMonitoringMetric): SnmpMetric {
     return {
       hostId: metric.hostId,
@@ -126,19 +94,5 @@ export class MonitoringRealtimeService {
       port: metric.port
     };
   }
-
-  private toZkBioMetric(metric: UnifiedMonitoringMetric): ZkBioMetric {
-    return {
-      hostId: metric.hostId,
-      hostName: metric.hostName,
-      itemId: metric.itemId,
-      metricKey: metric.metricKey,
-      value: metric.value,
-      timestamp: metric.timestamp,
-      ip: metric.ip,
-      port: metric.port
-    };
-  }
-
 }
 

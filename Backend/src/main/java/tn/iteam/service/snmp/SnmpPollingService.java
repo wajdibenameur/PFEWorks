@@ -14,14 +14,10 @@ import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
 import tn.iteam.repository.SnmpDeviceRepository;
-import tn.iteam.service.SnmpCategoryMetricsService;
-import tn.iteam.service.SnmpInterfaceCollectionService;
 import tn.iteam.service.SnmpMonitoringService;
 import tn.iteam.service.SnmpObservedStateService;
 import tn.iteam.util.MonitoringConstants;
 
-import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -67,10 +63,7 @@ public class SnmpPollingService implements SnmpMonitoringService {
     public SnmpPollingService(
             SnmpDeviceRepository deviceRepository,
             SnmpObservedStateService observedStateService,
-            SnmpInterfaceCollectionService interfaceCollectionService,
-            SnmpCategoryMetricsService categoryMetricsService,
             SnmpProperties properties,
-            SnmpSubnetClassifier subnetClassifier,
             ThreadPoolTaskExecutor executor,
             TimeLimiterRegistry timeLimiterRegistry,
             RetryRegistry retryRegistry
@@ -138,7 +131,7 @@ public class SnmpPollingService implements SnmpMonitoringService {
                     .decorateCheckedSupplier(retry, () -> pollDeviceWithTimeout(device))
                     .get();
         } catch (Throwable exception) {
-            return buildLegacyDownSnapshot(device, safeMessage(exception));
+            return buildLegacyDownSnapshot(device, SnmpExceptionUtils.safeMessage(exception));
         }
     }
 
@@ -146,7 +139,10 @@ public class SnmpPollingService implements SnmpMonitoringService {
         if (!legacyMode) {
             return pollSingleDevice(device);
         }
-        validateDeviceConfiguration(device);
+        String ip = device != null ? device.getIpAddress() : null;
+        Integer port = device != null ? device.getSnmpPort() : null;
+        String community = device != null ? device.getSnmpCommunity() : null;
+        SnmpExceptionUtils.validateDeviceConfiguration(device, ip, port, community);
         try {
             return legacyTimeLimiterRegistry.timeLimiter(RESILIENCE_NAME)
                     .executeFutureSupplier(() -> CompletableFuture.supplyAsync(
@@ -156,31 +152,6 @@ public class SnmpPollingService implements SnmpMonitoringService {
         } catch (Exception exception) {
             throw classifyRetryableException(device, exception);
         }
-    }
-
-    RuntimeException classifyIoException(SnmpDevice device, Throwable throwable) {
-        String ip = device != null ? device.getIpAddress() : "unknown";
-        if (throwable instanceof IntegrationResponseException responseException) {
-            return responseException;
-        }
-        if (throwable instanceof IntegrationUnavailableException unavailableException) {
-            return unavailableException;
-        }
-        if (throwable instanceof IntegrationTimeoutException timeoutException) {
-            return timeoutException;
-        }
-        if (throwable instanceof java.net.SocketTimeoutException
-                || throwable instanceof InterruptedIOException
-                || throwable instanceof InterruptedException) {
-            return new IntegrationTimeoutException(MonitoringConstants.SOURCE_SNMP, "SNMP timeout while polling " + ip, throwable);
-        }
-        if (throwable instanceof IOException) {
-            return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, throwable);
-        }
-        if (throwable instanceof RuntimeException runtimeException) {
-            return runtimeException;
-        }
-        return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, throwable);
     }
 
     private RuntimeException classifyRetryableException(SnmpDevice device, Exception exception) {
@@ -201,27 +172,9 @@ public class SnmpPollingService implements SnmpMonitoringService {
             return new IntegrationTimeoutException(MonitoringConstants.SOURCE_SNMP, "SNMP timeout while polling " + ip, cause);
         }
         if (cause instanceof RuntimeException runtimeException) {
-            return classifyIoException(device, runtimeException);
+            return SnmpExceptionUtils.classifyIoException(device, runtimeException);
         }
         return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, cause);
-    }
-
-    private void validateDeviceConfiguration(SnmpDevice device) {
-        String ip = device != null ? device.getIpAddress() : null;
-        Integer port = device != null ? device.getSnmpPort() : null;
-        String community = device != null ? device.getSnmpCommunity() : null;
-        if (device != null && Boolean.FALSE.equals(device.getEnabled())) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP device is disabled");
-        }
-        if (ip == null || ip.isBlank()) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP device IP is missing");
-        }
-        if (port == null || port <= 0) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP port is invalid for " + ip);
-        }
-        if (community == null || community.isBlank()) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP community is missing for " + ip);
-        }
     }
 
     private SnmpDeviceSnapshot buildLegacyUpSnapshot(SnmpDevice device) {
@@ -268,13 +221,6 @@ public class SnmpPollingService implements SnmpMonitoringService {
             current = current.getCause();
         }
         return current;
-    }
-
-    private String safeMessage(Throwable throwable) {
-        if (throwable == null || throwable.getMessage() == null || throwable.getMessage().isBlank()) {
-            return throwable != null ? throwable.getClass().getSimpleName() : "unknown";
-        }
-        return throwable.getMessage();
     }
 
     private void logCycleSummary(List<SnmpDeviceSnapshot> snapshots) {

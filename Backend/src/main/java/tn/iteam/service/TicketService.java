@@ -9,7 +9,6 @@ import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
 import tn.iteam.dto.SnmpProblemDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
-import tn.iteam.dto.ZkBioProblemDTO;
 
 import java.util.List;
 import java.util.Optional;
@@ -19,8 +18,6 @@ public interface TicketService {
     Ticket createFromProblem(ZabbixProblemDTO problem);
 
     Ticket createFromProblem(SnmpProblemDTO problem);
-
-    Ticket createFromProblem(ZkBioProblemDTO problem);
 
     Ticket createManual(Ticket ticket);
 

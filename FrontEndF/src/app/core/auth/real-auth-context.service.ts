@@ -27,6 +27,7 @@ export class RealAuthContextService implements AuthContextPort {
   private readonly _isAuthenticated$ = new BehaviorSubject<boolean>(false);
   private readonly _user$ = new BehaviorSubject<AuthUser | null>(null);
   private readonly accessToken = signal<string | null>(null);
+  private readonly refreshToken = signal<string | null>(null);
   private readonly effectivePermissions = signal<Set<string>>(new Set());
   private readonly permissionsLoaded = signal<boolean>(false);
   private logoutInProgress = false;
@@ -59,7 +60,7 @@ export class RealAuthContextService implements AuthContextPort {
   }
 
   getRefreshToken(): string | null {
-    return null;
+    return this.refreshToken();
   }
 
   setTokens(accessToken: string, refreshToken: string | null): void {
@@ -71,7 +72,7 @@ export class RealAuthContextService implements AuthContextPort {
     }
 
     this.accessToken.set(accessToken);
-    void refreshToken;
+    this.refreshToken.set(refreshToken);
 
     const fallbackUser = this.decodeUserFromToken(accessToken);
     if (this.authDebug) {
@@ -88,7 +89,9 @@ export class RealAuthContextService implements AuthContextPort {
       return;
     }
     this.logoutInProgress = true;
-    this.http.post(`${this.config.authApiUrl}/api/auth/logout`, {}, { withCredentials: true }).subscribe({
+    this.http.post(`${this.config.authApiUrl}/api/auth/logout`, {
+      refreshToken: this.getRefreshToken()
+    }).subscribe({
       error: () => {
         // Local logout must proceed even if backend revoke fails.
       },
@@ -101,6 +104,7 @@ export class RealAuthContextService implements AuthContextPort {
 
   private clearAccessToken(): void {
     this.accessToken.set(null);
+    this.refreshToken.set(null);
     this.effectivePermissions.set(new Set());
     this.permissionsLoaded.set(false);
     this._user$.next(null);

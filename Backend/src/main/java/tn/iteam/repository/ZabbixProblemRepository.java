@@ -14,10 +14,6 @@ public interface ZabbixProblemRepository extends JpaRepository<ZabbixProblem, Lo
 
     List<ZabbixProblem> findAllByProblemId(String problemId);
     List<ZabbixProblem> findByActiveTrue();
-    List<ZabbixProblem> findByActiveTrueAndSeverityIn(List<String> severities);
-    Optional<ZabbixProblem> findFirstByProblemIdOrderByIdDesc(String problemId);
-    List<ZabbixProblem> findByHostIdOrderByStartedAtDesc(Long hostId);
-    List<ZabbixProblem> findByHostIdAndStartedAtBetweenOrderByStartedAtAsc(Long hostId, Long start, Long end);
     long countByActiveTrue();
 
     @Query("select p from ZabbixProblem p where p.hostId in :hostIds and p.startedAt >= :start order by p.hostId asc, p.startedAt asc")

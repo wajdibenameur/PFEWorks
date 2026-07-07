@@ -341,6 +341,14 @@ export class ZabbixWorkspaceStore {
         if (severityGap !== 0) {
           return severityGap;
         }
+        const metricsGap = right.totalMetrics - left.totalMetrics;
+        if (metricsGap !== 0) {
+          return metricsGap;
+        }
+        const timestampGap = (right.latestTimestamp ?? 0) - (left.latestTimestamp ?? 0);
+        if (timestampGap !== 0) {
+          return timestampGap;
+        }
         return left.hostName.localeCompare(right.hostName);
       });
   });
@@ -353,10 +361,10 @@ export class ZabbixWorkspaceStore {
 
     const selectedKey = this.selectedHostKey();
     if (!selectedKey) {
-      return hosts[0];
+      return this.preferredHost(hosts);
     }
 
-    return hosts.find((host) => host.key === selectedKey) ?? hosts[0];
+    return hosts.find((host) => host.key === selectedKey) ?? this.preferredHost(hosts);
   });
 
   readonly selectedHostProblems = computed<ZabbixProblemVm[]>(() => {
@@ -634,7 +642,7 @@ export class ZabbixWorkspaceStore {
     const metricsWithoutTimestamp = this.numberValue(dataQuality['metricsWithoutTimestamp']);
     const severityDistribution = this.mapSeverityDistribution(dataQuality['severityDistribution']);
 
-    const warnings = [
+    const warnings = Array.from(new Set([
       overview?.warning,
       this.stringValue(dataQuality['warning']),
       metricsWithoutTimestamp > 0
@@ -646,7 +654,7 @@ export class ZabbixWorkspaceStore {
       problemsWithoutResolvedAt > 0
         ? `${problemsWithoutResolvedAt} resolved problems are missing resolvedAt values.`
         : null
-    ].filter((warning): warning is string => Boolean(warning));
+    ].filter((warning): warning is string => Boolean(warning))));
 
     return {
       warnings,
@@ -790,8 +798,12 @@ export class ZabbixWorkspaceStore {
 
     const current = this.selectedHostKey();
     if (!current || !hosts.some((host) => host.key === current)) {
-      this.selectedHostKey.set(hosts[0].key);
+      this.selectedHostKey.set(this.preferredHost(hosts)?.key ?? null);
     }
+  }
+
+  private preferredHost(hosts: ZabbixHostVm[]): ZabbixHostVm | null {
+    return hosts.find((host) => host.totalMetrics > 0) ?? hosts[0] ?? null;
   }
 
   private metricCategory(metricKey: string): ZabbixMetricGroupVm['category'] {
@@ -852,13 +864,49 @@ export class ZabbixWorkspaceStore {
 
     const match = catalog.find((entry) => entry.test(key));
     if (match) {
-      return match.label;
+      const context = this.metricLabelContext(metricKey);
+      return context ? `${match.label} (${context})` : match.label;
     }
 
     return metricKey
       .replace(/[\[\]\._]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  private metricLabelContext(metricKey: string): string | null {
+    const bracketMatch = metricKey.match(/\[([^\]]+)\]/);
+    if (!bracketMatch) {
+      return null;
+    }
+
+    const values = bracketMatch[1]
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!values.length) {
+      return null;
+    }
+
+    for (let index = values.length - 1; index >= 0; index -= 1) {
+      const candidate = values[index];
+      if (
+        candidate !== '/' &&
+        candidate !== 'avg1' &&
+        candidate !== 'avg5' &&
+        candidate !== 'avg15' &&
+        candidate !== 'used' &&
+        candidate !== 'free' &&
+        candidate !== 'available' &&
+        candidate !== 'pused' &&
+        candidate !== 'pavailable' &&
+        candidate !== 'percpu'
+      ) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 
   private totalProblemCount(): number {

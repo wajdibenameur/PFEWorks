@@ -3,6 +3,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, forkJoin, of } from 'rxjs';
 import { APP_CONFIG, AppConfig } from '../../../core/config/app-config.token';
 import { extractApiErrorMessage } from '../../../core/http/http-error.utils';
+import { CameraDevice } from '../../../core/models/camera-device.model';
 import { CollectionTarget } from '../../../core/models/collection-target.model';
 import { MonitoringHost } from '../../../core/models/monitoring-host.model';
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
@@ -60,6 +61,7 @@ export class MonitoringStore {
   readonly wsEventCounter = signal(0);
 
   readonly hosts = signal<MonitoringHost[]>([]);
+  readonly cameraDevices = signal<CameraDevice[]>([]);
   readonly problems = signal<MonitoringProblem[]>([]);
   readonly metrics = signal<UnifiedMonitoringMetric[]>([]);
   readonly sourceAvailability = signal<SourceAvailability[]>([]);
@@ -72,7 +74,7 @@ export class MonitoringStore {
   readonly unifiedDegraded = signal(false);
 
   readonly assets = computed<GlobalAssetVm[]>(() =>
-    this.buildAssets(this.hosts(), this.problems(), this.metrics(), this.sourceAvailability())
+    this.buildAssets(this.hosts(), this.cameraDevices(), this.problems(), this.metrics(), this.sourceAvailability())
   );
 
   readonly websocketUiState = computed<'Connected' | 'Reconnecting' | 'Disconnected'>(() => {
@@ -124,19 +126,21 @@ export class MonitoringStore {
       this.sourceAvailability().map((entry) => [entry.source.toUpperCase(), entry])
     );
     const assetsBySource = new Map<MonitoringSource, GlobalAssetVm[]>(
-      (['ZABBIX', 'SNMP', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => [
+      (['ZABBIX', 'SNMP', 'CAMERA'] as MonitoringSource[]).map((source) => [
         source,
         this.assets().filter((asset) => asset.source === source)
       ])
     );
 
-    return (['ZABBIX', 'SNMP', 'CAMERA', 'ZKBIO'] as MonitoringSource[]).map((source) => {
+    return (['ZABBIX', 'SNMP', 'CAMERA'] as MonitoringSource[]).map((source) => {
       const availability = availabilityMap.get(source);
-      const assets = assetsBySource.get(source) ?? [];
+      const assets = source === 'CAMERA'
+        ? this.buildCameraAssets(this.cameraDevices())
+        : assetsBySource.get(source) ?? [];
       const coverage = this.readSourceCoverage(source);
       const availabilityStatus = this.mapAvailability(availability);
       const noteParts = [
-        `Hosts: ${this.readDatasetFreshness('hosts', source)}`,
+        `Hosts: ${source === 'CAMERA' ? 'persisted' : this.readDatasetFreshness('hosts', source)}`,
         `Problems: ${this.readDatasetFreshness('problems', source)}`,
         source === 'CAMERA'
           ? null
@@ -179,7 +183,7 @@ export class MonitoringStore {
     {
       title: 'Global KPIs',
       status: 'REAL',
-      detail: 'Built from unified /api/monitoring/hosts and /api/monitoring/problems across Zabbix, SNMP, ZKBio, and Camera.'
+      detail: 'Built from unified /api/monitoring/hosts and /api/monitoring/problems across Zabbix, SNMP, and Camera.'
     },
     {
       title: 'Asset Categories',
@@ -241,6 +245,14 @@ export class MonitoringStore {
           return of({ data: [] as UnifiedMonitoringMetric[], degraded: true, freshness: {}, coverage: {} });
         })
       ),
+      cameraDevices: this.api.getCameraDevices().pipe(
+        catchError((error) => {
+          this.errorMessage.set(
+            extractApiErrorMessage(error, 'Unable to load persisted camera inventory.')
+          );
+          return of([] as CameraDevice[]);
+        })
+      ),
       sourceHealth: this.api.getSourceHealth().pipe(
         catchError((error) => {
           this.errorMessage.set(
@@ -250,12 +262,13 @@ export class MonitoringStore {
         })
       )
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ hostsResponse, problemsResponse, metricsResponse, sourceHealth }) => {
+      next: ({ hostsResponse, problemsResponse, metricsResponse, cameraDevices, sourceHealth }) => {
         if (currentLoadGeneration !== this.loadGeneration) {
           return;
         }
 
         this.hosts.set(this.mergeHosts([], hostsResponse.data));
+        this.cameraDevices.set(cameraDevices);
         this.problems.set(this.mergeProblems([], problemsResponse.data));
         this.metrics.set(this.mergeMetrics([], metricsResponse.data));
         this.sourceAvailability.set(sourceHealth);
@@ -440,6 +453,7 @@ export class MonitoringStore {
 
   private buildAssets(
     hosts: MonitoringHost[],
+    cameraDevices: CameraDevice[],
     problems: MonitoringProblem[],
     metrics: UnifiedMonitoringMetric[],
     availability: SourceAvailability[]
@@ -466,6 +480,29 @@ export class MonitoringStore {
         category: host.category ?? null,
         status: host.status ?? null,
         lastCheck: host.lastCheck ?? null,
+        metricKeys: new Set<string>(),
+        problemCount: 0,
+        lastMetricTimestamp: null
+      });
+    }
+
+    for (const camera of cameraDevices) {
+      const key = this.assetCorrelationKey(
+        'CAMERA',
+        camera.ip,
+        camera.name,
+        camera.ip,
+        camera.id != null ? String(camera.id) : null
+      );
+      hostMap.set(key, {
+        hostId: camera.ip ?? (camera.id != null ? String(camera.id) : null),
+        hostname: this.normalizeHost(camera.name ?? camera.ip ?? (camera.id != null ? `CAMERA-${camera.id}` : null)),
+        ip: camera.ip ?? null,
+        port: camera.port ?? null,
+        source: 'CAMERA',
+        category: camera.category ?? 'CAMERA',
+        status: camera.reachable ? 'UP' : (camera.status ?? 'DOWN'),
+        lastCheck: camera.lastScanAt ?? null,
         metricKeys: new Set<string>(),
         problemCount: 0,
         lastMetricTimestamp: null
@@ -563,6 +600,35 @@ export class MonitoringStore {
       .sort((a, b) => a.hostname.localeCompare(b.hostname));
   }
 
+  private buildCameraAssets(cameraDevices: CameraDevice[]): GlobalAssetVm[] {
+    return cameraDevices.map((camera) => ({
+      id: `CAMERA:${camera.ip ?? camera.id ?? 'UNKNOWN_CAMERA'}`,
+      hostname: this.normalizeHost(camera.name ?? camera.ip ?? (camera.id != null ? `CAMERA-${camera.id}` : null)),
+      lastCheck: camera.lastScanAt ?? null,
+      ip: camera.ip ?? '--',
+      port: camera.port ?? null,
+      source: 'CAMERA',
+      category: 'CAMERA',
+      status: camera.reachable ? 'UP' : this.normalizeAssetStatus(camera.status ?? 'DOWN'),
+      hasActiveAlert: false,
+      problemCount: 0,
+      lastMetricTimestamp: null,
+      realtimeState: this.resolveRealtimeState(
+        camera.lastScanAt ? this.parseDateStringToMs(camera.lastScanAt) : null,
+        this.config.hostsStaleThresholdMs,
+        'AVAILABLE'
+      ),
+      realtimeLabel: this.toRealtimeLabel(
+        this.resolveRealtimeState(
+          camera.lastScanAt ? this.parseDateStringToMs(camera.lastScanAt) : null,
+          this.config.hostsStaleThresholdMs,
+          'AVAILABLE'
+        )
+      ),
+      lastMetricLabel: this.relativeFromMs(camera.lastScanAt ? this.parseDateStringToMs(camera.lastScanAt) : null)
+    }));
+  }
+
   private assetCorrelationKey(
     source: string | null | undefined,
     ip: string | null | undefined,
@@ -654,6 +720,14 @@ export class MonitoringStore {
       return 'DOWN';
     }
     return 'UNKNOWN';
+  }
+
+  private parseDateStringToMs(value: string | null | undefined): number | null {
+    if (!value) {
+      return null;
+    }
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? null : parsed;
   }
 
   private readSourceCoverage(source: MonitoringSource): SourceHealthVm['coverage'] {

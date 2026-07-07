@@ -15,8 +15,6 @@ import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
 import tn.iteam.repository.SnmpDeviceRepository;
-import tn.iteam.service.SnmpCategoryMetricsService;
-import tn.iteam.service.SnmpInterfaceCollectionService;
 import tn.iteam.service.SnmpObservedStateService;
 
 import java.io.IOException;
@@ -55,10 +53,7 @@ class SnmpPollingServiceRetryClassificationTest {
         service = new SnmpPollingService(
                 mock(SnmpDeviceRepository.class),
                 mock(SnmpObservedStateService.class),
-                mock(SnmpInterfaceCollectionService.class),
-                mock(SnmpCategoryMetricsService.class),
                 properties,
-                mock(SnmpSubnetClassifier.class),
                 executor,
                 TimeLimiterRegistry.ofDefaults(),
                 RetryRegistry.of(retryConfig)

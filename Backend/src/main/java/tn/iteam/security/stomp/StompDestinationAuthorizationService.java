@@ -26,10 +26,6 @@ public class StompDestinationAuthorizationService {
         permissionsByPrefix.put("/user/queue/chat.presence", Permission.VIEW_TICKETS);
         permissionsByPrefix.put("/app/chat.", Permission.VIEW_TICKETS);
         permissionsByPrefix.put("/user/queue/notifications", Permission.VIEW_TICKETS);
-        permissionsByPrefix.put("/topic/zkbio/problems", Permission.VIEW_ZKBIO);
-        permissionsByPrefix.put("/topic/zkbio/attendance", Permission.VIEW_ZKBIO);
-        permissionsByPrefix.put("/topic/zkbio/devices", Permission.VIEW_ZKBIO);
-        permissionsByPrefix.put("/topic/zkbio/status", Permission.VIEW_ZKBIO);
     }
 
     public Permission requiredPermission(String destination) {

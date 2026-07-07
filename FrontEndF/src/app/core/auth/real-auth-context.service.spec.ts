@@ -37,10 +37,6 @@ describe('RealAuthContextService permissions', () => {
     return `x.${payloadBase64}.y`;
   };
 
-  beforeEach(() => {
-    localStorage.clear();
-  });
-
   it('returns true for granted permission and false for missing one', () => {
     TestBed.configureTestingModule({
       providers: [

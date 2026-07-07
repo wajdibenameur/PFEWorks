@@ -58,7 +58,6 @@ class MonitoringAggregationServiceTest {
         assertThat(response.getCoverage())
                 .containsEntry("ZABBIX", "native")
                 .containsEntry("SNMP", "synthetic")
-                .containsEntry("ZKBIO", "synthetic")
                 .containsEntry("CAMERA", "not_applicable");
         verify(cacheService).getMetrics(null);
     }

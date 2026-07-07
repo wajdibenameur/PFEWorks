@@ -7,7 +7,7 @@ from typing import Dict, Iterable, List, Tuple
 
 
 LOGGER = logging.getLogger(__name__)
-TARGET_TABLES = {"zabbix_metric", "zabbix_problem", "monitored_host", "monitoring_host"}
+TARGET_TABLES = {"zabbix_metric", "zabbix_problem", "monitored_host", "monitoring_host", "observium_interface"}
 
 
 def _split_rows(values_block: str) -> List[str]:
@@ -82,16 +82,13 @@ def _iter_insert_statements(sql_text: str) -> Iterable[str]:
                 collecting = False
 
 
-def load_sql_dump(config: Dict) -> Dict[str, List[Dict]]:
-    base_dir = Path(config["__base_dir__"])
-    dump_path = (base_dir / config["paths"]["sql_dump_path"]).resolve()
-    LOGGER.info("Loading SQL dump from %s", dump_path)
-    sql_text = dump_path.read_text(encoding="utf-8", errors="ignore")
-
+def _load_sql_file(path: Path) -> Dict[str, List[Dict]]:
+    sql_text = path.read_text(encoding="utf-8", errors="ignore")
     data = {
         "zabbix_metric": [],
         "zabbix_problem": [],
         "monitoring_host": [],
+        "observium_interface": [],
     }
 
     for statement in _iter_insert_statements(sql_text):
@@ -99,10 +96,35 @@ def load_sql_dump(config: Dict) -> Dict[str, List[Dict]]:
         normalized_name = "monitoring_host" if table_name in {"monitored_host", "monitoring_host"} else table_name
         data[normalized_name].extend(dict(zip(columns, row)) for row in rows)
 
+    return data
+
+
+def load_sql_dump(config: Dict) -> Dict[str, List[Dict]]:
+    base_dir = Path(config["__base_dir__"])
+    dump_path = (base_dir / config["paths"]["sql_dump_path"]).resolve()
+    LOGGER.info("Loading SQL dump from %s", dump_path)
+    data = _load_sql_file(dump_path)
+
+    observium_dump_path = config["paths"].get("observium_sql_dump_path")
+    if observium_dump_path:
+        resolved_observium_path = Path(observium_dump_path).expanduser()
+        if not resolved_observium_path.is_absolute():
+            resolved_observium_path = (base_dir / resolved_observium_path).resolve()
+        if resolved_observium_path.exists():
+            LOGGER.info("Loading Observium SQL dump from %s", resolved_observium_path)
+            observium_data = _load_sql_file(resolved_observium_path)
+            if observium_data["observium_interface"]:
+                data["observium_interface"] = observium_data["observium_interface"]
+            if observium_data["monitoring_host"]:
+                data["monitoring_host"] = observium_data["monitoring_host"]
+        else:
+            LOGGER.warning("Configured Observium SQL dump does not exist: %s", resolved_observium_path)
+
     LOGGER.info(
-        "Parsed dump rows | metrics=%s | problems=%s | hosts=%s",
+        "Parsed dump rows | metrics=%s | problems=%s | hosts=%s | observium_interfaces=%s",
         len(data["zabbix_metric"]),
         len(data["zabbix_problem"]),
         len(data["monitoring_host"]),
+        len(data["observium_interface"]),
     )
     return data

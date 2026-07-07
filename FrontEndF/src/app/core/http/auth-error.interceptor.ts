@@ -15,7 +15,6 @@ export const authErrorInterceptor: HttpInterceptorFn = (request, next) => {
   const platformAlertService = inject(PlatformAlertService);
   const isMonitoringEndpoint =
     request.url.includes('/api/monitoring/') ||
-    request.url.includes('/api/zkbio/') ||
     request.url.includes('/api/cameras/') ||
     request.url.includes('/dashboard');
 

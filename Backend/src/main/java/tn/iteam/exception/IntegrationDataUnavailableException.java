@@ -26,10 +26,6 @@ public class IntegrationDataUnavailableException extends IntegrationException {
         return forSource("ZABBIX", message);
     }
 
-    public static IntegrationDataUnavailableException forZkBio(String message) {
-        return forSource("ZKBIO", message);
-    }
-
     public static IntegrationDataUnavailableException forCamera(String message) {
         return forSource("CAMERA", message);
     }

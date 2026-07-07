@@ -56,6 +56,7 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
     private static final String REUSING_PERSISTED_METRICS_MESSAGE =
             "No live Zabbix metrics collected, reusing persisted snapshot";
     private static final int METRICS_PERSISTENCE_CHUNK_SIZE = 500;
+    private static final int MAX_INVALID_DTO_LOGS = 20;
 
     private final AtomicBoolean metricsRefreshInProgress = new AtomicBoolean(false);
     @Value("${app.monitoring.zabbix.persisted-snapshot-limit:5000}")
@@ -160,12 +161,6 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
             return new ZabbixMetricsRefreshResult(resolveEmptyMetricsResult(), result.partial());
         }
 
-        if (result.partial()) {
-            log.warn("Partial Zabbix metrics collected, skipping DB persistence and keeping in-memory snapshot only");
-            List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(mappingResult.entitiesToSave());
-            return new ZabbixMetricsRefreshResult(displaySnapshot, true);
-        }
-
         AtomicReference<List<ZabbixMetric>> persistedBatchRef =
                 new AtomicReference<>(List.copyOf(mappingResult.entitiesToSave()));
         boolean persisted = databasePersistenceGuard.safeRun(
@@ -174,7 +169,11 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
                 () -> persistedBatchRef.set(persistMetricsInTransaction(mappingResult.entitiesToSave()))
         );
         List<ZabbixMetric> displaySnapshot = mergeFreshWithPersistedLatest(persistedBatchRef.get());
-        return new ZabbixMetricsRefreshResult(displaySnapshot, !persisted);
+        boolean partial = result.partial() || !persisted;
+        if (result.partial()) {
+            log.warn("Partial Zabbix metrics collected, persisting valid rows and marking snapshot degraded");
+        }
+        return new ZabbixMetricsRefreshResult(displaySnapshot, partial);
     }
 
     private Mono<ZabbixMetricsCollectionResult> loadMetricCollection(JsonNode hosts) {
@@ -229,11 +228,46 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
     private MappingResult mapDtosToEntities(List<ZabbixMetricDTO> dtos, Map<String, ZabbixMetric> existingMetricsByKey) {
         List<ZabbixMetric> entitiesToSave = new ArrayList<>();
         int skippedInvalidRows = 0;
+        int skippedMissingHostId = 0;
+        int skippedMissingItemId = 0;
+        int skippedMissingTimestamp = 0;
+        int skippedMissingMetricKey = 0;
+        int skippedMissingValue = 0;
+        int skippedMissingValueType = 0;
+        int skippedMissingStatus = 0;
+        int invalidLogged = 0;
 
         for (ZabbixMetricDTO dto : dtos) {
-            if (!isValidMetricDto(dto)) {
+            String invalidReason = invalidMetricReason(dto);
+            if (invalidReason != null) {
                 log.debug(EMPTY_METRIC_LOG_TEMPLATE, dto);
                 skippedInvalidRows++;
+                switch (invalidReason) {
+                    case "hostId missing" -> skippedMissingHostId++;
+                    case "itemId missing" -> skippedMissingItemId++;
+                    case "timestamp missing" -> skippedMissingTimestamp++;
+                    case "metricKey missing" -> skippedMissingMetricKey++;
+                    case "value missing" -> skippedMissingValue++;
+                    case "valueType missing" -> skippedMissingValueType++;
+                    case "status missing" -> skippedMissingStatus++;
+                    default -> {
+                    }
+                }
+                if (invalidLogged < MAX_INVALID_DTO_LOGS) {
+                    invalidLogged++;
+                    log.info(
+                            "Zabbix DTO rejected {}: hostId={}, itemId={}, metricKey={}, value={}, valueType={}, status={}, timestamp={}, reason={}",
+                            invalidLogged,
+                            dto != null ? dto.getHostId() : null,
+                            dto != null ? dto.getItemId() : null,
+                            dto != null ? dto.getMetricKey() : null,
+                            dto != null ? dto.getValue() : null,
+                            dto != null ? dto.getValueType() : null,
+                            dto != null ? dto.getStatus() : null,
+                            dto != null ? dto.getTimestamp() : null,
+                            invalidReason
+                    );
+                }
                 continue;
             }
 
@@ -244,17 +278,57 @@ public class ZabbixMetricsServiceImpl implements ZabbixMetricsService {
             entitiesToSave.add(existing != null ? mergeMetric(existing, incoming) : incoming);
         }
 
+        if (skippedInvalidRows > 0) {
+            log.info(
+                    "Zabbix DTO mapping summary: totalDtos={}, mappedDtos={}, skippedInvalidDtos={}, skippedMissingHostId={}, skippedMissingItemId={}, skippedMissingTimestamp={}, skippedMissingMetricKey={}, skippedMissingValue={}, skippedMissingValueType={}, skippedMissingStatus={}",
+                    dtos.size(),
+                    entitiesToSave.size(),
+                    skippedInvalidRows,
+                    skippedMissingHostId,
+                    skippedMissingItemId,
+                    skippedMissingTimestamp,
+                    skippedMissingMetricKey,
+                    skippedMissingValue,
+                    skippedMissingValueType,
+                    skippedMissingStatus
+            );
+        }
+
         return new MappingResult(entitiesToSave, skippedInvalidRows);
     }
 
     private boolean isValidMetricDto(ZabbixMetricDTO dto) {
+        return invalidMetricReason(dto) == null;
+    }
+
+    private String invalidMetricReason(ZabbixMetricDTO dto) {
+        if (dto == null) {
+            return "dto is null";
+        }
+        if (dto.getHostId() == null || dto.getHostId().isBlank()) {
+            return "hostId missing";
+        }
+        if (dto.getItemId() == null || dto.getItemId().isBlank()) {
+            return "itemId missing";
+        }
+        if (dto.getTimestamp() == null || dto.getTimestamp() <= 0) {
+            return "timestamp missing";
+        }
+        if (dto.getMetricKey() == null || dto.getMetricKey().isBlank()) {
+            return "metricKey missing";
+        }
+        if (dto.getValue() == null) {
+            return "value missing";
+        }
+        if (dto.getValueType() == null) {
+            return "valueType missing";
+        }
+        if (dto.getStatus() == null || dto.getStatus().isBlank()) {
+            return "status missing";
+        }
         return dto.getHostId() != null && !dto.getHostId().isBlank()
-                && dto.getItemId() != null && !dto.getItemId().isBlank()
-                && dto.getTimestamp() != null && dto.getTimestamp() > 0
-                && dto.getMetricKey() != null && !dto.getMetricKey().isBlank()
-                && dto.getValue() != null
-                && dto.getValueType() != null
-                && dto.getStatus() != null && !dto.getStatus().isBlank();
+                ? null
+                : "unknown invalid DTO";
     }
 
     private String buildKey(ZabbixMetric metric) {

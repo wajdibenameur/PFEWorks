@@ -10,8 +10,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Central source of truth for translating Keycloak realm roles into
- * monitoring/ticketing permissions inside Backend.
+ * Central source
  */
 public final class RolePermissionMatrix {
 
@@ -40,7 +39,6 @@ public final class RolePermissionMatrix {
                 Permission.VIEW_ZABBIX,
                 Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
-                Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT,
                 Permission.VIEW_METRICS,
                 Permission.VIEW_ALERTS,
@@ -67,7 +65,6 @@ public final class RolePermissionMatrix {
                 Permission.VIEW_ZABBIX,
                 Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
-                Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT,
                 Permission.VIEW_METRICS,
                 Permission.VIEW_ALERTS,

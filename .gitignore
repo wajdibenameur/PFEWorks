@@ -23,7 +23,6 @@ Backend/nbbuild/
 # =====================
 # MAVEN
 # =====================
-Backend/.mvn/wrapper/maven-wrapper.jar
 Backend/target/
 # =====================
 # IDE - IntelliJ / Eclipse / STS
@@ -40,7 +39,7 @@ Backend/.settings/
 Backend/.springBeans
 Backend/.apt_generated
 Backend/.github/
-
+Backend/.env
 # =====================
 # NETBEANS
 # =====================

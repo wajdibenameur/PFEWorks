@@ -233,7 +233,7 @@
                 </p>
 
                 @if (!facade.selectedHostMetricGroups().length) {
-                  <p class="empty">No key indicator is available for the selected host.</p>
+                  <p class="empty">No metric from the current monitoring snapshot is available for the selected host.</p>
                 } @else {
                   <div class="metric-groups">
                     @for (group of facade.selectedHostMetricGroups(); track group.category) {

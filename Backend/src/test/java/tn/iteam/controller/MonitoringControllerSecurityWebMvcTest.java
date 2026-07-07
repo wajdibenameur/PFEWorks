@@ -10,16 +10,15 @@ import org.springframework.test.web.servlet.MockMvc;
 import tn.iteam.config.SecurityConfig;
 import tn.iteam.integration.AsyncIntegrationService;
 import tn.iteam.integration.IntegrationServiceRegistry;
-import tn.iteam.integration.ZkBioRefreshOrchestrationService;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.service.MonitoringAggregationService;
 import tn.iteam.security.KeycloakJwtAuthenticationConverter;
-import tn.iteam.security.KeycloakRolePermissionService;
 import tn.iteam.security.PermissionService;
+import tn.iteam.service.SnmpInterfaceService;
 import tn.iteam.service.SourceAvailabilityService;
+import tn.iteam.service.support.MonitoringFreshnessService;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import reactor.core.publisher.Mono;
-import java.util.concurrent.CompletableFuture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -31,8 +30,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(MonitoringController.class)
 @Import({
         SecurityConfig.class,
-        KeycloakJwtAuthenticationConverter.class,
-        KeycloakRolePermissionService.class,
         PermissionService.class
 })
 class MonitoringControllerSecurityWebMvcTest {
@@ -53,13 +50,19 @@ class MonitoringControllerSecurityWebMvcTest {
     private AsyncIntegrationService asyncIntegrationService;
 
     @MockBean
-    private ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
-
-    @MockBean
     private MonitoringSnapshotPublicationService snapshotPublicationService;
 
     @MockBean
+    private SnmpInterfaceService snmpInterfaceService;
+
+    @MockBean
+    private MonitoringFreshnessService monitoringFreshnessService;
+
+    @MockBean
     private JwtDecoder jwtDecoder;
+
+    @MockBean
+    private KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
 
     @Test
     void monitoringMetricsRequiresAuthentication() throws Exception {
@@ -80,7 +83,7 @@ class MonitoringControllerSecurityWebMvcTest {
                 .thenReturn(asyncIntegrationService);
 
         when(asyncIntegrationService.refreshAsync())
-        .thenReturn(Mono.empty()); 
+                .thenReturn(Mono.empty());
 
         mockMvc.perform(post("/api/monitoring/collect")
                         .with(jwt().authorities(() -> "REFRESH_DASHBOARD")))

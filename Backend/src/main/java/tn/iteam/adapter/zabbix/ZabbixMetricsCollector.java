@@ -68,6 +68,7 @@ public class ZabbixMetricsCollector {
     private static final String DELTA_FETCH_DONE_LOG = LOG_PREFIX + "DELTA FETCH DONE durationMs={} fetched={} skippedOld={} deltaRatio={} payloadApproxBytes={}";
     private static final String FALLBACK_FULL_RESYNC_LOG = LOG_PREFIX + "FALLBACK FULL RESYNC metrics reason={}";
     private static final String NO_CHANGES_SKIP_LOG = LOG_PREFIX + "NO CHANGES DETECTED latestClock={} lastSuccessfulClock={} -> SKIP heavy metrics collection";
+    private static final int MAX_REJECTED_ITEMS_TO_LOG = 20;
 
     private static final String UNKNOWN_SOURCE_LABEL = MonitoringConstants.SOURCE_LABEL_ZABBIX;
 
@@ -117,8 +118,116 @@ public class ZabbixMetricsCollector {
                 .flatMap(hostMap -> processMetrics(hosts, hostMap));
     }
 
+    private enum RejectCategory {
+        UNSUPPORTED_KEY,
+        NO_VALUE,
+        NON_NUMERIC,
+        HOST_NOT_FOUND,
+        INVALID_CLOCK,
+        OTHER
+    }
+
+    record MetricBuildAttempt(
+            ZabbixMetricDTO dto,
+            RejectCategory rejectCategory,
+            String rejectReason,
+            boolean usedFallbackClock
+    ) {
+        static MetricBuildAttempt accepted(ZabbixMetricDTO dto) {
+            return new MetricBuildAttempt(dto, null, null, false);
+        }
+
+        static MetricBuildAttempt acceptedWithFallbackClock(ZabbixMetricDTO dto) {
+            return new MetricBuildAttempt(dto, null, null, true);
+        }
+
+        static MetricBuildAttempt rejected(RejectCategory rejectCategory, String rejectReason, boolean usedFallbackClock) {
+            return new MetricBuildAttempt(null, rejectCategory, rejectReason, usedFallbackClock);
+        }
+
+        boolean accepted() {
+            return dto != null;
+        }
+    }
+
+    private static final class MappingDiagnostics {
+        private int received;
+        private int mapped;
+        private int skippedUnsupportedKey;
+        private int skippedNoValue;
+        private int skippedNonNumeric;
+        private int skippedHostNotFound;
+        private int skippedInvalidClock;
+        private int usedFallbackClock;
+        private int skippedOther;
+        private int rejectedLogged;
+
+        void incrementReceived(int count) {
+            received += count;
+        }
+
+        void incrementMapped() {
+            mapped++;
+        }
+
+        void incrementRejected(RejectCategory category) {
+            if (category == null) {
+                return;
+            }
+            switch (category) {
+                case UNSUPPORTED_KEY -> skippedUnsupportedKey++;
+                case NO_VALUE -> skippedNoValue++;
+                case NON_NUMERIC -> skippedNonNumeric++;
+                case HOST_NOT_FOUND -> skippedHostNotFound++;
+                case INVALID_CLOCK -> skippedInvalidClock++;
+                case OTHER -> skippedOther++;
+            }
+        }
+
+        void incrementFallbackClock() {
+            usedFallbackClock++;
+        }
+
+        void logRejectedItem(JsonNode item, String reason) {
+            if (rejectedLogged >= MAX_REJECTED_ITEMS_TO_LOG) {
+                return;
+            }
+            rejectedLogged++;
+            log.info(
+                    LOG_PREFIX + "Rejected item {}: itemid={}, hostid={}, name={}, key_={}, value_type={}, lastvalue={}, reason={}",
+                    rejectedLogged,
+                    item.path(ITEM_ID_FIELD).asText(null),
+                    item.path(MonitoringConstants.HOST_ID_FIELD).asText(null),
+                    item.path(MonitoringConstants.NAME_FIELD).asText(null),
+                    item.path(KEY_FIELD).asText(null),
+                    item.path(VALUE_TYPE_FIELD).asText(),
+                    item.path(LAST_VALUE_FIELD).asText(null),
+                    reason
+            );
+        }
+
+        void logSummary(String prefix) {
+            log.info(
+                    "{} Zabbix mapping summary: received={}, mapped={}, skippedUnsupportedKey={}, skippedNoValue={}, skippedNonNumeric={}, skippedHostNotFound={}, skippedInvalidClock={}, usedFallbackClock={}",
+                    prefix,
+                    received,
+                    mapped,
+                    skippedUnsupportedKey,
+                    skippedNoValue,
+                    skippedNonNumeric,
+                    skippedHostNotFound,
+                    skippedInvalidClock,
+                    usedFallbackClock
+            );
+            if (skippedOther > 0) {
+                log.info("{} Zabbix mapping additional skips: skippedOther={}", prefix, skippedOther);
+            }
+        }
+    }
+
     private Mono<ZabbixMetricsCollectionResult> processMetrics(JsonNode hosts, Map<String, MonitoredHost> hostMap) {
         Map<String, ZabbixMetricDTO> metricsByKey = new LinkedHashMap<>();
+        MappingDiagnostics diagnostics = new MappingDiagnostics();
         List<String> hostIds = new ArrayList<>();
         Map<String, String> hostNames = new HashMap<>();
 
@@ -201,6 +310,7 @@ public class ZabbixMetricsCollector {
                         successfulItemBatches,
                         receivedItemsCount,
                         lastBatchException,
+                        diagnostics,
                         fullResync,
                         lastSuccessfulMetricsClock,
                         skippedOldItemsCount,
@@ -225,6 +335,7 @@ public class ZabbixMetricsCollector {
 
                     log.info(RECEIVED_ITEMS_LOG_TEMPLATE, receivedItemsCount.get());
                     log.info(FETCHED_ITEMS_LOG_TEMPLATE, floatItems.size(), intItems.size());
+                    diagnostics.logSummary(LOG_PREFIX + "GLOBAL");
 
                     return processHistoryBatches(
                             floatItems,
@@ -310,6 +421,7 @@ public class ZabbixMetricsCollector {
             AtomicInteger successfulItemBatches,
             AtomicInteger receivedItemsCount,
             AtomicReference<RuntimeException> lastBatchException,
+            MappingDiagnostics diagnostics,
             boolean fullResync,
             long lastSuccessfulMetricsClock,
             AtomicInteger skippedOldItemsCount,
@@ -332,13 +444,17 @@ public class ZabbixMetricsCollector {
 
                     successfulItemBatches.incrementAndGet();
                     receivedItemsCount.addAndGet(items.size());
+                    diagnostics.incrementReceived(items.size());
                     log.info(RECEIVED_ITEMS_BATCH_LOG_TEMPLATE, items.size(), hostBatch.size());
+                    MappingDiagnostics batchDiagnostics = new MappingDiagnostics();
+                    batchDiagnostics.incrementReceived(items.size());
 
                     int mappedMetricsBeforeBatch = metricsByKey.size();
                     for (JsonNode item : items) {
                         String key = item.path(KEY_FIELD).asText();
 
                         if (!isUsefulMetric(key)) {
+                            recordRejectedItem(diagnostics, batchDiagnostics, item, RejectCategory.UNSUPPORTED_KEY, "Unsupported key");
                             continue;
                         }
 
@@ -365,7 +481,7 @@ public class ZabbixMetricsCollector {
                         itemStatusMap.put(itemId, status);
                         itemUnitsMap.put(itemId, units);
 
-                        ZabbixMetricDTO dto = buildMetricFromItem(
+                        MetricBuildAttempt attempt = buildMetricFromItem(
                                 item,
                                 hostNames,
                                 hostMap,
@@ -376,10 +492,27 @@ public class ZabbixMetricsCollector {
                                 units
                         );
 
-                        if (dto != null) {
+                        if (attempt.accepted()) {
+                            ZabbixMetricDTO dto = attempt.dto();
                             metricsByKey.put(metricMapKey(dto.getHostId(), dto.getItemId(), dto.getTimestamp()), dto);
+                            diagnostics.incrementMapped();
+                            batchDiagnostics.incrementMapped();
+                            if (attempt.usedFallbackClock()) {
+                                diagnostics.incrementFallbackClock();
+                                batchDiagnostics.incrementFallbackClock();
+                                log.debug(LOG_PREFIX + "Using fallback clock for itemId={} key_={} hostId={}",
+                                        dto.getItemId(), dto.getMetricKey(), dto.getHostId());
+                            }
                             continue;
                         }
+
+                        recordRejectedItem(
+                                diagnostics,
+                                batchDiagnostics,
+                                item,
+                                attempt.rejectCategory(),
+                                attempt.rejectReason()
+                        );
 
                         if (valueType == 0) {
                             floatItems.add(itemId);
@@ -390,6 +523,7 @@ public class ZabbixMetricsCollector {
                     }
 
                     log.info(MAPPED_ITEMS_BATCH_LOG_TEMPLATE, metricsByKey.size() - mappedMetricsBeforeBatch);
+                    batchDiagnostics.logSummary(LOG_PREFIX + "BATCH " + (batchIndex + 1) + "/" + totalBatches);
                     log.info(ITEMS_BATCH_DURATION_LOG_TEMPLATE, batchIndex + 1, totalBatches, durationMs);
                 })
                 .onErrorResume(exception -> {
@@ -412,6 +546,18 @@ public class ZabbixMetricsCollector {
                     return Mono.empty();
                 })
                 .then();
+    }
+
+    private void recordRejectedItem(
+            MappingDiagnostics globalDiagnostics,
+            MappingDiagnostics batchDiagnostics,
+            JsonNode item,
+            RejectCategory category,
+            String reason
+    ) {
+        globalDiagnostics.incrementRejected(category);
+        batchDiagnostics.incrementRejected(category);
+        globalDiagnostics.logRejectedItem(item, reason);
     }
 
     private Mono<Void> processHistoryBatches(
@@ -485,7 +631,8 @@ public class ZabbixMetricsCollector {
         }
 
         String normalized = key.toLowerCase();
-        return normalized.startsWith("system.cpu.util")
+        return normalized.equals("agent.ping")
+                || normalized.startsWith("system.cpu.util")
                 || normalized.startsWith("system.cpu.load")
                 || normalized.startsWith("system.cpu.num")
                 || normalized.startsWith("vm.memory.util")
@@ -498,8 +645,7 @@ public class ZabbixMetricsCollector {
                 || normalized.startsWith("net.if.in")
                 || normalized.startsWith("net.if.out")
                 || normalized.startsWith("system.uptime")
-                || normalized.startsWith("proc.num")
-                || normalized.startsWith("agent.ping");
+                || normalized.startsWith("proc.num");
     }
 
     private void mapHistoryFallback(
@@ -567,7 +713,7 @@ public class ZabbixMetricsCollector {
         }
     }
 
-    private ZabbixMetricDTO buildMetricFromItem(
+    MetricBuildAttempt buildMetricFromItem(
             JsonNode item,
             Map<String, String> hostNames,
             Map<String, MonitoredHost> hostMap,
@@ -579,15 +725,37 @@ public class ZabbixMetricsCollector {
     ) {
         String hostId = item.path(MonitoringConstants.HOST_ID_FIELD).asText(null);
         String itemId = item.path(ITEM_ID_FIELD).asText(null);
-        Long timestamp = parseEpoch(item.path(LAST_CLOCK_FIELD).asText(null));
-        Double value = parseNumericValue(item.path(LAST_VALUE_FIELD).asText(null));
+        String rawLastClock = item.path(LAST_CLOCK_FIELD).asText(null);
+        Long timestamp = parseEpoch(rawLastClock);
+        String rawLastValue = item.path(LAST_VALUE_FIELD).asText(null);
+        Double value = parseNumericValue(rawLastValue);
+        boolean fallbackClock = false;
 
-        if (hostId == null || hostId.isBlank() || itemId == null || itemId.isBlank() || timestamp == null || value == null) {
-            return null;
+        if (hostId == null || hostId.isBlank()) {
+            return MetricBuildAttempt.rejected(RejectCategory.HOST_NOT_FOUND, "hostId is missing", false);
+        }
+        if (itemId == null || itemId.isBlank()) {
+            return MetricBuildAttempt.rejected(RejectCategory.OTHER, "itemId is missing", false);
+        }
+        if (rawLastValue == null || rawLastValue.isBlank()) {
+            return MetricBuildAttempt.rejected(RejectCategory.NO_VALUE, "lastvalue is null or empty", false);
+        }
+        if (value == null) {
+            return MetricBuildAttempt.rejected(RejectCategory.NON_NUMERIC, "lastvalue is not numeric", false);
+        }
+        if (!hostNames.containsKey(hostId) && !hostMap.containsKey(hostId)) {
+            return MetricBuildAttempt.rejected(RejectCategory.HOST_NOT_FOUND, "hostId not found in hosts snapshot", false);
+        }
+        if (timestamp == null) {
+            timestamp = Instant.now().getEpochSecond();
+            fallbackClock = true;
+            if (timestamp <= 0) {
+                return MetricBuildAttempt.rejected(RejectCategory.INVALID_CLOCK, "fallback clock is invalid", true);
+            }
         }
 
         MonitoredHost monitoredHost = hostMap.get(hostId);
-        return ZabbixMetricDTO.builder()
+        ZabbixMetricDTO dto = ZabbixMetricDTO.builder()
                 .hostId(hostId)
                 .hostName(hostNames.getOrDefault(hostId, MonitoringConstants.UNKNOWN))
                 .itemId(itemId)
@@ -602,6 +770,7 @@ public class ZabbixMetricsCollector {
                 .ip(monitoredHost != null ? monitoredHost.getIp() : null)
                 .port(monitoredHost != null ? monitoredHost.getPort() : null)
                 .build();
+        return fallbackClock ? MetricBuildAttempt.acceptedWithFallbackClock(dto) : MetricBuildAttempt.accepted(dto);
     }
 
     private String resolveMetricStatus(JsonNode item) {

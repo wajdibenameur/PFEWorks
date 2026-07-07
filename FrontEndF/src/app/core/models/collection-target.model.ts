@@ -1,2 +1,2 @@
-export type CollectionTarget = 'all' | 'zabbix' | 'snmp' | 'zkbio' | 'camera';
+export type CollectionTarget = 'all' | 'zabbix' | 'snmp' | 'camera';
 

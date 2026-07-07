@@ -316,20 +316,20 @@ export class LoginPageComponent {
     const username = this.loginForm.controls.username.value ?? '';
     const password = this.loginForm.controls.password.value ?? '';
 
-    this.http.post<{ access_token?: string }>(
+    this.http.post<{ access_token?: string; refresh_token?: string | null }>(
       `${this.config.authApiUrl}/api/auth/login`,
-      { username, password },
-      { withCredentials: true }
+      { username, password }
     ).subscribe({
       next: (response) => {
         const accessToken = response?.access_token;
+        const refreshToken = response?.refresh_token ?? null;
         if (!accessToken) {
           this.errorMessage.set('Login failed: access token missing.');
           this.isLoading.set(false);
           return;
         }
 
-        this.authContext.setTokens(accessToken, null);
+        this.authContext.setTokens(accessToken, refreshToken);
         this.stompClient.connect();
         this.isLoading.set(false);
         void this.router.navigate(['/dashboard']);
@@ -341,4 +341,3 @@ export class LoginPageComponent {
     });
   }
 }
-

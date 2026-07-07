@@ -6,42 +6,37 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestTemplate;
 import tn.iteam.auth.client.KeycloakAdminClient;
-import tn.iteam.auth.client.KeycloakTokenClient;
 import tn.iteam.auth.config.KeycloakProperties;
 import tn.iteam.auth.dto.*;
 import tn.iteam.auth.exception.AuthenticationException;
 import tn.iteam.auth.exception.KeycloakIntegrationException;
 import tn.iteam.auth.exception.UserAlreadyExistsException;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
+import tn.iteam.auth.util.KeycloakLocationUtils;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
-import java.util.Optional;
 
 @Service
 public class AuthService {
 
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
-    private final KeycloakTokenClient tokenClient;
     private final KeycloakAdminClient adminClient;
     private final KeycloakProperties properties;
     private final AdminTokenService adminTokenService;
     private final RestTemplate restTemplate;
 
     public AuthService(
-            KeycloakTokenClient tokenClient,
             KeycloakAdminClient adminClient,
             KeycloakProperties properties,
             AdminTokenService adminTokenService,
             RestTemplate restTemplate) {
 
-        this.tokenClient = tokenClient;
         this.adminClient = adminClient;
         this.properties = properties;
         this.adminTokenService = adminTokenService;
@@ -207,7 +202,7 @@ public class AuthService {
                     "User '" + request.getUsername() + "' already exists");
         }
 
-        // Build user representation (no credentials embedded - set separately)
+        // Build user
         KeycloakUserRepresentation newUser = KeycloakUserRepresentation.builder()
                 .username(request.getUsername())
                 .email(request.getEmail())
@@ -232,7 +227,7 @@ public class AuthService {
         }
 
         // Extract user ID from Location header
-        String userId = extractUserIdFromLocation(createResponse);
+        String userId = KeycloakLocationUtils.extractUserIdFromLocation(createResponse);
 
         // Set password
         KeycloakCredentialRepresentation credential = KeycloakCredentialRepresentation.builder()
@@ -255,19 +250,6 @@ public class AuthService {
                 .message("User registered successfully")
                 .keycloakUserId(userId)
                 .build();
-    }
-
-    private String extractUserIdFromLocation(Response response) {
-        String location = response.headers().getOrDefault("Location",
-                response.headers().get("location") != null
-                        ? response.headers().get("location")
-                        : Collections.emptyList()
-        ).stream().findFirst()
-                .orElseThrow(() -> new KeycloakIntegrationException(
-                        "User created but Location header missing in Keycloak response"));
-        // Location is like: http://keycloak/admin/realms/{realm}/users/{uuid}
-        return location.substring(location.lastIndexOf('/') + 1);
-
     }
 
     private String safeSingleLine(String value) {

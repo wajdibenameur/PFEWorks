@@ -6,7 +6,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.stereotype.Component;
 import tn.iteam.integration.IntegrationServiceRegistry;
-import tn.iteam.integration.ZkBioRefreshOrchestrationService;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 
@@ -26,16 +25,13 @@ public class MonitoringStartup {
     private final AtomicBoolean warmupStarted = new AtomicBoolean(false);
 
     private final IntegrationServiceRegistry integrationServiceRegistry;
-    private final ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
 
     public MonitoringStartup(
             IntegrationServiceRegistry integrationServiceRegistry,
-            ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService,
             MonitoringSnapshotPublicationService snapshotPublicationService
     ) {
         this.integrationServiceRegistry = integrationServiceRegistry;
-        this.zkBioRefreshOrchestrationService = zkBioRefreshOrchestrationService;
         this.snapshotPublicationService = snapshotPublicationService;
     }
 
@@ -54,15 +50,12 @@ public class MonitoringStartup {
                         .refreshAsync(),
                 integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP)
                         .refreshAsync(),
-                zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync(),
                 integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
         ).then(reactor.core.publisher.Mono.fromRunnable(() -> {
             snapshotPublicationService.publishMonitoringSnapshots(java.util.List.of(
                     MonitoringSourceType.ZABBIX,
-                    MonitoringSourceType.SNMP,
-                    MonitoringSourceType.ZKBIO
+                    MonitoringSourceType.SNMP
             ));
-            snapshotPublicationService.publishZkBioSnapshots();
             log.info("Monitoring warmup completed.");
         })));
     }

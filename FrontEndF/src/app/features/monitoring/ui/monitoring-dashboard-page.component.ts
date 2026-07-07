@@ -32,7 +32,6 @@ export class MonitoringDashboardPageComponent implements OnInit {
     { label: 'Collect All', target: 'all' },
     { label: 'Collect Zabbix', target: 'zabbix' },
     { label: 'Collect SNMP', target: 'snmp' },
-    { label: 'Collect ZKBio', target: 'zkbio' },
     { label: 'Collect Camera', target: 'camera' }
   ];
 

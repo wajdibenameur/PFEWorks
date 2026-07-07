@@ -10,11 +10,7 @@ import java.util.Optional;
 
 public interface ZabbixMetricRepository extends JpaRepository<ZabbixMetric, Long> {
 
-    Optional<ZabbixMetric> findByHostIdAndItemId(String hostId, String itemId);
-    Optional<ZabbixMetric> findByHostIdAndItemIdAndTimestamp(String hostId, String itemId, Long timestamp);
     List<ZabbixMetric> findByHostIdOrderByTimestampDesc(String hostId);
-    List<ZabbixMetric> findByHostIdAndTimestampBetweenOrderByTimestampAsc(String hostId, Long start, Long end);
-    List<ZabbixMetric> findByTimestampBetweenOrderByTimestampAsc(Long start, Long end);
 
     @Query("select distinct m.hostId from ZabbixMetric m where m.hostId is not null")
     List<String> findDistinctHostIds();

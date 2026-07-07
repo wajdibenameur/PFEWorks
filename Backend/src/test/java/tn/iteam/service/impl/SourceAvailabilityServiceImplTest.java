@@ -40,18 +40,18 @@ class SourceAvailabilityServiceImplTest {
         ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
         SourceAvailabilityServiceImpl service = new SourceAvailabilityServiceImpl(publisher);
 
-        service.markDegraded("ZKBIO", "Fallback snapshot");
-        service.markAvailable("ZKBIO");
+        service.markDegraded("CAMERA", "Fallback snapshot");
+        service.markAvailable("CAMERA");
 
-        SourceAvailabilityDTO dto = service.get("ZKBIO");
+        SourceAvailabilityDTO dto = service.get("CAMERA");
 
-        assertThat(service.isDegraded("ZKBIO")).isFalse();
-        assertThat(service.isAvailable("ZKBIO")).isTrue();
+        assertThat(service.isDegraded("CAMERA")).isFalse();
+        assertThat(service.isAvailable("CAMERA")).isTrue();
         assertThat(dto.getStatus()).isEqualTo("AVAILABLE");
         assertThat(dto.isAvailable()).isTrue();
         assertThat(dto.getLastError()).isNull();
         verify(publisher, times(2)).publishEvent(argThat((SourceAvailabilityChangedEvent event) ->
-                "ZKBIO".equals(event.payload().getSource())
+                "CAMERA".equals(event.payload().getSource())
         ));
     }
 }

@@ -116,6 +116,15 @@ public class CameraIntegrationService implements AsyncIntegrationService {
 
     private void safeSaveSnapshot(List<UnifiedMonitoringHostDTO> hosts) {
         try {
+            boolean allDown = hosts == null
+                    || hosts.isEmpty()
+                    || hosts.stream().allMatch(h -> "DOWN".equalsIgnoreCase(h.getStatus()));
+
+            if (allDown) {
+                log.warn("Camera poll returned only DOWN/empty result. DB snapshot not overwritten.");
+                return;
+            }
+
             snapshotStore.save(
                     DATASET_HOSTS,
                     SOURCE,

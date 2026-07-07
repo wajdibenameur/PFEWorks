@@ -7,6 +7,7 @@ export interface NavItem {
   section?: string;
   visibility?: VisibilityRule;
   requiredAnyPermissions?: string[];
+  requiredAllPermissions?: string[];
   children?: NavItem[];
 }
 
@@ -17,18 +18,26 @@ export const SIDEBAR_NAV_ITEMS: NavItem[] = [
     icon: 'dashboard',
     section: 'Overview',
     visibility: 'ALL',
-    requiredAnyPermissions: ['VIEW_DASHBOARD']
+    requiredAllPermissions: ['VIEW_DASHBOARD', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS']
   },
   {
     label: 'Monitoring',
     icon: 'monitoring',
-    section: 'Monitoring',
     visibility: 'ALL',
     children: [
-      { label: 'Zabbix', route: '/monitoring/zabbix', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZABBIX'] },
-      { label: 'SNMP', route: '/monitoring/snmp', visibility: 'ALL', requiredAnyPermissions: ['VIEW_SNMP'] },
+      {
+        label: 'Zabbix',
+        route: '/monitoring/zabbix',
+        visibility: 'ALL',
+        requiredAllPermissions: ['VIEW_ZABBIX', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS', 'VIEW_DASHBOARD']
+      },
+      {
+        label: 'SNMP',
+        route: '/monitoring/snmp',
+        visibility: 'ALL',
+        requiredAllPermissions: ['VIEW_SNMP', 'VIEW_HOSTS', 'VIEW_ALERTS', 'VIEW_METRICS']
+      },
       { label: 'Camera', route: '/monitoring/camera', visibility: 'ALL', requiredAnyPermissions: ['VIEW_CAMERA'] },
-      { label: 'ZKBio', route: '/monitoring/zkbio', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ZKBIO'] },
       { label: 'Access Point', route: '/monitoring/access-point', visibility: 'ALL', requiredAnyPermissions: ['VIEW_ACCESS_POINT'] }
     ]
   },

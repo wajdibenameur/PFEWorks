@@ -27,5 +27,6 @@ public class SnmpDeviceSnapshot {
     String diagnosticReason;
     List<String> successfulOids;
     List<String> failedOids;
+    boolean pollAttempted;
     long collectedAtEpochSec;
 }

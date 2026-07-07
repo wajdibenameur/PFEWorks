@@ -17,7 +17,6 @@ import tn.iteam.domain.Ticket;
 import tn.iteam.domain.User;
 import tn.iteam.dto.SnmpProblemDTO;
 import tn.iteam.dto.ZabbixProblemDTO;
-import tn.iteam.dto.ZkBioProblemDTO;
 import tn.iteam.enums.Priority;
 import tn.iteam.enums.RoleName;
 import tn.iteam.enums.TicketStatus;
@@ -75,12 +74,6 @@ public class TicketServiceImpl implements TicketService {
         return createFromProblem(problem, null);
     }
 
-    @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public Ticket createFromProblem(ZkBioProblemDTO problem) {
-        return createFromProblem(problem, null);
-    }
-
     private Ticket createFromProblem(ZabbixProblemDTO problem, User creator) {
         return createMonitoringTicket(
                 normalizeSource(problem != null ? problem.getSource() : null, MonitoringConstants.SOURCE_ZABBIX),
@@ -101,18 +94,6 @@ public class TicketServiceImpl implements TicketService {
                 problem != null ? problem.getSeverity() : null,
                 problem != null ? problem.getHostId() : null,
                 resolveResourceRef(problem != null ? problem.getHost() : null, problem != null ? problem.getHostId() : null, null),
-                creator
-        );
-    }
-
-    private Ticket createFromProblem(ZkBioProblemDTO problem, User creator) {
-        return createMonitoringTicket(
-                normalizeSource(problem != null ? problem.getSource() : null, MonitoringConstants.SOURCE_ZKBIO),
-                problem != null ? problem.getProblemId() : null,
-                problem != null ? problem.getDescription() : null,
-                problem != null ? problem.getSeverity() : null,
-                null,
-                resolveResourceRef(problem != null ? problem.getHost() : null, null, null),
                 creator
         );
     }
@@ -171,11 +152,24 @@ public class TicketServiceImpl implements TicketService {
                 .createdBy(ticketCreator)
                 .build();
 
-        Ticket saved = ticketRepository.save(ticket);
-        log.info("Created monitoring ticket {} from external problem {} for creator {}", saved.getId(), externalProblemId, ticketCreator.getUsername());
-        notify("NEW_TICKET", saved);
-        ticketNotificationService.notifyImportantTicketCreated(saved, ticketCreator);
-        return saved;
+        try {
+            Ticket saved = ticketRepository.saveAndFlush(ticket);
+            log.info("Created monitoring ticket {} from external problem {} for creator {}", saved.getId(), externalProblemId, ticketCreator.getUsername());
+            notify("NEW_TICKET", saved);
+            ticketNotificationService.notifyImportantTicketCreated(saved, ticketCreator);
+            return saved;
+        } catch (DataIntegrityViolationException exception) {
+            log.warn(
+                    "Concurrent monitoring ticket creation detected source={} externalProblemId={}; reloading existing ticket",
+                    source,
+                    externalProblemId
+            );
+            Ticket existing = ticketRepository.findByMonitoringSourceAndExternalProblemId(source, externalProblemId)
+                    .orElseThrow(() -> exception);
+            Ticket updated = refreshMonitoringTicket(existing, description, hostId, resourceRef, mappedPriority, externalProblemId);
+            notify("TICKET_UPDATED", updated);
+            return updated;
+        }
     }
 
     private Ticket refreshMonitoringTicket(
@@ -233,13 +227,15 @@ public class TicketServiceImpl implements TicketService {
         return priorityWeight(incoming) > priorityWeight(current);
     }
 
+    private static final Map<Priority, Integer> PRIORITY_WEIGHT = Map.of(
+            Priority.LOW, 1,
+            Priority.MEDIUM, 2,
+            Priority.HIGH, 3,
+            Priority.CRITICAL, 4
+    );
+
     private int priorityWeight(Priority priority) {
-        return switch (priority) {
-            case LOW -> 1;
-            case MEDIUM -> 2;
-            case HIGH -> 3;
-            case CRITICAL -> 4;
-        };
+        return PRIORITY_WEIGHT.getOrDefault(priority, 0);
     }
 
     private User authenticatedOrSystemUser() {

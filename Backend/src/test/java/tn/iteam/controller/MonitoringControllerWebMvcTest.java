@@ -8,7 +8,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tn.iteam.integration.IntegrationServiceRegistry;
-import tn.iteam.integration.ZkBioRefreshOrchestrationService;
+import tn.iteam.integration.AsyncIntegrationService;
+import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
@@ -22,27 +23,23 @@ import tn.iteam.service.support.MonitoringSnapshotPublicationService;
 import java.util.List;
 import java.util.Map;
 
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import tn.iteam.integration.AsyncIntegrationService;
-import tn.iteam.monitoring.MonitoringSourceType;
-
 import reactor.core.publisher.Mono;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @ExtendWith(MockitoExtension.class)
 class MonitoringControllerWebMvcTest {
-        
 
     private MockMvc mockMvc;
 
     @Mock
-private AsyncIntegrationService asyncIntegrationService;
+    private AsyncIntegrationService asyncIntegrationService;
 
     @Mock
     private MonitoringAggregationService aggregationService;
@@ -52,9 +49,6 @@ private AsyncIntegrationService asyncIntegrationService;
 
     @Mock
     private IntegrationServiceRegistry integrationServiceRegistry;
-
-    @Mock
-    private ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
 
     @Mock
     private MonitoringSnapshotPublicationService snapshotPublicationService;
@@ -71,7 +65,6 @@ private AsyncIntegrationService asyncIntegrationService;
                 aggregationService,
                 sourceAvailabilityService,
                 integrationServiceRegistry,
-                zkBioRefreshOrchestrationService,
                 snapshotPublicationService,
                 snmpInterfaceService,
                 monitoringFreshnessService
@@ -123,7 +116,6 @@ private AsyncIntegrationService asyncIntegrationService;
                         Map.of(
                                 "ZABBIX", "native",
                                 "SNMP", "synthetic",
-                                "ZKBIO", "synthetic",
                                 "CAMERA", "not_applicable"
                         )
                 )
@@ -136,7 +128,6 @@ private AsyncIntegrationService asyncIntegrationService;
                 .andExpect(jsonPath("$.freshness.ZABBIX").value("persisted"))
                 .andExpect(jsonPath("$.coverage.ZABBIX").value("native"))
                 .andExpect(jsonPath("$.coverage.SNMP").value("synthetic"))
-                .andExpect(jsonPath("$.coverage.ZKBIO").value("synthetic"))
                 .andExpect(jsonPath("$.coverage.CAMERA").value("not_applicable"));
 
         verify(aggregationService).getMetrics((String) null);

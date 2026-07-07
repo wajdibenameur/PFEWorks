@@ -16,6 +16,7 @@ class ZabbixClientResilienceProfileTest {
         assertResilienceProfile("getHosts", List.of(), "zabbixApiLight");
         assertResilienceProfile("getHostById", List.of(String.class), "zabbixApiLight");
         assertResilienceProfile("getRecentProblems", List.of(), "zabbixApiLight");
+        assertResilienceProfile("getCriticalEventsHistory", List.of(long.class, long.class), "zabbixApiLight");
         assertResilienceProfile("getRecentProblemsByHost", List.of(String.class), "zabbixApiLight");
         assertResilienceProfile("getTriggerById", List.of(String.class), "zabbixApiLight");
         assertResilienceProfile("getTriggersByIds", List.of(List.class), "zabbixApiLight");

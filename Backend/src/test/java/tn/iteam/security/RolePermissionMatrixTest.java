@@ -26,7 +26,6 @@ class RolePermissionMatrixTest {
                 Permission.VIEW_ZABBIX,
                 Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
-                Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT
         );
     }
@@ -39,7 +38,6 @@ class RolePermissionMatrixTest {
                 Permission.VIEW_ZABBIX,
                 Permission.VIEW_SNMP,
                 Permission.VIEW_CAMERA,
-                Permission.VIEW_ZKBIO,
                 Permission.VIEW_ACCESS_POINT
         );
         assertThat(supportPermissions).doesNotContain(

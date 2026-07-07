@@ -11,8 +11,6 @@ public interface SnmpDeviceRepository extends JpaRepository<SnmpDevice, Long> {
 
     List<SnmpDevice> findByEnabledTrueOrderByIpAddressAsc();
 
-    List<SnmpDevice> findByEnabledTrueAndManualEntryTrueOrderByIpAddressAsc();
-
     List<SnmpDevice> findAllByOrderByIpAddressAsc();
 
     List<SnmpDevice> findByIpAddressInOrderByIpAddressAsc(Collection<String> ipAddresses);

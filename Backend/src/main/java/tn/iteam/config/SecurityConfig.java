@@ -10,11 +10,9 @@ import org.springframework.util.StringUtils;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
-import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
-import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -31,16 +29,13 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final KeycloakJwtAuthenticationConverter jwtAuthenticationConverter;
-    private final CsrfCookieFilter csrfCookieFilter;
     private final String[] allowedOrigins;
 
     public SecurityConfig(
             KeycloakJwtAuthenticationConverter jwtAuthenticationConverter,
-            CsrfCookieFilter csrfCookieFilter,
             @Value("${app.cors.allowed-origins:http://localhost:4200}") String allowedOrigins
     ) {
         this.jwtAuthenticationConverter = jwtAuthenticationConverter;
-        this.csrfCookieFilter = csrfCookieFilter;
         this.allowedOrigins = allowedOrigins.split("\\s*,\\s*");
     }
 
@@ -48,16 +43,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors(Customizer.withDefaults())
-                .csrf(csrf -> csrf
-                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
-                        .csrfTokenRequestHandler(csrfTokenRequestAttributeHandler())
-                        .ignoringRequestMatchers(
-                                "/actuator/**",
-                                "/ws/**",
-                                "/api/auth/login",
-                                "/api/auth/register"
-                        )
-                )
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(
@@ -68,16 +54,22 @@ public class SecurityConfig {
                                 "/api/auth/login",
                                 "/api/auth/refresh",
                                 "/api/auth/register",
-                                "/api/auth/logout",
-                                "/api/auth/csrf"
+                                "/api/auth/logout"
                         ).permitAll()
                         .requestMatchers("/api/auth/profile/**").authenticated()
+                        .requestMatchers(
+                                "/api/admin/roles",
+                                "/api/admin/users",
+                                "/api/admin/users/**"
+                        ).hasRole("SUPERADMIN")
+                        // Keep the existing stricter policy for Keycloak user-management endpoints
+                        // while preserving ADMIN access on the rest of /api/admin/** already used elsewhere.
                         .requestMatchers("/api/admin/**").hasAnyRole("SUPERADMIN", "ADMIN")
                         .requestMatchers(
                                 "/v3/api-docs/**",
                                 "/swagger-ui/**",
                                 "/swagger-ui.html"
-                        ).authenticated()
+                        ).permitAll()
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
@@ -106,8 +98,7 @@ public class SecurityConfig {
                                 .preload(true)
                                 .maxAgeInSeconds(31536000)
                         )
-                )
-                .addFilterAfter(csrfCookieFilter, BasicAuthenticationFilter.class);
+                );
 
         return http.build();
     }
@@ -117,21 +108,14 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(List.of(allowedOrigins));
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-XSRF-TOKEN", "X-Requested-With"));
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"));
         configuration.setExposedHeaders(List.of("Authorization"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(false);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
-    }
-
-    @Bean
-    public CsrfTokenRequestAttributeHandler csrfTokenRequestAttributeHandler() {
-        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
-        requestHandler.setCsrfRequestAttributeName(null);
-        return requestHandler;
     }
 
     @Bean

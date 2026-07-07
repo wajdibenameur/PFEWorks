@@ -16,8 +16,6 @@ import tn.iteam.security.PermissionService;
 import tn.iteam.service.CameraInventoryService;
 import tn.iteam.service.DashboardService;
 import tn.iteam.service.SnmpSummaryService;
-import tn.iteam.service.ZkBioServiceInterface;
-import tn.iteam.integration.ZkBioIntegrationOperations;
 
 import java.util.List;
 import java.util.Map;
@@ -30,8 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest({
         DashboardController.class,
         SnmpController.class,
-        CameraController.class,
-        ZkBioController.class
+        CameraController.class
 })
 @Import({
         SecurityConfig.class,
@@ -52,12 +49,6 @@ class MonitoringModuleAuthorizationWebMvcTest {
 
     @MockBean
     private CameraInventoryService cameraInventoryService;
-
-    @MockBean
-    private ZkBioServiceInterface zkBioService;
-
-    @MockBean
-    private ZkBioIntegrationOperations zkBioIntegrationOperations;
 
     @MockBean
     private JwtDecoder jwtDecoder;
@@ -101,13 +92,4 @@ class MonitoringModuleAuthorizationWebMvcTest {
                 .andExpect(status().isOk());
     }
 
-    @Test
-    void zkbioStatusRequiresZkBioPermission() throws Exception {
-        mockMvc.perform(get("/api/zkbio/status").with(jwt().authorities(() -> "VIEW_DASHBOARD")))
-                .andExpect(status().isForbidden());
-
-        when(zkBioService.getServerStatus()).thenReturn(null);
-        mockMvc.perform(get("/api/zkbio/status").with(jwt().authorities(() -> "VIEW_ZKBIO")))
-                .andExpect(status().isOk());
-    }
 }

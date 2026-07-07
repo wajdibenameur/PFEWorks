@@ -28,8 +28,6 @@ public class CategoryResolver {
                 return subnetClassifier.resolveCategory(dto.getIp());
             case "CAMERA":
                 return "CAMERA";
-            case "ZKBIO":
-                return "ACCESS_CONTROL";
             default:
                 return MonitoringConstants.UNKNOWN;
         }

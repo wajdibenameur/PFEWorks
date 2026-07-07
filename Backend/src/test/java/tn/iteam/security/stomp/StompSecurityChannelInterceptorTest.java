@@ -87,26 +87,6 @@ class StompSecurityChannelInterceptorTest {
     }
 
     @Test
-    void zkbioTopicRequiresViewZkBioPermission() {
-        JwtDecoder jwtDecoder = mock(JwtDecoder.class);
-        when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("VIEWER"));
-        StompSecurityChannelInterceptor interceptor = interceptorWithDecoder(jwtDecoder);
-
-        StompHeaderAccessor connectAccessor = StompHeaderAccessor.create(StompCommand.CONNECT);
-        connectAccessor.setNativeHeader("Authorization", "Bearer token");
-        Message<byte[]> connectMessage = MessageBuilder.createMessage(new byte[0], connectAccessor.getMessageHeaders());
-        interceptor.preSend(connectMessage, null);
-
-        StompHeaderAccessor subscribeAccessor = StompHeaderAccessor.create(StompCommand.SUBSCRIBE);
-        subscribeAccessor.setDestination("/topic/zkbio/problems");
-        subscribeAccessor.setNativeHeader("Authorization", "Bearer token");
-        Message<byte[]> subscribeMessage = MessageBuilder.createMessage(new byte[0], subscribeAccessor.getMessageHeaders());
-
-        assertThatThrownBy(() -> interceptor.preSend(subscribeMessage, null))
-                .isInstanceOf(AccessDeniedException.class);
-    }
-
-    @Test
     void zabbixTopicRequiresViewZabbixPermission() {
         JwtDecoder jwtDecoder = mock(JwtDecoder.class);
         when(jwtDecoder.decode("token")).thenReturn(jwtWithRoles("SUPPORT"));

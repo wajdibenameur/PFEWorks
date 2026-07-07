@@ -93,8 +93,9 @@ public class SnmpAdapter implements SnmpSourceService {
             if (!isManagedSnmpCategory(snapshot)) {
                 continue;
             }
-            if (!MonitoringConstants.STATUS_UP.equalsIgnoreCase(snapshot.getStatus())) {
-                String severity = MonitoringConstants.STATUS_DOWN.equalsIgnoreCase(snapshot.getStatus()) ? "4" : "3";
+            if (snapshot.getDeviceStatus() == tn.iteam.enums.DeviceStatus.DOWN
+                    || snapshot.getDeviceStatus() == tn.iteam.enums.DeviceStatus.DEGRADED) {
+                String severity = snapshot.getDeviceStatus() == tn.iteam.enums.DeviceStatus.DOWN ? "4" : "3";
                 problems.add(SnmpProblemDTO.builder()
                         .problemId("OBS-SNMP-" + snapshot.getIpAddress())
                         .host(snapshot.getHostName())
@@ -132,16 +133,18 @@ public class SnmpAdapter implements SnmpSourceService {
             String hostName = snapshot.getHostName() != null && !snapshot.getHostName().isBlank() ? snapshot.getHostName() : "UNKNOWN";
             String hostId = snapshot.getHostId();
 
-            metrics.add(SnmpMetricDTO.builder()
-                    .hostId(hostId)
-                    .hostName(hostName)
-                    .itemId("availability")
-                    .metricKey("snmp.availability")
-                    .value(snapshot.getAvailability())
-                    .timestamp(now)
-                    .ip(snapshot.getIpAddress())
-                    .port(snapshot.getSnmpPort())
-                    .build());
+            if (snapshot.getAvailability() != null) {
+                metrics.add(SnmpMetricDTO.builder()
+                        .hostId(hostId)
+                        .hostName(hostName)
+                        .itemId("availability")
+                        .metricKey("snmp.availability")
+                        .value(snapshot.getAvailability())
+                        .timestamp(now)
+                        .ip(snapshot.getIpAddress())
+                        .port(snapshot.getSnmpPort())
+                        .build());
+            }
 
             if (snapshot.getCpuPercent() != null) {
                 metrics.add(SnmpMetricDTO.builder()

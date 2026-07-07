@@ -16,7 +16,6 @@ public class SourceAvailabilityServiceImpl implements SourceAvailabilityService 
 
     private static final String ZABBIX = "ZABBIX";
     private static final String SNMP = "SNMP";
-    private static final String ZKBIO = "ZKBIO";
     private static final String CAMERA = "CAMERA";
     private static final String DATABASE = "DATABASE";
     private static final String UNKNOWN = "UNKNOWN";
@@ -25,7 +24,7 @@ public class SourceAvailabilityServiceImpl implements SourceAvailabilityService 
     private static final String DEGRADED = "DEGRADED";
     private static final String UNAVAILABLE = "UNAVAILABLE";
 
-    private static final List<String> KNOWN_SOURCES = List.of(ZABBIX, SNMP, ZKBIO, CAMERA, DATABASE);
+    private static final List<String> KNOWN_SOURCES = List.of(ZABBIX, SNMP, CAMERA, DATABASE);
 
     private final Map<String, AvailabilityState> states = new ConcurrentHashMap<>();
     private final ApplicationEventPublisher eventPublisher;

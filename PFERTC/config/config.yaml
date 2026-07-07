@@ -4,6 +4,7 @@ project:
 
 paths:
   sql_dump_path: moniiit_db.sql
+  observium_sql_dump_path: "C:/Users/kbakh/OneDrive (1)/Documents/moniiitoring_db(4).sql"
   artifacts_dir: artifacts
   model_checkpoint: artifacts/models/final_model.pth
   torchscript_model: artifacts/models/model.pt
@@ -27,11 +28,25 @@ features:
   problem_window_1h_seconds: 3600
   problem_window_24h_seconds: 86400
   feature_order:
+    - cpu_usage_percent
+    - ram_usage_percent
+    - latency_ms
+    - traffic_in_bps
+    - traffic_out_bps
+    - interface_errors_in
+    - interface_errors_out
+    - packet_loss_percent
+    - availability_status
+    - temperature_celsius
     - problem_count_last_1h
     - problem_count_last_24h
-    - avg_metric_last_1h
-    - max_metric_last_1h
-    - trend_metric
+    - critical_problem_count_last_1h
+    - critical_problem_count_last_24h
+    - high_problem_count_last_1h
+    - disaster_problem_count_last_1h
+    - last_problem_severity
+    - active_critical_problems
+    - time_since_last_critical_problem_minutes
 
 training:
   test_ratio: 0.2
@@ -40,6 +55,6 @@ training:
   learning_rate: 0.001
   weight_decay: 0.0001
   hidden_sizes:
+    - 64
     - 32
-    - 16
-  dropout: 0.1
+  dropout: 0.2

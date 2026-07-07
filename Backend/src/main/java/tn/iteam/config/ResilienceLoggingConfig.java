@@ -69,9 +69,7 @@ public class ResilienceLoggingConfig {
                             event.getWaitInterval().toMillis(),
                             describeThrowable(event.getLastThrowable())
                     };
-                    if ("zkbioApi".equalsIgnoreCase(event.getName())) {
-                        log.info(message, args);
-                    } else if ("snmpApi".equalsIgnoreCase(event.getName())) {
+                    if ("snmpApi".equalsIgnoreCase(event.getName())) {
                         log.debug(message, args);
                     } else {
                         log.warn(message, args);
@@ -86,8 +84,6 @@ public class ResilienceLoggingConfig {
                     };
                     if ("snmpApi".equalsIgnoreCase(event.getName())) {
                         log.debug(message, args);
-                    } else if ("zkbioApi".equalsIgnoreCase(event.getName())) {
-                        log.info(message, args);
                     } else {
                         log.warn(message, args);
                     }

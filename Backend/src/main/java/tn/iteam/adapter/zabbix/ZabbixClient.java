@@ -122,6 +122,7 @@ public class ZabbixClient {
     private static final String CONTEXT_HOST_BY_ID = "host by id";
     private static final String CONTEXT_RECENT_PROBLEMS = "recent problems";
     private static final String CONTEXT_RECENT_PROBLEMS_BY_HOST = "recent problems by host";
+    private static final String CONTEXT_CRITICAL_EVENTS_HISTORY = "critical events history";
     private static final String CONTEXT_TRIGGER = "trigger.get";
     private static final String CONTEXT_TRIGGER_BY_ID = "trigger by id";
     private static final String CONTEXT_TRIGGERS_BY_IDS = "triggers by ids";
@@ -337,6 +338,32 @@ public class ZabbixClient {
 
         return executeRequestLive(payload, CONTEXT_RECENT_PROBLEMS_BY_HOST);
     }
+
+    @Retry(name = LIGHT_RESILIENCE_NAME)
+    @CircuitBreaker(name = LIGHT_RESILIENCE_NAME, fallbackMethod = "getCriticalEventsHistoryFallback")
+    public Mono<JsonNode> getCriticalEventsHistory(long timeFrom, long timeTill) {
+        log.info(LOG_PREFIX + "getCriticalEventsHistory() called with timeFrom={}, timeTill={}", timeFrom, timeTill);
+
+        Map<String, Object> payload = createBasePayload("event.get");
+        Map<String, Object> params = new HashMap<>();
+
+        params.put(OUTPUT, EXTEND);
+        params.put(SELECT_HOSTS, EXTEND);
+        params.put("selectRelatedObject", EXTEND);
+        params.put("source", 0);
+        params.put("object", 0);
+        params.put(SEVERITIES, List.of(4, 5));
+        params.put(TIME_FROM, timeFrom);
+        params.put(TIME_TILL, timeTill);
+        params.put(SORT_FIELD, CLOCK);
+        params.put(SORT_ORDER, DESC);
+        params.put(LIMIT, 5000);
+
+        payload.put(PARAMS, params);
+
+        return executeRequestLive(payload, CONTEXT_CRITICAL_EVENTS_HISTORY);
+    }
+
     @Retry(name = LIGHT_RESILIENCE_NAME)
     @CircuitBreaker(name = LIGHT_RESILIENCE_NAME, fallbackMethod = "getTriggerByIdFallback")
     public Mono<JsonNode> getTriggerById(String triggerId) {
@@ -644,6 +671,10 @@ public class ZabbixClient {
     // Parameter required by Resilience4j fallback signature
     private Mono<JsonNode> getRecentProblemsByHostFallback(String hostId, Throwable throwable) {
         return Mono.error(mapCircuitBreakerException(CONTEXT_RECENT_PROBLEMS_BY_HOST, throwable));
+    }
+    @SuppressWarnings("unused")
+    private Mono<JsonNode> getCriticalEventsHistoryFallback(long timeFrom, long timeTill, Throwable throwable) {
+        return Mono.error(mapCircuitBreakerException(CONTEXT_CRITICAL_EVENTS_HISTORY, throwable));
     }
     @SuppressWarnings("unused")
     private Mono<JsonNode> getRecentProblemsSinceFallback(long timeFrom, Throwable throwable) {

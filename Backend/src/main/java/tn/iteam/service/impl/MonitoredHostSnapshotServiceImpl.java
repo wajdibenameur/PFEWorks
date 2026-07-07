@@ -107,7 +107,6 @@ public class MonitoredHostSnapshotServiceImpl implements MonitoredHostSnapshotSe
         }
         return switch (source) {
             case CAMERA -> MonitoringConstants.CATEGORY_CAMERA;
-            case ZKBIO -> MonitoringConstants.CATEGORY_ACCESS;
             default -> null;
         };
     }

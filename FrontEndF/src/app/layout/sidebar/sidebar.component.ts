@@ -73,7 +73,7 @@ export class SidebarComponent {
       return item.children.some((child) => this.canDisplay(child));
     }
 
-    if (item.requiredAnyPermissions?.length) {
+    if (item.requiredAnyPermissions?.length || item.requiredAllPermissions?.length) {
       if (!this.auth.arePermissionsLoaded()) {
         if (this.authDebug) {
           console.debug('[SIDEBAR] waiting permissions for', item.label);
@@ -81,9 +81,24 @@ export class SidebarComponent {
         return false;
       }
 
-      const allowed = item.requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission));
+      const allowedAny =
+        !item.requiredAnyPermissions?.length ||
+        item.requiredAnyPermissions.some((permission) => this.auth.hasPermission(permission));
+      const allowedAll =
+        !item.requiredAllPermissions?.length ||
+        item.requiredAllPermissions.every((permission) => this.auth.hasPermission(permission));
+      const allowed = allowedAny && allowedAll;
       if (this.authDebug) {
-        console.debug('[SIDEBAR] permission check', item.label, item.requiredAnyPermissions, '=>', allowed);
+        console.debug(
+          '[SIDEBAR] permission check',
+          item.label,
+          {
+            any: item.requiredAnyPermissions ?? [],
+            all: item.requiredAllPermissions ?? []
+          },
+          '=>',
+          allowed
+        );
       }
       return allowed;
     }

@@ -7,7 +7,6 @@ public enum Permission {
     VIEW_ZABBIX,
     VIEW_SNMP,
     VIEW_CAMERA,
-    VIEW_ZKBIO,
     VIEW_ACCESS_POINT,
     VIEW_METRICS,
     VIEW_ALERTS,

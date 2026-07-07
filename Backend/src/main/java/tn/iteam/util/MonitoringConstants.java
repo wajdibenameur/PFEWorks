@@ -4,12 +4,10 @@ public final class MonitoringConstants {
 
     public static final String SOURCE_ZABBIX = "ZABBIX";
     public static final String SOURCE_SNMP = "SNMP";
-    public static final String SOURCE_ZKBIO = "ZKBIO";
     public static final String SOURCE_CAMERA = "CAMERA";
 
     public static final String SOURCE_LABEL_ZABBIX = "Zabbix";
     public static final String SOURCE_LABEL_SNMP = "SNMP";
-    public static final String SOURCE_LABEL_ZKBIO = "ZKBio";
     public static final String SOURCE_LABEL_CAMERA = "Camera";
 
     public static final String STATUS_FIELD = "status";

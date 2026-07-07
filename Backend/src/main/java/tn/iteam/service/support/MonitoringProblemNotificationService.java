@@ -258,7 +258,6 @@ public class MonitoringProblemNotificationService {
     private String actionUrlFor(String source) {
         return switch (source) {
             case MonitoringConstants.SOURCE_SNMP -> "/monitoring/snmp";
-            case MonitoringConstants.SOURCE_ZKBIO -> "/monitoring/zkbio";
             case MonitoringConstants.SOURCE_ZABBIX -> "/monitoring/zabbix";
             default -> "/monitoring";
         };

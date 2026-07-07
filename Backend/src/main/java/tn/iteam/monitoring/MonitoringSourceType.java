@@ -3,7 +3,6 @@ package tn.iteam.monitoring;
 public enum MonitoringSourceType {
     ZABBIX(true, true, true, "native"),
     SNMP(true, true, true, "synthetic"),
-    ZKBIO(true, true, true, "synthetic"),
     CAMERA(true, false, false, "not_applicable");
 
     private final boolean supportsHosts;

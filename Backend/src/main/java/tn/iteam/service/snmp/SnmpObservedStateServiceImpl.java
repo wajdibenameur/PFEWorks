@@ -42,6 +42,9 @@ public class SnmpObservedStateServiceImpl implements tn.iteam.service.SnmpObserv
             if (snapshot == null) {
                 continue;
             }
+            if (!snapshot.isPollAttempted()) {
+                continue;
+            }
             Instant polledAt = snapshot.getCollectedAtEpochSec() > 0
                     ? Instant.ofEpochSecond(snapshot.getCollectedAtEpochSec())
                     : Instant.now();

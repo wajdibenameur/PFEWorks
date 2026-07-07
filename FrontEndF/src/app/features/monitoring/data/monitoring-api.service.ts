@@ -12,16 +12,13 @@ import { MonitoringHost } from '../../../core/models/monitoring-host.model';
 import { MonitoringProblem } from '../../../core/models/monitoring-problem.model';
 import { CreateSnmpDeviceRequest, SnmpDevice } from '../../../core/models/snmp-device.model';
 import { SourceAvailability } from '../../../core/models/source-availability.model';
-import { ServiceStatus } from '../../../core/models/service-status.model';
 import { UnifiedMonitoringResponse } from '../../../core/models/unified-monitoring-response.model';
 import { UnifiedMonitoringMetric } from '../../../core/models/unified-monitoring-metric.model';
-import { ZkBioAttendance } from '../../../core/models/zkbio-attendance.model';
 
 @Injectable({ providedIn: 'root' })
 export class MonitoringApiService {
   private readonly monitoringBaseUrl: string;
   private readonly cameraBaseUrl: string;
-  private readonly zkbioBaseUrl: string;
   private readonly dashboardBaseUrl: string;
 
   constructor(
@@ -30,7 +27,6 @@ export class MonitoringApiService {
   ) {
     this.monitoringBaseUrl = `${config.monitoringApiUrl}/api/monitoring`;
     this.cameraBaseUrl = `${config.monitoringApiUrl}/api/cameras`;
-    this.zkbioBaseUrl = `${config.monitoringApiUrl}/api/zkbio`;
     this.dashboardBaseUrl = `${config.monitoringApiUrl}/dashboard`;
   }
 
@@ -83,18 +79,6 @@ export class MonitoringApiService {
       .pipe(map(() => void 0));
   }
 
-  getZkBioStatus(): Observable<ServiceStatus> {
-    return this.http.get<ServiceStatus>(`${this.zkbioBaseUrl}/status`);
-  }
-
-  getZkBioDevices(): Observable<ServiceStatus[]> {
-    return this.http.get<ServiceStatus[]>(`${this.zkbioBaseUrl}/devices`);
-  }
-
-  getZkBioAttendance(): Observable<ZkBioAttendance[]> {
-    return this.http.get<ZkBioAttendance[]>(`${this.zkbioBaseUrl}/attendance`);
-  }
-
   getDashboardOverview(): Observable<DashboardOverview> {
     return this.http.get<DashboardOverview>(`${this.dashboardBaseUrl}/overview`);
   }
@@ -136,9 +120,6 @@ export class MonitoringApiService {
   triggerCollection(target: CollectionTarget): Observable<ApiResponse<void>> {
     if (target === 'all') {
       return this.http.post<ApiResponse<void>>(`${this.monitoringBaseUrl}/collect`, {});
-    }
-    if (target === 'zkbio') {
-      return this.http.post<ApiResponse<void>>(`${this.zkbioBaseUrl}/collect`, {});
     }
 
     return this.http.post<ApiResponse<void>>(

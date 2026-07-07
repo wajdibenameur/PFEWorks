@@ -19,7 +19,6 @@ The main backend already supports the product scope very well:
 - multi-source monitoring
 - Zabbix integration
 - SNMP integration
-- ZKBio integration
 - camera inventory
 - dashboard aggregation
 - ticket management
@@ -61,7 +60,6 @@ It already contains real monitoring pages and not just placeholders:
 - `monitoring/zabbix`
 - `monitoring/snmp`
 - `monitoring/camera`
-- `monitoring/zkbio`
 - `tickets/list`
 - `tickets/add`
 - `tickets/tracking`
@@ -154,7 +152,6 @@ These pages should be visually rebuilt in `FrontEndF`:
 - monitoring zabbix page
 - monitoring snmp page
 - monitoring camera page
-- monitoring zkbio page
 - ticket list
 - users
 - admin
@@ -256,24 +253,7 @@ Recommended route:
 
 - `/monitoring/camera`
 
-### 5. ZKBio Workspace
-
-Current page:
-
-- `frontend/src/app/features/monitoring/ui/monitoring-zkbio-page.component.html`
-
-What to redesign:
-
-- attendance and access metrics
-- device connectivity
-- synchronization problems
-- recent anomalies table
-
-Recommended route:
-
-- `/monitoring/zkbio`
-
-### 6. Tickets
+### 5. Tickets
 
 Current pages:
 
@@ -298,7 +278,7 @@ Recommended routes:
 - `/tickets/add`
 - `/tickets/tracking`
 
-### 7. Users
+### 6. Users
 
 Current route:
 
@@ -325,7 +305,7 @@ Recommended route:
 
 - `/users`
 
-### 8. Admin Panel
+### 7. Admin Panel
 
 Current route:
 

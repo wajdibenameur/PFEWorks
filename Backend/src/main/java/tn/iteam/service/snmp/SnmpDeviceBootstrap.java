@@ -6,7 +6,6 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 import tn.iteam.config.SnmpProperties;
 import tn.iteam.domain.SnmpDevice;
 import tn.iteam.domain.SnmpProblem;
@@ -37,16 +36,19 @@ public class SnmpDeviceBootstrap implements ApplicationRunner {
     private final SnmpProperties properties;
     private final SnmpSubnetClassifier subnetClassifier;
 
+
+
     @Override
-    @Transactional
     public void run(ApplicationArguments args) {
         if (!properties.isEnabled()) {
             log.info("SNMP device bootstrap skipped: SNMP is disabled.");
             return;
         }
+
         try {
             Set<String> seedAddresses = resolveSeedAddresses();
             Set<String> trackedAddresses = resolveTrackedAddresses(seedAddresses);
+
             if (trackedAddresses.isEmpty()) {
                 log.info("SNMP device bootstrap skipped: no seed addresses configured.");
                 return;
@@ -56,26 +58,36 @@ public class SnmpDeviceBootstrap implements ApplicationRunner {
             int removedHosts = pruneObsoleteMonitoredHosts(trackedAddresses);
             int removedStatuses = pruneObsoleteServiceStatuses(trackedAddresses);
             int resolvedProblems = resolveObsoleteProblems(trackedAddresses);
+
             int created = 0;
+
             for (String address : seedAddresses) {
                 var existing = deviceRepository.findByIpAddress(address);
+
                 if (existing.isPresent()) {
                     SnmpDevice device = existing.get();
-                    if ((device.getCategory() == null || device.getCategory().isBlank()) && !Boolean.TRUE.equals(device.getManualEntry())) {
+
+                    if ((device.getCategory() == null || device.getCategory().isBlank())
+                            && !Boolean.TRUE.equals(device.getManualEntry())) {
                         device.setCategory(subnetClassifier.resolveConfiguredCategory(address));
                     }
+
                     if (device.getManualEntry() == null) {
                         device.setManualEntry(false);
                     }
+
                     if (device.getType() == null) {
                         device.setType(SnmpDeviceType.OTHER);
                     }
+
                     if (device.getPollingIntervalSeconds() == null || device.getPollingIntervalSeconds() <= 0) {
                         device.setPollingIntervalSeconds(properties.getDefaultPollingIntervalSeconds());
                     }
+
                     if (device.getMetricsToPoll() == null || device.getMetricsToPoll().isEmpty()) {
                         device.setMetricsToPoll(new LinkedHashSet<>(properties.getDefaultMetricsToPoll()));
                     }
+
                     deviceRepository.save(device);
                     continue;
                 }
@@ -98,26 +110,21 @@ public class SnmpDeviceBootstrap implements ApplicationRunner {
                 created++;
             }
 
-            if (created > 0) {
-                log.info("SNMP device bootstrap inserted {} device(s).", created);
-            } else {
-                log.info("SNMP device bootstrap found all configured addresses already present.");
-            }
-            if (removed > 0) {
-                log.info("SNMP device bootstrap removed {} obsolete device(s).", removed);
-            }
-            if (removedHosts > 0) {
-                log.info("SNMP bootstrap removed {} obsolete monitored host row(s).", removedHosts);
-            }
-            if (removedStatuses > 0) {
-                log.info("SNMP bootstrap removed {} obsolete service status row(s).", removedStatuses);
-            }
-            if (resolvedProblems > 0) {
-                log.info("SNMP bootstrap resolved {} obsolete active problem(s).", resolvedProblems);
-            }
+            log.info(
+                    "SNMP bootstrap completed: created={}, removedDevices={}, removedHosts={}, removedStatuses={}, resolvedProblems={}",
+                    created,
+                    removed,
+                    removedHosts,
+                    removedStatuses,
+                    resolvedProblems
+            );
+
         } catch (DataAccessException ex) {
-            // Startup should continue even if bootstrap seeding fails due to transient DB connectivity.
-            log.warn("SNMP device bootstrap skipped due to database access issue: {}", ex.getMessage());
+            log.warn("SNMP bootstrap skipped because database is unavailable: {}", ex.getMessage(), ex);
+        } catch (IllegalStateException ex) {
+            log.warn("SNMP bootstrap skipped because Spring context is not ready or is shutting down: {}", ex.getMessage(), ex);
+        } catch (Exception ex) {
+            log.warn("SNMP bootstrap skipped due to unexpected error: {}", ex.getMessage(), ex);
         }
     }
 

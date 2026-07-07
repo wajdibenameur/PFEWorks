@@ -15,7 +15,6 @@ import tn.iteam.domain.ApiResponse;
 import tn.iteam.dto.InterfaceDTO;
 import tn.iteam.dto.SourceAvailabilityDTO;
 import tn.iteam.integration.IntegrationServiceRegistry;
-import tn.iteam.integration.ZkBioRefreshOrchestrationService;
 import tn.iteam.monitoring.MonitoringSourceType;
 import tn.iteam.monitoring.dto.UnifiedMonitoringHostDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
@@ -32,22 +31,21 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/monitoring")
 @RequiredArgsConstructor
-@Tag(name = "Monitoring", description = "API unifiée de supervision et de déclenchement de collecte")
+@Tag(name = "Monitoring", description = "API unifiee de supervision et de declenchement de collecte")
 public class MonitoringController {
 
     private final MonitoringAggregationService aggregationService;
     private final SourceAvailabilityService sourceAvailabilityService;
     private final IntegrationServiceRegistry integrationServiceRegistry;
-    private final ZkBioRefreshOrchestrationService zkBioRefreshOrchestrationService;
     private final MonitoringSnapshotPublicationService snapshotPublicationService;
     private final SnmpInterfaceService snmpInterfaceService;
     private final MonitoringFreshnessService monitoringFreshnessService;
 
     @GetMapping("/problems")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_ALERTS)")
-    @Operation(summary = "Lister les incidents", description = "Retourne les incidents agrégés de toutes les sources de supervision.")
+    @Operation(summary = "Lister les incidents", description = "Retourne les incidents agreges de toutes les sources de supervision.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Incidents récupérés avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Incidents recuperes avec succes")
     })
     public UnifiedMonitoringResponse<List<UnifiedMonitoringProblemDTO>> getProblems() {
         return aggregationService.getProblems((String) null);
@@ -55,9 +53,9 @@ public class MonitoringController {
 
     @GetMapping("/metrics")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_METRICS)")
-    @Operation(summary = "Lister les métriques", description = "Retourne les métriques agrégées de toutes les sources de supervision.")
+    @Operation(summary = "Lister les metriques", description = "Retourne les metriques agregees de toutes les sources de supervision.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Métriques récupérées avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Metriques recuperees avec succes")
     })
     public UnifiedMonitoringResponse<List<UnifiedMonitoringMetricDTO>> getMetrics() {
         return aggregationService.getMetrics((String) null);
@@ -65,21 +63,19 @@ public class MonitoringController {
 
     @GetMapping("/hosts")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_HOSTS)")
-    @Operation(summary = "Lister les hôtes supervisés", description = "Retourne les hôtes agrégés de toutes les sources de supervision.")
+    @Operation(summary = "Lister les hotes supervises", description = "Retourne les hotes agreges de toutes les sources de supervision.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Hôtes récupérés avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Hotes recuperes avec succes")
     })
     public UnifiedMonitoringResponse<List<UnifiedMonitoringHostDTO>> getHosts() {
         return aggregationService.getHosts((String) null);
     }
 
     @GetMapping("/sources/health")
-    @PreAuthorize(
-            "hasAnyAuthority('VIEW_DASHBOARD','VIEW_ZABBIX','VIEW_SNMP','VIEW_CAMERA','VIEW_ZKBIO','VIEW_ACCESS_POINT')"
-    )
-    @Operation(summary = "Consulter l'état des sources", description = "Retourne l'état de disponibilité de chaque source de supervision.")
+    @PreAuthorize("hasAnyAuthority('VIEW_DASHBOARD','VIEW_ZABBIX','VIEW_SNMP','VIEW_CAMERA','VIEW_ACCESS_POINT')")
+    @Operation(summary = "Consulter l'etat des sources", description = "Retourne l'etat de disponibilite de chaque source de supervision.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "État des sources récupéré avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Etat des sources recupere avec succes")
     })
     public List<SourceAvailabilityDTO> getSourceHealth() {
         return sourceAvailabilityService.getAll();
@@ -87,9 +83,9 @@ public class MonitoringController {
 
     @GetMapping("/interfaces")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).VIEW_METRICS)")
-    @Operation(summary = "Lister les interfaces réseau SNMP", description = "Retourne les interfaces SNMP avec état, compteurs et bande passante calculée.")
+    @Operation(summary = "Lister les interfaces reseau SNMP", description = "Retourne les interfaces SNMP avec etat, compteurs et bande passante calculee.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Interfaces récupérées avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Interfaces recuperees avec succes")
     })
     public List<InterfaceDTO> getSnmpInterfaces() {
         return snmpInterfaceService.getAllInterfaces();
@@ -97,29 +93,23 @@ public class MonitoringController {
 
     @PostMapping("/collect")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte complète", description = "Lance une collecte asynchrone pour Zabbix, SNMP, ZKBio et Caméras.")
+    @Operation(summary = "Declencher une collecte complete", description = "Lance une collecte asynchrone pour Zabbix, SNMP et Cameras.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte globale déclenchée avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte globale declenchee avec succes")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectAll() {
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZABBIX.name());
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.SNMP.name());
-        monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZKBIO.name());
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.CAMERA.name());
         return Mono.whenDelayError(
                         integrationServiceRegistry.getRequired(MonitoringSourceType.ZABBIX).refreshAsync(),
                         integrationServiceRegistry.getRequired(MonitoringSourceType.SNMP).refreshAsync(),
-                        zkBioRefreshOrchestrationService.refreshMonitoringAndAttendanceAsync(),
                         integrationServiceRegistry.getRequired(MonitoringSourceType.CAMERA).refreshAsync()
                 )
-                .then(Mono.fromRunnable(() -> {
-                    snapshotPublicationService.publishMonitoringSnapshots(List.of(
-                            MonitoringSourceType.ZABBIX,
-                            MonitoringSourceType.SNMP,
-                            MonitoringSourceType.ZKBIO
-                    ));
-                    snapshotPublicationService.publishZkBioSnapshots();
-                }))
+                .then(Mono.fromRunnable(() -> snapshotPublicationService.publishMonitoringSnapshots(List.of(
+                        MonitoringSourceType.ZABBIX,
+                        MonitoringSourceType.SNMP
+                ))))
                 .thenReturn(ResponseEntity.ok(
                         ApiResponse.<Void>builder()
                                 .success(true)
@@ -131,9 +121,9 @@ public class MonitoringController {
 
     @PostMapping("/collect/zabbix")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte Zabbix", description = "Lance une collecte asynchrone complète pour la source Zabbix.")
+    @Operation(summary = "Declencher une collecte Zabbix", description = "Lance une collecte asynchrone complete pour la source Zabbix.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte Zabbix déclenchée avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte Zabbix declenchee avec succes")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectZabbix() {
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.ZABBIX.name());
@@ -150,9 +140,9 @@ public class MonitoringController {
 
     @PostMapping("/collect/snmp")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte SNMP", description = "Lance une collecte asynchrone complète pour la source SNMP.")
+    @Operation(summary = "Declencher une collecte SNMP", description = "Lance une collecte asynchrone complete pour la source SNMP.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte SNMP déclenchée avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte SNMP declenchee avec succes")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectSnmp() {
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.SNMP.name());
@@ -169,9 +159,9 @@ public class MonitoringController {
 
     @PostMapping("/collect/camera")
     @PreAuthorize("@permissionService.hasPermission(authentication, T(tn.iteam.enums.Permission).REFRESH_DASHBOARD)")
-    @Operation(summary = "Déclencher une collecte Caméras", description = "Lance une collecte asynchrone complète pour l'inventaire caméras.")
+    @Operation(summary = "Declencher une collecte Cameras", description = "Lance une collecte asynchrone complete pour l'inventaire cameras.")
     @ApiResponses({
-            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte caméras déclenchée avec succès")
+            @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "Collecte cameras declenchee avec succes")
     })
     public Mono<ResponseEntity<ApiResponse<Void>>> collectCamera() {
         monitoringFreshnessService.invalidateSource(MonitoringSourceType.CAMERA.name());
@@ -184,5 +174,4 @@ public class MonitoringController {
                                 .build()
                 ));
     }
-
 }

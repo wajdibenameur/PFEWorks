@@ -1,6 +1,6 @@
 package tn.iteam.service.snmp;
 
-import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.retry.annotation.Retry;
 import io.github.resilience4j.timelimiter.annotation.TimeLimiter;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +39,6 @@ import tn.iteam.service.SnmpInterfaceCollectionService;
 import tn.iteam.util.MonitoringConstants;
 
 import java.io.IOException;
-import java.io.InterruptedIOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -79,7 +78,6 @@ public class SnmpWorkerService {
     }
 
     @Retry(name = RESILIENCE_NAME, fallbackMethod = "pollDeviceFallback")
-    @CircuitBreaker(name = RESILIENCE_NAME, fallbackMethod = "pollDeviceFallback")
     @TimeLimiter(name = RESILIENCE_NAME, fallbackMethod = "pollDeviceFallback")
     public CompletableFuture<SnmpDeviceSnapshot> pollDeviceAsync(SnmpDevice device) {
         return CompletableFuture.supplyAsync(() -> probeDevice(device), snmpTaskExecutor);
@@ -90,7 +88,11 @@ public class SnmpWorkerService {
         long now = Instant.now().getEpochSecond();
         String ip = device != null ? device.getIpAddress() : "unknown";
         Integer port = device != null && device.getSnmpPort() != null ? device.getSnmpPort() : properties.getDefaultPort();
-        String reason = safeMessage(cause);
+        String reason = SnmpExceptionUtils.safeMessage(cause);
+        if (cause instanceof CallNotPermittedException) {
+            log.warn("SNMP device {}:{} skipped because resilience rejected the call. Preserving previous state: {}", ip, port, reason);
+            return CompletableFuture.completedFuture(buildUnavailableSnapshot(device, now, reason));
+        }
         log.warn("SNMP device {}:{} marked DOWN by resilience fallback: {}", ip, port, reason);
         return CompletableFuture.completedFuture(buildDownSnapshot(device, now, reason));
     }
@@ -102,7 +104,7 @@ public class SnmpWorkerService {
         String community = device.getSnmpCommunity() != null && !device.getSnmpCommunity().isBlank()
                 ? device.getSnmpCommunity()
                 : properties.getDefaultCommunity();
-        validateDeviceConfiguration(device, ip, port, community);
+        SnmpExceptionUtils.validateDeviceConfiguration(device, ip, port, community);
 
         try (TransportMapping<?> transport = new DefaultUdpTransportMapping();
              Snmp snmp = new Snmp(transport)) {
@@ -181,10 +183,11 @@ public class SnmpWorkerService {
                     .diagnosticReason(buildDiagnosticReason(status, successfulOids, failures, interfaces))
                     .successfulOids(List.copyOf(successfulOids))
                     .failedOids(List.copyOf(failures))
+                    .pollAttempted(true)
                     .collectedAtEpochSec(now)
                     .build();
         } catch (IOException exception) {
-            throw classifyIoException(device, exception);
+            throw SnmpExceptionUtils.classifyIoException(device, exception);
         }
     }
 
@@ -295,8 +298,8 @@ public class SnmpWorkerService {
         try {
             return new OidProbeResult(snmpGet(snmp, target, oid), null);
         } catch (Exception exception) {
-            log.debug("SNMP OID failed oid={} reason={}", oidLabel, safeMessage(exception));
-            return new OidProbeResult(Optional.empty(), safeMessage(exception));
+            log.debug("SNMP OID failed oid={} reason={}", oidLabel, SnmpExceptionUtils.safeMessage(exception));
+            return new OidProbeResult(Optional.empty(), SnmpExceptionUtils.safeMessage(exception));
         }
     }
 
@@ -314,7 +317,7 @@ public class SnmpWorkerService {
             }
             return metrics;
         } catch (Exception exception) {
-            failures.add("categoryMetrics=" + safeMessage(exception));
+            failures.add("categoryMetrics=" + SnmpExceptionUtils.safeMessage(exception));
             return Map.of();
         }
     }
@@ -334,49 +337,9 @@ public class SnmpWorkerService {
             }
             return interfaces;
         } catch (Exception exception) {
-            failures.add("interfaces=" + safeMessage(exception));
+            failures.add("interfaces=" + SnmpExceptionUtils.safeMessage(exception));
             return List.of();
         }
-    }
-
-    private void validateDeviceConfiguration(SnmpDevice device, String ip, Integer port, String community) {
-        if (device != null && Boolean.FALSE.equals(device.getEnabled())) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP device is disabled");
-        }
-        if (ip == null || ip.isBlank()) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP device IP is missing");
-        }
-        if (port == null || port <= 0) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP port is invalid for " + ip);
-        }
-        if (community == null || community.isBlank()) {
-            throw new IntegrationResponseException(MonitoringConstants.SOURCE_SNMP, "SNMP community is missing for " + ip);
-        }
-    }
-
-    private RuntimeException classifyIoException(SnmpDevice device, Throwable throwable) {
-        String ip = device != null ? device.getIpAddress() : "unknown";
-        if (throwable instanceof IntegrationResponseException responseException) {
-            return responseException;
-        }
-        if (throwable instanceof IntegrationUnavailableException unavailableException) {
-            return unavailableException;
-        }
-        if (throwable instanceof IntegrationTimeoutException timeoutException) {
-            return timeoutException;
-        }
-        if (throwable instanceof java.net.SocketTimeoutException
-                || throwable instanceof InterruptedIOException
-                || throwable instanceof InterruptedException) {
-            return new IntegrationTimeoutException(MonitoringConstants.SOURCE_SNMP, "SNMP timeout while polling " + ip, throwable);
-        }
-        if (throwable instanceof IOException) {
-            return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, throwable);
-        }
-        if (throwable instanceof RuntimeException runtimeException) {
-            return runtimeException;
-        }
-        return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, throwable);
     }
 
     private Throwable unwrap(Throwable throwable) {
@@ -385,13 +348,6 @@ public class SnmpWorkerService {
             current = current.getCause();
         }
         return current;
-    }
-
-    private String safeMessage(Throwable throwable) {
-        if (throwable == null || throwable.getMessage() == null || throwable.getMessage().isBlank()) {
-            return throwable != null ? throwable.getClass().getSimpleName() : "unknown";
-        }
-        return throwable.getMessage();
     }
 
     private Long parseLong(Variable variable) {
@@ -444,8 +400,56 @@ public class SnmpWorkerService {
                 .diagnosticReason(reason != null && !reason.isBlank() ? reason : "No SNMP response received after retries")
                 .successfulOids(successfulOids != null ? List.copyOf(successfulOids) : List.of())
                 .failedOids(failedOids != null ? List.copyOf(failedOids) : List.of())
+                .pollAttempted(true)
                 .collectedAtEpochSec(now)
                 .build();
+    }
+
+    private SnmpDeviceSnapshot buildUnavailableSnapshot(SnmpDevice device, long now, String reason) {
+        DeviceStatus preservedStatus = resolvePreservedStatus(device);
+        String diagnosticReason = reason != null && !reason.isBlank()
+                ? "SNMP poll skipped because resilience rejected the call: " + reason
+                : "SNMP poll skipped because resilience rejected the call";
+        return SnmpDeviceSnapshot.builder()
+                .ipAddress(device != null ? device.getIpAddress() : "unknown")
+                .hostId(device != null ? device.getIpAddress() : "unknown")
+                .hostName(device != null && device.getHostname() != null ? device.getHostname() : (device != null ? device.getIpAddress() : "unknown"))
+                .category(device != null ? resolveDeviceCategory(device) : MonitoringConstants.UNKNOWN)
+                .snmpPort(device != null && device.getSnmpPort() != null ? device.getSnmpPort() : properties.getDefaultPort())
+                .status(preservedStatus.name())
+                .deviceStatus(preservedStatus)
+                .availability(resolveAvailability(preservedStatus))
+                .cpuPercent(null)
+                .memoryPercent(null)
+                .uptimeSeconds(null)
+                .sysDescr("SNMP_UNAVAILABLE")
+                .interfaces(List.of())
+                .extraMetrics(Map.of())
+                .diagnosticReason(diagnosticReason)
+                .successfulOids(List.of())
+                .failedOids(reason != null && !reason.isBlank() ? List.of(reason) : List.of())
+                .pollAttempted(false)
+                .collectedAtEpochSec(now)
+                .build();
+    }
+
+    private DeviceStatus resolvePreservedStatus(SnmpDevice device) {
+        if (device == null || device.getStatus() == null || device.getStatus() == DeviceStatus.DISABLED) {
+            return DeviceStatus.UNKNOWN;
+        }
+        return device.getStatus();
+    }
+
+    private Double resolveAvailability(DeviceStatus status) {
+        if (status == null) {
+            return null;
+        }
+        return switch (status) {
+            case UP -> 1.0;
+            case DEGRADED -> 0.5;
+            case DOWN -> 0.0;
+            default -> null;
+        };
     }
 
     private void collectProbeOutcome(String oidLabel, OidProbeResult probe, List<String> successfulOids, List<String> failures) {

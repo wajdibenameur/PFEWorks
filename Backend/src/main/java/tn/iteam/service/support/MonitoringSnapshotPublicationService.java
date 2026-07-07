@@ -9,7 +9,6 @@ import tn.iteam.monitoring.dto.UnifiedMonitoringMetricDTO;
 import tn.iteam.monitoring.dto.UnifiedMonitoringProblemDTO;
 import tn.iteam.monitoring.snapshot.SnapshotStore;
 import tn.iteam.websocket.MonitoringWebSocketPublisher;
-import tn.iteam.websocket.ZkBioWebSocketPublisher;
 
 import java.util.List;
 import java.util.Map;
@@ -25,7 +24,6 @@ public class MonitoringSnapshotPublicationService {
     private static final long DEFAULT_PUBLISH_TRACKING_TTL_MS = 3600000L;
 
     private final MonitoringWebSocketPublisher monitoringWebSocketPublisher;
-    private final ZkBioWebSocketPublisher zkBioWebSocketPublisher;
     private final SnapshotStore snapshotStore;
     private final MonitoringFreshnessService freshnessService;
     private final Map<String, Long> lastPublishByKey = new ConcurrentHashMap<>();
@@ -44,12 +42,10 @@ public class MonitoringSnapshotPublicationService {
 
     public MonitoringSnapshotPublicationService(
             MonitoringWebSocketPublisher monitoringWebSocketPublisher,
-            ZkBioWebSocketPublisher zkBioWebSocketPublisher,
             SnapshotStore snapshotStore,
             MonitoringFreshnessService freshnessService
     ) {
         this.monitoringWebSocketPublisher = monitoringWebSocketPublisher;
-        this.zkBioWebSocketPublisher = zkBioWebSocketPublisher;
         this.snapshotStore = snapshotStore;
         this.freshnessService = freshnessService;
     }
@@ -105,12 +101,6 @@ public class MonitoringSnapshotPublicationService {
         for (MonitoringSourceType sourceType : sourceTypes) {
             publishMonitoringSnapshots(sourceType);
         }
-    }
-
-    public void publishZkBioSnapshots() {
-        zkBioWebSocketPublisher.publishAttendanceFromSnapshot();
-        zkBioWebSocketPublisher.publishDevicesFromSnapshot();
-        zkBioWebSocketPublisher.publishStatusFromSnapshot();
     }
 
     private boolean shouldPublish(String dataset, MonitoringSourceType sourceType) {

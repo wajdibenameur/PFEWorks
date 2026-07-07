@@ -21,8 +21,6 @@ import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
 import tn.iteam.repository.SnmpDeviceRepository;
-import tn.iteam.service.SnmpCategoryMetricsService;
-import tn.iteam.service.SnmpInterfaceCollectionService;
 import tn.iteam.service.SnmpObservedStateService;
 import tn.iteam.util.MonitoringConstants;
 
@@ -50,14 +48,6 @@ class SnmpPollingServiceResilienceTest {
 
     @Mock
     private SnmpObservedStateService observedStateService;
-    @Mock
-    private SnmpInterfaceCollectionService interfaceCollectionService;
-    @Mock
-    private SnmpCategoryMetricsService categoryMetricsService;
-
-    @Mock
-    private SnmpSubnetClassifier subnetClassifier;
-
     private ThreadPoolTaskExecutor executor;
     private SnmpPollingService service;
 
@@ -95,16 +85,11 @@ class SnmpPollingServiceResilienceTest {
         service = spy(new SnmpPollingService(
                 deviceRepository,
                 observedStateService,
-                interfaceCollectionService,
-                categoryMetricsService,
                 properties,
-                subnetClassifier,
                 executor,
                 timeLimiterRegistry,
                 retryRegistry
         ));
-
-        when(subnetClassifier.resolveConfiguredCategory(any())).thenReturn(MonitoringConstants.CATEGORY_SWITCH);
         when(deviceRepository.saveAll(anyList())).thenAnswer(invocation -> invocation.getArgument(0));
         when(observedStateService.loadPreviousInterfacesByIndex(any())).thenReturn(Map.of());
     }

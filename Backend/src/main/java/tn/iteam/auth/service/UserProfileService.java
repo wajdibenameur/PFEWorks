@@ -2,9 +2,8 @@ package tn.iteam.auth.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tn.iteam.auth.dto.UpdateProfileRequest;
-import tn.iteam.auth.dto.UserProfileDTO;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,16 +11,23 @@ import tn.iteam.auth.client.KeycloakAdminClient;
 import tn.iteam.auth.config.KeycloakProperties;
 import tn.iteam.auth.dto.KeycloakRoleRepresentation;
 import tn.iteam.auth.dto.KeycloakUserRepresentation;
+import tn.iteam.auth.dto.UpdateProfileRequest;
+import tn.iteam.auth.dto.UserProfileDTO;
 import tn.iteam.auth.exception.KeycloakIntegrationException;
 
 import java.io.IOException;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.Normalizer;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class UserProfileService {
@@ -34,6 +40,17 @@ public class UserProfileService {
   private static final String PHONE = "phone";
   private static final String AVATAR = "avatar";
   private static final String POSITION = "position";
+  private static final Pattern UNSAFE_FILENAME_CHARS = Pattern.compile("[^A-Za-z0-9._-]");
+  private static final Set<String> ALLOWED_AVATAR_EXTENSIONS = Set.of(".jpg", ".jpeg", ".png", ".gif", ".webp");
+  private static final Set<String> DANGEROUS_AVATAR_EXTENSIONS = Set.of(
+      ".exe", ".bat", ".cmd", ".com", ".scr", ".ps1", ".sh", ".jar", ".msi", ".php", ".jsp", ".js", ".html", ".svg"
+  );
+  private static final Set<String> ALLOWED_AVATAR_MIME_TYPES = Set.of(
+      MediaType.IMAGE_JPEG_VALUE,
+      MediaType.IMAGE_PNG_VALUE,
+      MediaType.IMAGE_GIF_VALUE,
+      "image/webp"
+  );
 
   private final KeycloakAdminClient adminClient;
   private final KeycloakProperties properties;
@@ -41,6 +58,9 @@ public class UserProfileService {
 
   @Value("${file.upload-dir:uploads/avatars}")
   private String uploadDir;
+
+  @Value("${file.upload.max-size-bytes:5242880}")
+  private long maxUploadSizeBytes;
 
   public UserProfileService(
       KeycloakAdminClient adminClient,
@@ -110,7 +130,9 @@ public class UserProfileService {
     }
 
     try {
-      String filename = username + "_" + UUID.randomUUID() + "_" + file.getOriginalFilename();
+      validateAvatarUpload(username, file);
+      String sanitizedOriginalFilename = sanitizeFilename(file.getOriginalFilename());
+      String filename = username + "_" + UUID.randomUUID() + "_" + sanitizedOriginalFilename;
       Path uploadPath = Paths.get(uploadDir);
       Files.createDirectories(uploadPath);
 
@@ -124,6 +146,92 @@ public class UserProfileService {
       log.error("Failed to upload avatar for user: {}", username, e);
       throw new RuntimeException("Failed to upload file", e);
     }
+  }
+
+  private void validateAvatarUpload(String username, MultipartFile file) {
+    long size = file.getSize();
+    if (maxUploadSizeBytes > 0 && size > maxUploadSizeBytes) {
+      log.warn("Avatar upload rejected because file is too large for user: {} size={} max={}",
+          username, size, maxUploadSizeBytes);
+      throw new RuntimeException("File exceeds the maximum allowed size");
+    }
+
+    String contentType = normalizeContentType(file.getContentType());
+    if (!ALLOWED_AVATAR_MIME_TYPES.contains(contentType)) {
+      log.warn("Avatar upload rejected because MIME type is not allowed for user: {} mimeType={}",
+          username, contentType);
+      throw new RuntimeException("File type is not allowed");
+    }
+
+    String sanitizedFilename = sanitizeFilename(file.getOriginalFilename());
+    String extension = extractExtension(sanitizedFilename);
+    if (extension.isEmpty()) {
+      log.warn("Avatar upload rejected because file extension is missing for user: {}", username);
+      throw new RuntimeException("File extension is required");
+    }
+    if (DANGEROUS_AVATAR_EXTENSIONS.contains(extension)) {
+      log.warn("Avatar upload rejected because file extension is dangerous for user: {} extension={}",
+          username, extension);
+      throw new RuntimeException("File extension is not allowed");
+    }
+    if (!ALLOWED_AVATAR_EXTENSIONS.contains(extension)) {
+      log.warn("Avatar upload rejected because file extension is not allowed for user: {} extension={}",
+          username, extension);
+      throw new RuntimeException("File extension is not allowed");
+    }
+  }
+
+  private String sanitizeFilename(String originalFilename) {
+    if (!StringUtils.hasText(originalFilename)) {
+      log.warn("Avatar upload rejected because original filename is missing");
+      throw new RuntimeException("Original filename is required");
+    }
+
+    String candidate = originalFilename.trim().replace('\\', '/');
+    if (candidate.contains("../") || candidate.contains("..\\") || candidate.startsWith("/") || candidate.contains("/")) {
+      log.warn("Avatar upload rejected because filename contains a path segment: {}", originalFilename);
+      throw new RuntimeException("Filename must not contain a path");
+    }
+
+    String normalized = Normalizer.normalize(candidate, Normalizer.Form.NFKC);
+    String sanitized = UNSAFE_FILENAME_CHARS.matcher(normalized).replaceAll("_");
+    while (sanitized.contains("..")) {
+      sanitized = sanitized.replace("..", "_");
+    }
+    sanitized = sanitized.replaceAll("_+", "_");
+
+    if (!StringUtils.hasText(sanitized) || ".".equals(sanitized) || "..".equals(sanitized)) {
+      log.warn("Avatar upload rejected because sanitized filename is invalid: {}", originalFilename);
+      throw new RuntimeException("Filename is invalid");
+    }
+
+    try {
+      Path path = Path.of(sanitized).normalize();
+      if (path.isAbsolute() || path.getNameCount() != 1) {
+        log.warn("Avatar upload rejected because sanitized filename resolves to a path: {}", originalFilename);
+        throw new RuntimeException("Filename must not contain a path");
+      }
+    } catch (InvalidPathException ex) {
+      log.warn("Avatar upload rejected because filename is not a valid path segment: {}", originalFilename, ex);
+      throw new RuntimeException("Filename is invalid", ex);
+    }
+
+    return sanitized;
+  }
+
+  private String extractExtension(String filename) {
+    int lastDot = filename.lastIndexOf('.');
+    if (lastDot < 0 || lastDot == filename.length() - 1) {
+      return "";
+    }
+    return filename.substring(lastDot).toLowerCase(Locale.ROOT);
+  }
+
+  private String normalizeContentType(String contentType) {
+    if (!StringUtils.hasText(contentType)) {
+      return MediaType.APPLICATION_OCTET_STREAM_VALUE;
+    }
+    return contentType.trim().toLowerCase(Locale.ROOT);
   }
 
   private KeycloakUserRepresentation findUserByUsername(String username, String adminToken) {

@@ -37,7 +37,7 @@ export class TicketListPageComponent {
   ];
 
   readonly priorityOptions: Array<TicketPriority> = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-  readonly sourceOptions = ['ZABBIX', 'SNMP', 'ZKBIO', 'CAMERA'];
+  readonly sourceOptions = ['ZABBIX', 'SNMP', 'CAMERA'];
   readonly canCreateTicket = computed(() => this.auth.arePermissionsLoaded() && this.auth.hasPermission('CREATE_TICKET'));
   readonly canManageArchive = computed(() => this.auth.hasRole('SUPERADMIN') || this.auth.hasRole('ADMIN'));
   readonly canArchiveFromStatus = (ticket: Ticket): boolean =>
@@ -57,7 +57,7 @@ export class TicketListPageComponent {
     this.loadTickets();
   }
 
-  quickSource(source: '' | 'ZABBIX' | 'SNMP' | 'ZKBIO' | 'CAMERA'): void {
+  quickSource(source: '' | 'ZABBIX' | 'SNMP' | 'CAMERA'): void {
     this.sourceFilter.set(source);
     this.loadTickets();
   }

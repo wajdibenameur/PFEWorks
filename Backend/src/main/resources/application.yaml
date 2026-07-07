@@ -1,5 +1,15 @@
 
 spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/monotoring}
+    username: ${SPRING_DATASOURCE_USERNAME:pfeuser}
+    password: ${SPRING_DATASOURCE_PASSWORD:pg14789}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   security:
     oauth2:
       resourceserver:
@@ -25,16 +35,34 @@ app:
       from: ${APP_NOTIFICATIONS_MAIL_FROM:no-reply@monitorflow.local}
   auth:
     frontend-callback-url: ${APP_AUTH_FRONTEND_CALLBACK_URL:http://localhost:4200/auth/callback}
-    refresh-cookie:
-      name: ${APP_AUTH_REFRESH_COOKIE_NAME:REFRESH_TOKEN}
-      path: ${APP_AUTH_REFRESH_COOKIE_PATH:/api/auth}
-      same-site: ${APP_AUTH_REFRESH_COOKIE_SAME_SITE:Lax}
-      secure: ${APP_AUTH_REFRESH_COOKIE_SECURE:false}
-      max-age-seconds: ${APP_AUTH_REFRESH_COOKIE_MAX_AGE_SECONDS:28800}
   chat:
     auto-archive:
       enabled: ${APP_CHAT_AUTO_ARCHIVE_ENABLED:false}
       closed-days: ${APP_CHAT_AUTO_ARCHIVE_CLOSED_DAYS:30}
       cron: ${APP_CHAT_AUTO_ARCHIVE_CRON:0 30 2 * * *}
+ml:
+  torchscript:
+    enabled: true
+    model-path: C:/Users/kbakh/OneDrive/Bureau/PFE/ApplicationPFE/Version 1.0.0/Backendspring/ProjectPFE/dev/PFECODING/PFERTC/artifacts/models/model.pt
+    metadata-path: C:/Users/kbakh/OneDrive/Bureau/PFE/ApplicationPFE/Version 1.0.0/Backendspring/ProjectPFE/dev/PFECODING/PFERTC/artifacts/models/feature_metadata.json
+  risk:
+    watch-probability-threshold: ${ML_RISK_WATCH_PROBABILITY_THRESHOLD:0.55}
+    risk-probability-threshold: ${ML_RISK_RISK_PROBABILITY_THRESHOLD:0.80}
+    cpu-watch-threshold: ${ML_RISK_CPU_WATCH_THRESHOLD:80}
+    cpu-risk-threshold: ${ML_RISK_CPU_RISK_THRESHOLD:90}
+    ram-watch-threshold: ${ML_RISK_RAM_WATCH_THRESHOLD:80}
+    ram-risk-threshold: ${ML_RISK_RAM_RISK_THRESHOLD:90}
+    latency-watch-threshold-ms: ${ML_RISK_LATENCY_WATCH_THRESHOLD_MS:150}
+    latency-risk-threshold-ms: ${ML_RISK_LATENCY_RISK_THRESHOLD_MS:300}
+    packet-loss-watch-threshold: ${ML_RISK_PACKET_LOSS_WATCH_THRESHOLD:5}
+    packet-loss-risk-threshold: ${ML_RISK_PACKET_LOSS_RISK_THRESHOLD:15}
+    high-severity-threshold: ${ML_RISK_HIGH_SEVERITY_THRESHOLD:4}
+    critical-severity-threshold: ${ML_RISK_CRITICAL_SEVERITY_THRESHOLD:4}
+    disaster-severity-threshold: ${ML_RISK_DISASTER_SEVERITY_THRESHOLD:5}
 server:
   port: 8099
+zabbix:
+  critical-history:
+    enabled: false
+    lookback-days: 730
+    limit: 5000
