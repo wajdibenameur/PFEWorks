@@ -48,6 +48,7 @@ La solution développée propose une plateforme unique qui :
 | Backend Spring Boot | API métier, orchestration, sécurité, agrégation, persistance et communication temps réel |
 | Sécurité Keycloak / JWT / RBAC | Authentification centralisée, autorisation par rôles et contrôle d'accès |
 | Intégration supervision | Connexion aux sources externes : Zabbix, SNMP, caméras IP |
+| Couche Monitoring | Agrégation, cache, snapshots et construction d'une vue unifiée pour le dashboard |
 | Résilience | `Retry`, `TimeLimiter`, `Fallback`, `Circuit Breaker` via Resilience4j |
 | Machine Learning | Entraînement Python, export TorchScript et inférence côté backend via DJL |
 
@@ -101,7 +102,30 @@ Elle permet de :
 
 Dans l'existant, `Observium` est conservé comme référence historique, mais la supervision réseau est reprise dans la solution finale par une **collecte SNMP native intégrée**.
 
-### 5. Résilience
+### 5. Couche Monitoring
+
+La couche Monitoring représente le cœur fonctionnel de la vue unifiée.
+
+Elle est responsable de :
+
+- centraliser les données issues de Zabbix, SNMP et des caméras IP ;
+- lire les derniers snapshots disponibles ;
+- agréger les données multi-sources ;
+- gérer le cache et la fraîcheur des données ;
+- fournir une réponse unifiée au dashboard ;
+- masquer la complexité technique des sources externes.
+
+Cette couche permet au frontend de recevoir un format cohérent, sans dépendre directement des spécificités de Zabbix, SNMP ou des caméras IP.
+
+Elle s'appuie notamment sur :
+
+- `SnapshotStore` pour stocker les derniers états disponibles ;
+- `MonitoringCacheService` pour lire, fusionner et préparer les données ;
+- `MonitoringAggregationService` pour construire une réponse unifiée ;
+- `UnifiedMonitoringResponse` pour exposer les données au frontend.
+
+Grâce à cette organisation, la plateforme peut afficher une vue homogène, stable et exploitable de l'infrastructure, même en mode dégradé.
+### 6. Résilience
 
 La plateforme intègre **Resilience4j** pour préserver la continuité de service dans les cas de dégradation ou d'indisponibilité partielle.
 
@@ -112,7 +136,7 @@ Les mécanismes utilisés sont :
 - `Circuit Breaker`
 - `Fallback`
 
-### 6. Machine Learning
+### 7. Machine Learning
 
 Le module ML est construit autour de :
 
@@ -142,6 +166,7 @@ Le backend contient notamment :
 
 - les contrôleurs REST
 - les services de supervision
+- la couche Monitoring : cache, snapshots et agrégation unifiée
 - les services SNMP
 - les services Zabbix
 - les services de ticketing
@@ -258,8 +283,6 @@ Le frontend Angular écoute par défaut sur le port `4200`.
 
 ## Captures d'écran
 
-Ajoute ici les captures les plus parlantes du projet.  
-Pour une publication GitHub propre, je te conseille de copier les images du rapport vers un dossier du dépôt comme `docs/screenshots/` puis de les référencer ainsi :
 
 ### Vue d'architecture
 
@@ -274,7 +297,6 @@ Pour une publication GitHub propre, je te conseille de copier les images du rapp
 ![Chat incident](docs/screenshots/interface-chat.png)
 ![Prédiction ML](docs/screenshots/interface-ml.png)
 
-Si tu veux garder un README très clair, limite-toi à 4 ou 5 captures bien choisies plutôt qu'à une galerie trop longue.
 
 ## Qualité et tests
 
@@ -295,17 +317,16 @@ Le projet contient des tests ciblant :
 - sécurité centralisée avec Keycloak
 - communication temps réel
 - ticketing intégré
+- couche Monitoring unifiée avec cache et snapshots
 - résilience applicative
 - aide à la décision par ML
 
 ## Remarques d'architecture
 
-- `Observium` est présent dans l'existant de la MSB, mais la solution finale privilégie une collecte `SNMP` native intégrée.
-- `ZKBio` est conservé comme solution métier existante pour les accès biométriques.
 - Le module ML n'est pas présenté comme une IA générique, mais comme une **prédiction ML de sévérité**.
 
 ## Auteur
 
 **Wajdi Ben Ameur**  
-Projet de fin d'études - MSB  
+Projet de fin d'études -   
 Spécialité : Génie Logiciel et Systèmes d'Information
