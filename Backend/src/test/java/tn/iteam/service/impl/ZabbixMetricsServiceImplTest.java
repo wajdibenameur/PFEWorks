@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -110,8 +111,7 @@ class ZabbixMetricsServiceImplTest {
             action.run();
             return true;
         });
-        when(transactionTemplate.execute(any())).thenReturn(new ArrayList<>());
-
+        lenient().when(transactionTemplate.execute(any())).thenReturn(new ArrayList<>());
         Mono<List<ZabbixMetric>> firstRun = service.fetchAndSaveMetrics();
         Mono<List<ZabbixMetric>> blockedFirstRun = firstRun.cache();
         blockedFirstRun.subscribe();
