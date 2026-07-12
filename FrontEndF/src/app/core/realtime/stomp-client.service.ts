@@ -221,7 +221,7 @@ export class StompClientService {
     }
 
     const baseDelay = this.reconnectDelaysMs[Math.min(this.reconnectAttempt, this.reconnectDelaysMs.length - 1)];
-    const jitter = Math.floor(Math.random() * 500);
+    const jitter = this.nextRandomInt(500);
     const delay = baseDelay + jitter;
     this.reconnectAttempt = Math.min(this.reconnectAttempt + 1, this.reconnectDelaysMs.length - 1);
     console.debug('WS RECONNECT SCHEDULED', delay);
@@ -272,5 +272,15 @@ export class StompClientService {
     } catch {
       return `${apiUrl.replace(/\/$/, '')}/ws`;
     }
+  }
+
+  private nextRandomInt(maxExclusive: number): number {
+    const crypto = globalThis.crypto;
+    if (crypto?.getRandomValues && maxExclusive > 0) {
+      const buffer = new Uint32Array(1);
+      crypto.getRandomValues(buffer);
+      return buffer[0] % maxExclusive;
+    }
+    return 0;
   }
 }

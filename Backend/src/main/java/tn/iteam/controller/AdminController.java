@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -25,6 +26,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
+@Slf4j
 @Tag(name = "Admin", description = "API d'administration pour les utilisateurs et la gouvernance")
 public class AdminController {
 
@@ -38,7 +40,7 @@ public class AdminController {
         try {
             return ResponseEntity.ok(adminUserService.getAllUsers());
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("Failed to load admin users", e);
             throw e;
         }
     }
