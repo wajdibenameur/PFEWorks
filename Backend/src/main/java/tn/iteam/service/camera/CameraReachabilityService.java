@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -76,12 +77,19 @@ public class CameraReachabilityService {
             Process process = new ProcessBuilder(command)
                     .redirectErrorStream(true)
                     .start();
+            boolean finished = process.waitFor(Math.max(2_000L, timeoutMs + 2_000L), TimeUnit.MILLISECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                attemptLogs.add("PING " + ip + " timed out after " + timeoutMs + " ms");
+                return false;
+            }
+
             String output;
             try (BufferedReader reader = new BufferedReader(
                     new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
                 output = reader.lines().reduce("", (left, right) -> left + right + System.lineSeparator());
             }
-            int exitCode = process.waitFor();
+            int exitCode = process.exitValue();
             attemptLogs.add("PING " + ip + " exitCode=" + exitCode + " output=" + sanitizeOutput(output));
             return exitCode == 0;
         } catch (Exception exception) {

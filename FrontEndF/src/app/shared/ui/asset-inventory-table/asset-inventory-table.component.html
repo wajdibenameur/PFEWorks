@@ -5,27 +5,37 @@
   </header>
 
   <div class="filters">
-    <input
-      type="text"
-      placeholder="Search hostname, last check, IP, source..."
-      (input)="updateFilterText($event)"
-    />
+    <div class="filter-field">
+      <label for="asset-search">Search</label>
+      <input
+        id="asset-search"
+        type="text"
+        placeholder="Search hostname, last check, IP, source..."
+        (input)="updateFilterText($event)"
+      />
+    </div>
 
-    <select (change)="updateStatusFilter($event)">
-      <option value="ALL">Status: All</option>
-      <option value="UP">Status: Up</option>
-      <option value="DOWN">Status: Down</option>
-      <option value="UNKNOWN">Status: Unknown</option>
-    </select>
+    <div class="filter-field">
+      <label for="asset-status">Status</label>
+      <select id="asset-status" (change)="updateStatusFilter($event)">
+        <option value="ALL">Status: All</option>
+        <option value="UP">Status: Up</option>
+        <option value="DOWN">Status: Down</option>
+        <option value="UNKNOWN">Status: Unknown</option>
+      </select>
+    </div>
 
-    <select (change)="updateCategoryFilter($event)">
-      <option value="ALL">Category: All</option>
-      <option value="SERVER">Server</option>
-      <option value="PRINTER">Printer</option>
-      <option value="CAMERA">Camera</option>
-      <option value="ACCESS_CONTROL">Access Control</option>
-      <option value="UNKNOWN">Unknown</option>
-    </select>
+    <div class="filter-field">
+      <label for="asset-category">Category</label>
+      <select id="asset-category" (change)="updateCategoryFilter($event)">
+        <option value="ALL">Category: All</option>
+        <option value="SERVER">Server</option>
+        <option value="PRINTER">Printer</option>
+        <option value="CAMERA">Camera</option>
+        <option value="ACCESS_CONTROL">Access Control</option>
+        <option value="UNKNOWN">Unknown</option>
+      </select>
+    </div>
   </div>
 
   @if (!filteredAssets().length) {

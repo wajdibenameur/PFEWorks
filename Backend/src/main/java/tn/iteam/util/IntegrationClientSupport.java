@@ -6,7 +6,11 @@ import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
 
 import java.net.SocketTimeoutException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Predicate;
 
 public final class IntegrationClientSupport {
 
@@ -66,36 +70,19 @@ public final class IntegrationClientSupport {
     }
 
     public static boolean isTimeoutException(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof TimeoutException || current instanceof SocketTimeoutException) {
-                return true;
-            }
-            if ("io.netty.handler.timeout.ReadTimeoutException".equals(current.getClass().getName())) {
-                return true;
-            }
-            if ("io.netty.channel.ConnectTimeoutException".equals(current.getClass().getName())) {
-                return true;
-            }
-            if (current instanceof WebClientException exception
-                    && exception.getMessage() != null
-                    && exception.getMessage().toLowerCase().contains("timed out")) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
+        return hasCause(throwable, current ->
+                current instanceof TimeoutException
+                        || current instanceof SocketTimeoutException
+                        || "io.netty.handler.timeout.ReadTimeoutException".equals(current.getClass().getName())
+                        || "io.netty.channel.ConnectTimeoutException".equals(current.getClass().getName())
+                        || (current instanceof WebClientException exception
+                        && exception.getMessage() != null
+                        && exception.getMessage().toLowerCase().contains("timed out"))
+        );
     }
 
     public static boolean containsInterruptedException(Throwable throwable) {
-        Throwable current = throwable;
-        while (current != null) {
-            if (current instanceof InterruptedException) {
-                return true;
-            }
-            current = current.getCause();
-        }
-        return false;
+        return hasCause(throwable, InterruptedException.class::isInstance);
     }
 
     public static RuntimeException mapTransportException(
@@ -144,5 +131,17 @@ public final class IntegrationClientSupport {
                 unexpectedError(sourceLabel, context),
                 throwable
         );
+    }
+
+    private static boolean hasCause(Throwable throwable, Predicate<Throwable> predicate) {
+        Throwable current = throwable;
+        Set<Throwable> visited = Collections.newSetFromMap(new IdentityHashMap<>());
+        while (current != null && visited.add(current)) {
+            if (predicate.test(current)) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 }

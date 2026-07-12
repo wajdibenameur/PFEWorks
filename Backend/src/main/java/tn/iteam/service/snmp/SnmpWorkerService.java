@@ -99,9 +99,9 @@ public class SnmpWorkerService {
 
     private SnmpDeviceSnapshot probeDevice(SnmpDevice device) {
         long now = Instant.now().getEpochSecond();
-        String ip = device.getIpAddress();
-        Integer port = device.getSnmpPort() != null ? device.getSnmpPort() : properties.getDefaultPort();
-        String community = device.getSnmpCommunity() != null && !device.getSnmpCommunity().isBlank()
+        String ip = device != null ? device.getIpAddress() : null;
+        Integer port = device != null && device.getSnmpPort() != null ? device.getSnmpPort() : properties.getDefaultPort();
+        String community = device != null && device.getSnmpCommunity() != null && !device.getSnmpCommunity().isBlank()
                 ? device.getSnmpCommunity()
                 : properties.getDefaultCommunity();
         SnmpExceptionUtils.validateDeviceConfiguration(device, ip, port, community);
@@ -206,6 +206,9 @@ public class SnmpWorkerService {
     }
 
     private String resolveDeviceCategory(SnmpDevice device) {
+        if (device == null) {
+            return MonitoringConstants.UNKNOWN;
+        }
         if (device.getCategory() != null && !device.getCategory().isBlank()) {
             return device.getCategory().trim();
         }

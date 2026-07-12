@@ -30,6 +30,18 @@
   margin-bottom: 0.75rem;
 }
 
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.filter-field label {
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 input,
 select {
   background: #f8fafc;
@@ -39,6 +51,7 @@ select {
   font: inherit;
   font-size: 0.82rem;
   outline: none;
+  width: 100%;
   padding: 0.5rem 0.55rem;
 }
 
