@@ -1,6 +1,8 @@
 package tn.iteam.util;
 
 import org.springframework.web.reactive.function.client.WebClientException;
+import io.netty.channel.ConnectTimeoutException;
+import io.netty.handler.timeout.ReadTimeoutException;
 import tn.iteam.exception.IntegrationResponseException;
 import tn.iteam.exception.IntegrationTimeoutException;
 import tn.iteam.exception.IntegrationUnavailableException;
@@ -73,8 +75,8 @@ public final class IntegrationClientSupport {
         return hasCause(throwable, current ->
                 current instanceof TimeoutException
                         || current instanceof SocketTimeoutException
-                        || "io.netty.handler.timeout.ReadTimeoutException".equals(current.getClass().getName())
-                        || "io.netty.channel.ConnectTimeoutException".equals(current.getClass().getName())
+                        || current instanceof ReadTimeoutException
+                        || current instanceof ConnectTimeoutException
                         || (current instanceof WebClientException exception
                         && exception.getMessage() != null
                         && exception.getMessage().toLowerCase().contains("timed out"))

@@ -43,9 +43,9 @@ jobs:
         working-directory: Backend
         run: chmod +x mvnw
 
-      - name: Build backend and run tests
+      - name: Build backend and run verification
         working-directory: Backend
-        run: ./mvnw -B test
+        run: ./mvnw -B verify
 
       - name: Build frontend
         working-directory: FrontEndF
