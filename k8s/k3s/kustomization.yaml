@@ -1,0 +1,10 @@
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - postgres.yaml
+  - keycloak-mysql.yaml
+  - keycloak-realm-configmap.yaml
+  - keycloak.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml

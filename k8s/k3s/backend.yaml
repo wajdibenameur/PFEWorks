@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pfe-backend
+  namespace: pfeworks
+spec:
+  selector:
+    app: pfe-backend
+  ports:
+    - name: http
+      port: 8099
+      targetPort: 8099
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pfe-backend
+  namespace: pfeworks
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pfe-backend
+  template:
+    metadata:
+      labels:
+        app: pfe-backend
+    spec:
+      containers:
+        - name: backend
+          image: pfe-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8099
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://pfe-postgres:5432/monotoring
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: pfe-postgres-secret
+                  key: POSTGRES_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: pfe-postgres-secret
+                  key: POSTGRES_PASSWORD
+            - name: KEYCLOAK_BASE_URL
+              value: http://pfe-keycloak:8080
+            - name: KEYCLOAK_ISSUER_URI
+              value: http://pfe-keycloak:8080/realms/my-realm
+            - name: KEYCLOAK_REALM
+              value: my-realm
+            - name: KEYCLOAK_CLIENT_ID
+              value: auth-service
+            - name: KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pfe-keycloak-app-secret
+                  key: KEYCLOAK_AUTH_CLIENT_SECRET
+            - name: KEYCLOAK_ADMIN_CLIENT_ID
+              value: auth-service-admin
+            - name: KEYCLOAK_ADMIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: pfe-keycloak-app-secret
+                  key: KEYCLOAK_ADMIN_CLIENT_SECRET
+            - name: APP_CORS_ALLOWED_ORIGINS
+              value: http://app.pfeworks.local
+            - name: APP_AUTH_FRONTEND_CALLBACK_URL
+              value: http://app.pfeworks.local/auth/callback
+            - name: ML_TORCHSCRIPT_ENABLED
+              value: "false"
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8099
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8099
+            initialDelaySeconds: 90
+            periodSeconds: 20

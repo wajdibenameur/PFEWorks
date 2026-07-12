@@ -258,6 +258,14 @@ export class StompClientService {
   }
 
   private toWebSocketUrl(apiUrl: string): string {
+    if (!apiUrl || apiUrl.trim() === '') {
+      return this.relativeWebSocketUrl('/ws');
+    }
+
+    if (apiUrl.startsWith('/')) {
+      return this.relativeWebSocketUrl(`${apiUrl.replace(/\/$/, '')}/ws`);
+    }
+
     try {
       const url = new URL(apiUrl);
       if (url.protocol === 'https:') {
@@ -270,8 +278,15 @@ export class StompClientService {
       url.hash = '';
       return url.toString();
     } catch {
-      return `${apiUrl.replace(/\/$/, '')}/ws`;
+      return this.relativeWebSocketUrl(`${apiUrl.replace(/\/$/, '')}/ws`);
     }
+  }
+
+  private relativeWebSocketUrl(path: string): string {
+    const protocol = globalThis.location?.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = globalThis.location?.host ?? '';
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+    return `${protocol}//${host}${normalizedPath}`;
   }
 
   private nextRandomInt(maxExclusive: number): number {

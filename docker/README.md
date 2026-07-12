@@ -56,3 +56,19 @@ Le backend ne fait pas partie de cette stack:
 - il tourne en local
 - il utilise PostgreSQL local
 
+## Images applicatives
+
+Les images applicatives sont disponibles ici:
+
+- `Backend/Dockerfile`
+- `FrontEndF/Dockerfile`
+
+Commandes rapides:
+
+```bash
+cd Backend
+docker build -t pfe-backend .
+
+cd ../FrontEndF
+docker build -t pfe-frontend .
+```

@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pfe-keycloak-realm
+  namespace: pfeworks
+data:
+  realm.json: |
+    {
+      "realm": "my-realm",
+      "enabled": true,
+      "displayName": "PFEPROJECT",
+      "registrationAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "resetPasswordAllowed": true,
+      "roles": {
+        "realm": [
+          { "name": "SUPERADMIN" },
+          { "name": "ADMIN" },
+          { "name": "SUPPORT" },
+          { "name": "VIEWER" }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "auth-service",
+          "name": "auth-service",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "change-me-auth-service-secret",
+          "standardFlowEnabled": true,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": true,
+          "serviceAccountsEnabled": false,
+          "redirectUris": [
+            "http://app.pfeworks.local/*",
+            "http://localhost:4200/*"
+          ],
+          "webOrigins": [
+            "+"
+          ]
+        },
+        {
+          "clientId": "auth-service-admin",
+          "name": "auth-service-admin",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "change-me-auth-service-admin-secret",
+          "standardFlowEnabled": false,
+          "implicitFlowEnabled": false,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": true,
+          "redirectUris": []
+        }
+      ],
+      "users": [
+        {
+          "username": "superadmin",
+          "enabled": true,
+          "email": "superadmin@local",
+          "firstName": "Super",
+          "lastName": "Admin",
+          "emailVerified": true,
+          "credentials": [
+            { "type": "password", "value": "Superadmin123!", "temporary": false }
+          ],
+          "realmRoles": ["SUPERADMIN"]
+        },
+        {
+          "username": "admin",
+          "enabled": true,
+          "email": "admin@local",
+          "firstName": "Admin",
+          "lastName": "User",
+          "emailVerified": true,
+          "credentials": [
+            { "type": "password", "value": "Admin123!", "temporary": false }
+          ],
+          "realmRoles": ["ADMIN"]
+        },
+        {
+          "username": "support",
+          "enabled": true,
+          "email": "support@local",
+          "firstName": "Support",
+          "lastName": "User",
+          "emailVerified": true,
+          "credentials": [
+            { "type": "password", "value": "Support123!", "temporary": false }
+          ],
+          "realmRoles": ["SUPPORT"]
+        },
+        {
+          "username": "viewer",
+          "enabled": true,
+          "email": "viewer@local",
+          "firstName": "Viewer",
+          "lastName": "User",
+          "emailVerified": true,
+          "credentials": [
+            { "type": "password", "value": "Viewer123!", "temporary": false }
+          ],
+          "realmRoles": ["VIEWER"]
+        }
+      ]
+    }
