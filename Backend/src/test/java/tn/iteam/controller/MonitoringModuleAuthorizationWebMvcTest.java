@@ -15,7 +15,10 @@ import tn.iteam.security.AuthenticatedUserService;
 import tn.iteam.security.PermissionService;
 import tn.iteam.service.CameraInventoryService;
 import tn.iteam.service.DashboardService;
+import tn.iteam.service.SnmpMonitoringService;
 import tn.iteam.service.SnmpSummaryService;
+import tn.iteam.service.camera.CameraDeviceManagementService;
+import tn.iteam.repository.SnmpDeviceRepository;
 
 import java.util.List;
 import java.util.Map;
@@ -48,7 +51,16 @@ class MonitoringModuleAuthorizationWebMvcTest {
     private SnmpSummaryService snmpSummaryService;
 
     @MockBean
+    private SnmpMonitoringService snmpMonitoringService;
+
+    @MockBean
+    private SnmpDeviceRepository snmpDeviceRepository;
+
+    @MockBean
     private CameraInventoryService cameraInventoryService;
+
+    @MockBean
+    private CameraDeviceManagementService cameraDeviceManagementService;
 
     @MockBean
     private JwtDecoder jwtDecoder;

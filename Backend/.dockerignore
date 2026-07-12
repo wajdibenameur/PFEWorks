@@ -1,0 +1,10 @@
+target
+logs
+.idea
+.env
+*.log
+hs_err_pid*
+mintty.exe.stackdump
+mvnw
+mvnw.cmd
+.mvn

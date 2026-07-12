@@ -71,7 +71,7 @@ class SnmpPollingServiceRetryClassificationTest {
 
         RuntimeException result = ReflectionTestUtils.invokeMethod(
                 service,
-                "classifyIoException",
+                "classifyRetryableException",
                 device,
                 new SocketTimeoutException("Read timed out")
         );
@@ -85,7 +85,7 @@ class SnmpPollingServiceRetryClassificationTest {
 
         RuntimeException result = ReflectionTestUtils.invokeMethod(
                 service,
-                "classifyIoException",
+                "classifyRetryableException",
                 device,
                 new InterruptedIOException("Interrupted")
         );
@@ -99,7 +99,7 @@ class SnmpPollingServiceRetryClassificationTest {
 
         RuntimeException result = ReflectionTestUtils.invokeMethod(
                 service,
-                "classifyIoException",
+                "classifyRetryableException",
                 device,
                 new IOException("No route to host")
         );

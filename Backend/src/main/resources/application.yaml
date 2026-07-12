@@ -43,8 +43,8 @@ app:
 ml:
   torchscript:
     enabled: true
-    model-path: C:/Users/kbakh/OneDrive/Bureau/PFE/ApplicationPFE/Version 1.0.0/Backendspring/ProjectPFE/dev/PFECODING/PFERTC/artifacts/models/model.pt
-    metadata-path: C:/Users/kbakh/OneDrive/Bureau/PFE/ApplicationPFE/Version 1.0.0/Backendspring/ProjectPFE/dev/PFECODING/PFERTC/artifacts/models/feature_metadata.json
+    model-path: ${ML_TORCHSCRIPT_MODEL_PATH:../PFERTC/artifacts/models/model.pt}
+    metadata-path: ${ML_TORCHSCRIPT_METADATA_PATH:../PFERTC/artifacts/models/feature_metadata.json}
   risk:
     watch-probability-threshold: ${ML_RISK_WATCH_PROBABILITY_THRESHOLD:0.55}
     risk-probability-threshold: ${ML_RISK_RISK_PROBABILITY_THRESHOLD:0.80}

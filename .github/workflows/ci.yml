@@ -1,0 +1,42 @@
+name: CI Build and Test
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: FrontEndF/package-lock.json
+
+      - name: Run backend tests
+        working-directory: Backend
+        run: ./mvnw -B test
+
+      - name: Build frontend
+        working-directory: FrontEndF
+        run: npm ci && npm run build

@@ -92,7 +92,8 @@ export class StompClientService {
       console.warn('WS PUBLISH SKIPPED', { destination, reason: 'missing_token' });
       return;
     }
-    console.debug('WS SEND', { destination, body });
+    // Do not log payload bodies because they may contain user or incident data.
+    console.debug('WS SEND', { destination });
     this.client.publish({
       destination,
       body: JSON.stringify(body),
@@ -124,7 +125,7 @@ export class StompClientService {
       return;
     }
 
-    const wsUrl = `${this.config.monitoringApiUrl}/ws`;
+    const wsUrl = this.toWebSocketUrl(this.config.monitoringApiUrl);
     const token = this.authContext.getAccessToken();
     if (!token) {
       this.connectionStore.setError('Authentication token is required for realtime connection');
@@ -254,5 +255,22 @@ export class StompClientService {
     }
     clearTimeout(this.reconnectTimeoutId);
     this.reconnectTimeoutId = null;
+  }
+
+  private toWebSocketUrl(apiUrl: string): string {
+    try {
+      const url = new URL(apiUrl);
+      if (url.protocol === 'https:') {
+        url.protocol = 'wss:';
+      } else if (url.protocol === 'http:') {
+        url.protocol = 'ws:';
+      }
+      url.pathname = '/ws';
+      url.search = '';
+      url.hash = '';
+      return url.toString();
+    } catch {
+      return `${apiUrl.replace(/\/$/, '')}/ws`;
+    }
   }
 }

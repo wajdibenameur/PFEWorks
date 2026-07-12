@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import inspect
 from pathlib import Path
 
 import torch
@@ -21,7 +22,11 @@ def export_torchscript(config_path: str | None = None) -> Path:
     checkpoint_path = base_dir / config["paths"]["model_checkpoint"]
     target_path = base_dir / config["paths"]["torchscript_model"]
 
-    payload = torch.load(checkpoint_path, map_location="cpu")
+    load_kwargs = {"map_location": "cpu"}
+    if "weights_only" in inspect.signature(torch.load).parameters:
+        load_kwargs["weights_only"] = True
+
+    payload = torch.load(checkpoint_path, **load_kwargs)
     model = TabularSeverityNet(
         input_dim=int(payload["input_dim"]),
         hidden_sizes=[int(value) for value in payload["hidden_sizes"]],

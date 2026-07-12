@@ -171,10 +171,7 @@ public class SnmpPollingService implements SnmpMonitoringService {
                 || cause instanceof InterruptedException) {
             return new IntegrationTimeoutException(MonitoringConstants.SOURCE_SNMP, "SNMP timeout while polling " + ip, cause);
         }
-        if (cause instanceof RuntimeException runtimeException) {
-            return SnmpExceptionUtils.classifyIoException(device, runtimeException);
-        }
-        return new IntegrationUnavailableException(MonitoringConstants.SOURCE_SNMP, "SNMP temporary network error while polling " + ip, cause);
+        return SnmpExceptionUtils.classifyIoException(device, cause);
     }
 
     private SnmpDeviceSnapshot buildLegacyUpSnapshot(SnmpDevice device) {

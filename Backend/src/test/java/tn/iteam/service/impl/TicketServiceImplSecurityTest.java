@@ -97,7 +97,7 @@ class TicketServiceImplSecurityTest {
                 null,
                 "Critical alert"
         )).thenReturn(Optional.empty());
-        when(ticketRepository.save(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(ticketRepository.saveAndFlush(any(Ticket.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(ticketMapper.toResponse(any(Ticket.class))).thenReturn(TicketResponseDTO.builder().id(2L).build());
 
         ZabbixProblemDTO problem = new ZabbixProblemDTO();

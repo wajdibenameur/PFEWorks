@@ -17,6 +17,7 @@ import tn.iteam.dto.TicketResponseDTO;
 import tn.iteam.mapper.TicketMapper;
 import tn.iteam.security.KeycloakJwtAuthenticationConverter;
 import tn.iteam.security.KeycloakRolePermissionService;
+import tn.iteam.security.EffectiveUserPermissionService;
 import tn.iteam.security.PermissionService;
 import tn.iteam.service.TicketService;
 
@@ -34,7 +35,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WebMvcTest(TicketController.class)
 @Import({
         SecurityConfig.class,
-        KeycloakJwtAuthenticationConverter.class,
         KeycloakRolePermissionService.class,
         PermissionService.class,
         TicketMapper.class
@@ -52,6 +52,12 @@ class TicketControllerSecurityWebMvcTest {
 
     @MockBean
     private JwtDecoder jwtDecoder;
+
+    @MockBean
+    private KeycloakJwtAuthenticationConverter keycloakJwtAuthenticationConverter;
+
+    @MockBean
+    private EffectiveUserPermissionService effectiveUserPermissionService;
 
     @Test
     void endpointWithoutTokenReturns401() throws Exception {

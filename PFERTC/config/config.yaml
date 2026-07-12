@@ -4,7 +4,7 @@ project:
 
 paths:
   sql_dump_path: moniiit_db.sql
-  observium_sql_dump_path: "C:/Users/kbakh/OneDrive (1)/Documents/moniiitoring_db(4).sql"
+  observium_sql_dump_path: ""
   artifacts_dir: artifacts
   model_checkpoint: artifacts/models/final_model.pth
   torchscript_model: artifacts/models/model.pt
