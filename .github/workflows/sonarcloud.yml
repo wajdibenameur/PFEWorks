@@ -3,10 +3,14 @@ name: CI SonarCloud
 on:
   push:
     branches:
+      - test
+      - prod
       - main
       - master
   pull_request:
     branches:
+      - test
+      - prod
       - main
       - master
   workflow_dispatch:
@@ -34,6 +38,10 @@ jobs:
           node-version: '20'
           cache: npm
           cache-dependency-path: FrontEndF/package-lock.json
+
+      - name: Make Maven wrapper executable
+        working-directory: Backend
+        run: chmod +x mvnw
 
       - name: Build backend and run tests
         working-directory: Backend
